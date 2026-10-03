@@ -1379,7 +1379,10 @@ async function sbToken(){
 }
 async function sb(path, opts){
   const o = Object.assign({}, opts||{});
-  o.headers = Object.assign({apikey:CLOUD.key, Authorization:'Bearer ' + await sbToken(),
+  /* Bearer bara med en riktig inloggning. Supabases nya publika nycklar (sb_publishable_…)
+     är inga JWT och får bara skickas som apikey — utan inloggning räcker den. */
+  const tok = AUTH ? await sbToken() : '';
+  o.headers = Object.assign({apikey:CLOUD.key}, tok && tok !== CLOUD.key ? {Authorization:'Bearer ' + tok} : {}, {
     'Content-Type':'application/json'}, o.headers||{});
   const r = await fetch(CLOUD.url + '/rest/v1' + path, o);
   if(!r.ok) throw new Error(await sbErr(r));
@@ -4920,12 +4923,12 @@ async function renderPublic(tag, b){
     b.innerHTML = `<div class="skel" style="height:140px"></div>`;
     if(!PREVIEW_LOGIN) try{
       const r = await fetch(CLOUD.url + '/rest/v1/rpc/studio_info', {method:'POST',
-        headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'}, body:'{}'});
+        headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:'{}'});
       if(r.ok) S.studios = Object.assign({}, S.studios, await r.json());
     }catch(_){}
     try{ pubBusy = PREVIEW_LOGIN ? booked().map(x=>({studio:x.studio, date:x.date, start:x.start, end:x.end}))
                                  : await (async()=>{ const r = await fetch(CLOUD.url + '/rest/v1/rpc/free_slots', {method:'POST',
-                                     headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'},
+                                     headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
                                      body:JSON.stringify({p_from:from, p_to:to})}); if(!r.ok) throw new Error(await sbErr(r)); return r.json(); })(); }
     catch(e){ pubBusy = null; b.innerHTML = `<div class="warn">${esc(e.message)}</div>`; return; }
   }
@@ -4974,7 +4977,7 @@ function sendPublic(){
       save();
     } else {
       const r = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST',
-        headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'},
+        headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
         body:JSON.stringify({p_name:f.name, p_email:f.email, p_phone:f.phone, p_date:d.day, p_start:f.start, p_end:f.end,
           p_studio:d.studio, p_message:f.msg, p_hp:f.hp})});
       if(!r.ok) throw new Error(await sbErr(r));

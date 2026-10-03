@@ -26,11 +26,25 @@ lösenord.
    `index.html`, `sw.js`, `manifest.webmanifest`, `apple-touch-icon.png`, `icon-512.png`.
    (De fyra extra behövs för push-notiserna och hemskärmsikonen.)
 3. **Settings → Pages** → *Deploy from a branch* → **main** / **(root)** → **Save**.
-4. Efter 1–2 minuter står adressen högst upp. Skriv upp den:
+4. Efter 1–2 minuter ligger appen på `https://prodbyrk.github.io/bandohq/`.
 
-   ```
-   https://DITT-ANVÄNDARNAMN.github.io/bandohq/
-   ```
+### 1b · Egen adress: bandohq.se (Loopia)
+Domänen ligger hos Loopia. Lättast är att låta lanseringsverktyget sätta DNS-posterna: skapa en
+API-användare i Loopia Kundzon → **Kontoinställningar → LoopiaAPI**, och ge den rättigheterna
+`getDomains`, `getSubdomains`, `addSubdomain`, `getZoneRecords`, `addZoneRecord`,
+`removeZoneRecord` och `updateZoneRecord`.
+
+För hand i Loopias DNS-editor i stället:
+
+| Namn | Typ | Värde |
+|---|---|---|
+| `@` | A | `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` |
+| `@` | AAAA | `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153` |
+| `www` | CNAME | `prodbyrk.github.io.` |
+
+Ta bort Loopias egna A-poster (parkeringen) på `@` och `www`. När DNS:en slagit igenom:
+GitHub-repot → **Settings → Pages → Custom domain** = `bandohq.se` → **Enforce HTTPS**.
+Adressen blir **https://bandohq.se**.
 
 **På telefonen:** öppna adressen i Safari → dela-knappen → **Lägg till på hemskärmen**. Då får
 BANDOHQ husikonen och öppnas i helskärm som en vanlig app. **På iPhone fungerar gratis-notiserna
@@ -64,16 +78,23 @@ redan kört en äldre version räcker det att köra alla fyra igen**, i samma or
 
 ### 2c · Inloggningen
 **Authentication → URL Configuration:**
-- **Site URL:** `https://DITT-ANVÄNDARNAMN.github.io/bandohq/`
+- **Site URL:** `https://bandohq.se/`
 - **Redirect URLs** → *Add URL*, lägg in båda:
   ```
-  https://DITT-ANVÄNDARNAMN.github.io/bandohq/
-  https://DITT-ANVÄNDARNAMN.github.io/bandohq/index.html
+  https://bandohq.se/
+  https://bandohq.se/index.html
   ```
 
 **Authentication → Sign In / Providers → Email** ska vara på (det är det från början).
 *Confirm email* kan vara på — appen klarar det: den som går med får ett mejl, trycker på
 länken och är inne med rätt roll, även om mejlet öppnas på en annan telefon.
+
+**Mejlen måste gå via en egen avsändare.** Supabases inbyggda mejl skickar bara till projektets
+egna medlemmar (max 2 i timmen) och är inte gjort för drift. Använd **Resend** (gratis upp till
+3 000 mejl/månad): lägg till domänen `bandohq.se` hos Resend (region EU), lägg in Resends DNS-poster
+hos Loopia, och sätt sedan **Authentication → Emails → SMTP Settings**: host `smtp.resend.com`,
+port `465`, användare `resend`, lösenord = Resend-API-nyckeln, avsändare `noreply@bandohq.se`,
+namn `BANDOHQ`. Lanseringsverktyget gör allt det här, inklusive svenska mejltexter.
 
 ### 2d · Den första managern (du)
 Inbjudningar skapas av en manager, så det första kontot läggs in för hand.
@@ -185,7 +206,7 @@ Ingen behöver skriva in någon annans e-post.
 *[cirkeln]* · *Hela gruppen* → klistra in i gruppchatten. Under länklistan ser du hur många
 som gått med och kan stänga en länk.
 
-**Nya kunder** behöver ingen inbjudan. Lägg länken `https://DITT-ANVÄNDARNAMN.github.io/bandohq/#boka`
+**Nya kunder** behöver ingen inbjudan. Lägg länken `https://bandohq.se/#boka`
 i Instagram-bion: där ser de lediga tider och skickar en förfrågan. Den hamnar under
 **Väntar på svar** på IDAG. Godkänn → tiden bokas och kunden får ett SMS med en länk för att
 skapa sitt konto.
@@ -240,16 +261,20 @@ I Supabase: **Edge Functions → Deploy a new function → Via Editor**.
   | Namn | Värde |
   |---|---|
   | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | från 5a |
-  | `VAPID_SUBJECT` | `mailto:` + din e-post, t.ex. `mailto:rasmus@bandocollective.com` |
+  | `VAPID_SUBJECT` | `mailto:` + din e-post |
   | `ELKS_USER`, `ELKS_PASS` | från 5b |
+  | `CRON_SECRET` | en lång slumpsträng — samma som i 5d |
+
+  Stäng av **Enforce JWT verification** för funktionen: den skyddas av `CRON_SECRET` i stället
+  (Supabases nya API-nycklar är inte JWT).
 
   Vill du testa SMS gratis först: lägg även `ELKS_DRYRUN` = `yes` (46elks låtsas skicka). Ta bort
   den när det fungerar.
 
 ### 5d · Slå på utskicket
 1. **Database → Extensions**: slå på **pg_cron** och **pg_net**.
-2. Öppna `db/05-sms-utskick.sql`, byt de två värdena högst upp (samma URL och *anon public*-nyckel
-   som i `CLOUD_CONFIG`) och kör den i SQL Editor.
+2. Öppna `db/05-sms-utskick.sql`, byt de två värdena högst upp (projektets URL och samma
+   `CRON_SECRET` som funktionen har) och kör den i SQL Editor.
 
 Nu skickas utkorgen varje minut och påminnelserna varje kväll. Testa: profilen → **Slå på
 notiser** → **Skicka en testnotis**. Hela kedjan går att följa i **Table Editor → sms_outbox**
@@ -411,7 +436,7 @@ Databasen och molnflödet (kräver Node):
 cd db/test
 npm install                       # en gång
 node db.test.mjs                  # behörigheter, notiskön, push, nya kunder och radering i riktig Postgres, 170 testfall
-node notify.test.mjs              # push-krypteringen mot RFC 8291:s egna testvärden + hela utskicket, 22 testfall
+node notify.test.mjs              # push-krypteringen mot RFC 8291:s egna testvärden + hela utskicket, 28 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
 

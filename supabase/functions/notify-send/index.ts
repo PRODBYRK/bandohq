@@ -4,7 +4,12 @@
    enhet med push påslaget, eller tar ingen emot den, går notisen som
    SMS via 46elks. Anropas varje minut av pg_cron (db/05-sms-utskick.sql).
 
+   Skyddas av CRON_SECRET (samma värde som vault-hemligheten bandohq_cron i
+   db/05) — funktionen deployas utan JWT-kontroll, eftersom Supabases nya
+   API-nycklar inte är JWT.
+
    Secrets (Edge Functions → notify-send → Secrets):
+     CRON_SECRET            lång slumpsträng, samma som i db/05-sms-utskick.sql
      VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY  push-nycklarna (skapas i appen: Crew → Notiser)
      VAPID_SUBJECT          mailto:din@epost.se — kontaktadress till push-tjänsterna
      ELKS_USER, ELKS_PASS   46elks (valfritt: utan dem går bara push)
@@ -91,10 +96,19 @@ const TITLE = { request: 'Ny förfrågan', answer: 'Svar på din förfrågan', r
   agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
 const URGENT = ['request', 'answer', 'reminder', 'lead'];
 
+/* Servernyckeln: den gamla service_role-JWT:n om den finns, annars en ny
+   sb_secret_… ur SUPABASE_SECRET_KEYS. Nya nycklar får bara skickas som apikey. */
+function serviceKey() {
+  const legacy = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (legacy) return legacy;
+  try { const all = JSON.parse(env('SUPABASE_SECRET_KEYS') || '{}'); return all.default || Object.values(all)[0] || ''; }
+  catch (_) { return ''; }
+}
 async function rpc(fn, args) {
-  const key = env('SUPABASE_SERVICE_ROLE_KEY');
-  const r = await fetch(`${env('SUPABASE_URL')}/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}),
-    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } });
+  const key = serviceKey();
+  const headers = { apikey: key, 'Content-Type': 'application/json' };
+  if (key.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
+  const r = await fetch(`${env('SUPABASE_URL')}/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}), headers });
   if (!r.ok) throw new Error(`${fn}: ${r.status} ${await r.text()}`);
   const t = await r.text();
   return t ? JSON.parse(t) : null;
@@ -159,8 +173,15 @@ export async function handle() {
   return out;
 }
 
+/* Bara schemaläggningen (db/05) får starta ett utskick. */
+export function authorized(req) {
+  const want = env('CRON_SECRET');
+  return !!want && req.headers.get('x-cron-secret') === want;
+}
+
 if (globalThis.Deno && Deno.serve) {
-  Deno.serve(async () => {
+  Deno.serve(async (req) => {
+    if (!authorized(req)) return Response.json({ error: 'unauthorized' }, { status: 401 });
     try { return Response.json(await handle()); }
     catch (e) { return Response.json({ error: String(e) }, { status: 500 }); }
   });

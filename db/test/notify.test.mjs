@@ -158,6 +158,26 @@ ok('utan 46elks skickas inget SMS, felet säger varför', got.sms.length === 0 &
 const again = await W.handle();
 ok('nästa körning försöker bara om det som misslyckats (Cy, Di) — skickat skickas aldrig igen', again.claimed === 2 && again.push === 0, again);
 
+/* ---------- 4. nycklar och skydd ---------- */
+head('nycklar och skydd');
+const seen = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opt) => { if (String(url).includes('/rest/v1/rpc/')) seen.push(opt.headers); return realFetch(url, opt); };
+delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+process.env.SUPABASE_SECRET_KEYS = JSON.stringify({ default: 'sb_secret_abc123' });
+await W.handle();
+ok('ny servernyckel (sb_secret_…) läses ur SUPABASE_SECRET_KEYS', seen.length > 0 && seen.every(h => h.apikey === 'sb_secret_abc123'), seen[0]);
+ok('och skickas bara som apikey, aldrig som Bearer', seen.every(h => !h.Authorization), seen[0]);
+seen.length = 0; process.env.SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiJ9.e30.x';
+await W.handle();
+ok('gamla service_role-JWT:n används först, då även som Bearer', seen.every(h => h.apikey.startsWith('eyJ') && h.Authorization === 'Bearer ' + h.apikey));
+const req = h => ({ headers: new Headers(h) });
+process.env.CRON_SECRET = 'hemlig-cron-123';
+ok('utan rätt hemlighet startar inget utskick', !W.authorized(req({})) && !W.authorized(req({ 'x-cron-secret': 'fel' })));
+ok('med hemligheten från schemaläggningen går det', W.authorized(req({ 'x-cron-secret': 'hemlig-cron-123' })));
+delete process.env.CRON_SECRET;
+ok('saknas CRON_SECRET helt är funktionen stängd', !W.authorized(req({ 'x-cron-secret': '' })));
+
 console.log('\n══════════════════════════════');
 console.log(pass + ' PASS · ' + fail + ' FAIL'); console.log(fail ? '✗ TRASIGT' : '✓ ALLT GRÖNT');
 process.exit(fail ? 1 : 0);
