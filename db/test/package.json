@@ -1,0 +1,13 @@
+{
+  "name": "bandosesh-db-test",
+  "private": true,
+  "type": "module",
+  "description": "Behörighetstester (PGlite) och Supabase-emulator för BANDOSESH",
+  "scripts": {
+    "test": "node db.test.mjs",
+    "emulator": "node emulator.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}

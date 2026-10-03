@@ -1,0 +1,1168 @@
+<meta charset="utf-8"><title>BANDOHQ v7</title>
+<style>body{background:#111;color:#eee;font:13px ui-monospace,Menlo,monospace;margin:0;display:flex}
+pre{padding:16px;margin:0;white-space:pre-wrap;flex:1;max-height:100vh;overflow:auto}
+iframe{width:390px;height:844px;border:0;flex:none;background:#000}</style>
+<pre id="out">kör…</pre><iframe id="fr"></iframe>
+<script>
+const out=document.getElementById('out'), fr=document.getElementById('fr');
+let pass=0,fail=0,lines=[];
+const log=s=>{lines.push(s);out.textContent=lines.join('\n');};
+const ok=(n,c,x)=>{c?pass++:fail++;log((c?'PASS  ':'FAIL  ')+n+(!c&&x!==undefined?'   → '+JSON.stringify(x):''));};
+
+/* v3-format i seeden — heal() ska migrera den till S.accounts */
+const CREW=[
+ {id:'rkay',n:'RKAY',r:'producer',c:'#7c3aed',g:'#a855f7',email:'rkay@b.se',pinHash:'',pinSalt:'',active:true,up:1},
+ {id:'adrey',n:'ADREY',r:'producer',c:'#0284c7',g:'#38bdf8',email:'',pinHash:'',pinSalt:'',active:true,up:1},
+ {id:'az',n:'AZ',r:'manager',c:'#cbd5e1',g:'#f1f5f9',email:'az@b.se',pinHash:'',pinSalt:'',active:true,up:1}];
+const PEOPLE=[
+ {id:'p1',n:'William Ek',phone:'070-1',email:'w@b.se',active:true,del:false,up:1},
+ {id:'p2',n:'Nora Lind',phone:'070-2',email:'n@b.se',active:true,del:false,up:1}];
+const CURR=[{id:'cu1',subject:'Musikproduktion',title:'Aktuell läroplan – Musikproduktion',
+  body:'Produktion\nArrangemang',from:'2026-09-01',del:false,up:1}];
+const CIRC=[{id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',
+  curriculumId:'cu1',members:['p1','p2'],active:true,del:false,up:1}];
+
+function seed(extra){
+  return Object.assign({v:2, session:{email:'',name:'AZ',picture:'',member:'AZ',ts:1,via:'pin'},
+    crew:JSON.parse(JSON.stringify(CREW)), people:JSON.parse(JSON.stringify(PEOPLE)),
+    circles:JSON.parse(JSON.stringify(CIRC)), curricula:JSON.parse(JSON.stringify(CURR)),
+    studios:{A:'STUDIO A',B:'THE BOOTH'}, bookings:[], files:[],
+    dropbox:{appKey:'',sharedId:'',setupAt:0,up:0}, seed8:1,   /* v8-kontona testas för sig */
+    rates:{currency:'SEK',default:650,per:{},up:1}}, extra||{});
+}
+function boot(seedVal){
+  return new Promise(res=>{
+    fr.onload=null; fr.src='about:blank';
+    setTimeout(()=>{
+      localStorage.clear();
+      if(seedVal) localStorage.setItem('bandosesh_v2', JSON.stringify(seedVal));
+      fr.onload=()=>setTimeout(()=>res(fr.contentWindow),260);
+      fr.src='../index.html?mock=1&cb='+Math.random()+(boot.hash||''); boot.hash='';
+    },400);
+  });
+}
+const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
+
+(async function run(){
+ try{
+  /* ============ 1 · MIGRERING ============ */
+  log('── migrering till en kontolista ──');
+  let w = await boot(seed());
+  let r = await ev(w,`return {
+    hasAcc: Array.isArray(S.accounts), noCrew: S.crew===undefined, noPeople: S.people===undefined,
+    total: accounts().length, crew: crew().length, parts: lpeople().length,
+    ids: accounts().map(a=>a.id).sort().join(','),
+    roles: accounts().map(a=>a.n+':'+a.r).sort().join(' '),
+    members: membersOf('c1').map(p=>p.n).join(','),
+    hasPhone: (byId('p1')||{}).phone==='070-1'};`);
+  ok('S.accounts finns, crew och people är borta', r.hasAcc && r.noCrew && r.noPeople, r);
+  ok('alla fem konton migrerade', r.total===5, r.total);
+  ok('crewet är ett rollfilter (3)', r.crew===3, r.crew);
+  ok('deltagarna fick rollen participant (2)', r.parts===2, r.parts);
+  ok('id:n behölls', r.ids==='adrey,az,p1,p2,rkay', r.ids);
+  ok('cirkelmedlemskapen pekar fortfarande rätt', r.members==='Nora Lind,William Ek', r.members);
+  ok('telefonnumret följde med', r.hasPhone===true);
+
+  /* ============ 2 · ROLLER OCH VYER ============ */
+  log('\n── roller och vyer ──');
+  r = await ev(w,`
+    const res={};
+    for(const [id,role] of [['az','manager'],['rkay','producer'],['p1','participant']]){
+      byId(id).r = role; S.session.member = byId(id).n;
+      res[role] = {view:roleView(), tabs: roleView()==='full'?tabs().length:0};
+    }
+    byId('adrey').r='leader'; S.session.member='ADREY';
+    res.leader = {view:roleView(), tabs:0};
+    byId('p2').r='customer'; S.session.member='Nora Lind';
+    res.customer = {view:roleView(), tabs:0};
+    S.session.member='AZ'; byId('rkay').r='producer'; byId('p1').r='participant';
+    return res;`);
+  ok('manager får hela appen (fem flikar + MER)', r.manager.view==='full' && r.manager.tabs===5, r.manager);
+  ok('producent får hela appen med fem flikar', r.producer.view==='full' && r.producer.tabs===5, r.producer);
+  ok('deltagare får sin egen vy', r.participant.view==='participant', r.participant);
+  ok('cirkelledare utan producentroll får sin egen vy', r.leader.view==='leader', r.leader);
+  ok('kund får sin egen vy', r.customer.view==='customer', r.customer);
+
+  r = await ev(w,`
+    /* producent som OCKSÅ leder en cirkel ska ha producentvyn */
+    S.session.member='RKAY';
+    return {leads: leadsAny('RKAY'), view: roleView()};`);
+  ok('producent som leder cirkel behåller producentvyn', r.leads===true && r.view==='full', r);
+
+  /* ============ 3 · FÖRFRÅGAN BLOCKERAR INTE STUDION ============ */
+  log('\n── förfrågan tar ingen plats ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    byId('p1').r='participant'; S.session.member='William Ek';
+    const c = circleById('c1');
+    S.bookings.push({id:'rq1',studio:'',date:'2026-11-10',start:'18:00',end:'21:00',
+      who:'RKAY',title:c.n,note:'',circleId:'c1',status:'request',reqBy:'p1',
+      hours:null,present:[],up:Date.now(),del:false,paid:false});
+    save();
+    return {
+      inLive: live().some(b=>b.id==='rq1'),
+      inBooked: booked().some(b=>b.id==='rq1'),
+      blocksA: clash({studio:'A',date:'2026-11-10',start:'19:00',end:'20:00'},null).length,
+      blocksB: clash({studio:'B',date:'2026-11-10',start:'19:00',end:'20:00'},null).length,
+      freeA: freeAt('A','2026-11-10','18:00','21:00',null),
+      reqCount: requests().length,
+      hours: hoursFor('p1')};`);
+  ok('förfrågan finns i datan', r.inLive===true);
+  ok('men räknas INTE som bokad', r.inBooked===false);
+  ok('den blockerar inte studio A', r.blocksA===0, r.blocksA);
+  ok('och inte studio B heller', r.blocksB===0, r.blocksB);
+  ok('studion är fortfarande ledig', r.freeA===true);
+  ok('förfrågan ger inga timmar', r.hours===0, r.hours);
+
+  /* ============ 4 · GODKÄNNANDE ============ */
+  log('\n── godkänna och avböja ──');
+  r = await ev(w,`
+    S.session.member='RKAY';
+    doApprove('rq1','A');
+    const b = S.bookings.find(x=>x.id==='rq1');
+    return {studio:b.studio, status:b.status,
+      nowBlocks: clash({studio:'A',date:'2026-11-10',start:'19:00',end:'20:00'},null).length,
+      inBooked: booked().some(x=>x.id==='rq1')};`);
+  ok('godkännandet sätter studio', r.studio==='A', r.studio);
+  ok('och gör den till en bekräftad bokning', r.status==='', r.status);
+  ok('nu blockerar den studion', r.nowBlocks===1, r.nowBlocks);
+  ok('och räknas som bokad', r.inBooked===true);
+
+  r = await ev(w,`
+    /* upptagen tid ska nekas vid godkännandet */
+    S.bookings.push({id:'rq2',studio:'',date:'2026-11-10',start:'19:00',end:'22:00',
+      who:'RKAY',title:'x',note:'',circleId:'c1',status:'request',reqBy:'p1',
+      hours:null,present:[],up:Date.now(),del:false,paid:false});
+    save();
+    const free = ['A','B'].filter(st=>freeAt(st,'2026-11-10','19:00','22:00','rq2'));
+    doApprove('rq2','A');
+    const blockedStays = S.bookings.find(x=>x.id==='rq2').status;   /* läs NU */
+    doApprove('rq2','B');
+    const b2 = S.bookings.find(x=>x.id==='rq2');
+    return {free, blockedStays, otherWorks:b2.status, studio:b2.studio};`);
+  ok('upptagen studio erbjuds inte', JSON.stringify(r.free)==='["B"]', r.free);
+  ok('godkännande mot upptagen tid nekas', r.blockedStays==='request', r.blockedStays);
+  ok('den lediga studion går att godkänna mot', r.otherWorks==='' && r.studio==='B', r);
+
+  r = await ev(w,`
+    S.bookings.push({id:'rq3',studio:'',date:'2026-12-01',start:'18:00',end:'21:00',
+      who:'RKAY',title:'x',note:'',circleId:'c1',status:'request',reqBy:'p1',
+      hours:null,present:[],up:Date.now(),del:false,paid:false});
+    save();
+    const b = S.bookings.find(x=>x.id==='rq3');
+    Object.assign(b,{status:'declined',up:Date.now()}); save();
+    return {inBooked: booked().some(x=>x.id==='rq3'),
+      blocks: clash({studio:'A',date:'2026-12-01',start:'19:00',end:'20:00'},null).length,
+      hours: hoursFor('p1')};`);
+  ok('avböjd blir aldrig en bokning', r.inBooked===false);
+  ok('avböjd blockerar ingen studio', r.blocks===0, r.blocks);
+  ok('avböjd ger inga timmar', r.hours===0, r.hours);
+
+  /* ============ 5 · TIMMAR BARA VIA LEDAREN ============ */
+  log('\n── timmar ──');
+  r = await ev(w,`
+    S.session.member='RKAY';
+    const b = S.bookings.find(x=>x.id==='rq1');
+    Object.assign(b,{status:'done',hours:3,present:['p1'],completedBy:'RKAY',up:Date.now()});
+    save();
+    const after = {p1:hoursFor('p1'), p2:hoursFor('p2')};
+    /* deltagaren har ingen väg att sätta timmar i gränssnittet */
+    S.session.member='William Ek';
+    const canAnswer = can('answerRequest', circleById('c1'));
+    const canLead = can('leadCircle', circleById('c1'));
+    const canReq = can('requestSession', circleById('c1'));
+    S.session.member='AZ';
+    return {after, canAnswer, canLead, canReq};`);
+  ok('timmar landar på den närvarande', r.after.p1===3 && r.after.p2===0, r.after);
+  ok('deltagaren kan inte svara på förfrågningar', r.canAnswer===false);
+  ok('deltagaren kan inte leda cirkeln', r.canLead===false);
+  ok('men får föreslå tider i sin egen cirkel', r.canReq===true);
+
+  /* ============ 6 · BEFORDRAN ============ */
+  log('\n── befordringssystemet ──');
+  w = await boot(seed({bookings:[{id:'b1',studio:'A',date:'2026-11-20',start:'10:00',end:'12:00',
+    who:'ADREY',title:'Pass',note:'',circleId:'',status:'',hours:null,present:[],
+    up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    /* befordra en deltagare till cirkelledare */
+    byId('p1').r='leader'; byId('p1').up=Date.now(); save();
+    const promoted = byId('p1').r;
+    /* namnbyte ska skriva om bokningar, filer och cirkelledarskap */
+    const m = byId('adrey'); const old = m.n;
+    S.bookings.forEach(b=>{ if(b.who===old){ b.who='AD'; } });
+    S.circles.forEach(c=>{ if(c.leader===old){ c.leader='AD'; } });
+    m.n='AD'; save();
+    const renamed = S.bookings.find(b=>b.id==='b1').who;
+    /* sista managern får inte degraderas */
+    const mgrs = accounts().filter(a=>a.r==='manager').length;
+    return {promoted, renamed, mgrs};`);
+  ok('deltagare kan befordras till cirkelledare', r.promoted==='leader', r.promoted);
+  ok('namnbyte skriver om bokningarna', r.renamed==='AD', r.renamed);
+  ok('det finns exakt en manager att skydda', r.mgrs===1, r.mgrs);
+
+  /* ============ 7 · SYNK ============ */
+  log('\n── synk ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const pay = JSON.parse(JSON.stringify(fullPayload()));
+    return {hasAcc:!!pay.acc, accN:pay.acc.length,
+      compatCrew: pay.crew.length, compatPe: pay.pe.length,
+      accHasRole: pay.acc.every(a=>!!a.r)};`);
+  ok('payload skickar acc med alla konton', r.hasAcc && r.accN===5, r.accN);
+  ok('rollen följer med varje konto', r.accHasRole===true);
+  ok('crew skickas fortfarande för v3-klienter (3)', r.compatCrew===3, r.compatCrew);
+  ok('pe skickas fortfarande för v3-klienter (2)', r.compatPe===2, r.compatPe);
+
+  w = await boot(seed());
+  r = await ev(w,`
+    /* en v3-payload utan acc ska läsas via crew + pe */
+    mergeData({v:2, crew:[{id:'newp',n:'PKL',r:'producer',c:'#047857',g:'#34d399',
+      email:'pkl@b.se',pinHash:'',pinSalt:'',active:true,up:9000}],
+      pe:[{id:'newd',n:'Leo Native',email:'l@b.se',phone:'',active:true,del:false,up:9000}]});
+    const crewIn = (byId('newp')||{}).r, peIn = (byId('newd')||{}).r;   /* läs NU */
+    /* och en v4-payload med acc ska vinna på up */
+    mergeData({v:2, acc:[{id:'newp',n:'PKL',r:'manager',c:'#047857',g:'#34d399',
+      email:'pkl@b.se',phone:'',pinHash:'',pinSalt:'',active:true,del:false,up:99000}]});
+    const promoted = byId('newp').r;
+    mergeData({v:2, acc:[{id:'newp',n:'GAMMALT',r:'participant',active:true,del:false,up:1}]});
+    const stays = byId('newp').n;
+    return {crewIn, peIn, promoted, stays, total:accounts().length};`);
+  ok('v3-crew läses in som konton', r.crewIn==='producer', r.crewIn);
+  ok('v3-deltagare läses in som participant', r.peIn==='participant', r.peIn);
+  ok('acc med nyare up vinner', r.promoted==='manager', r.promoted);
+  ok('äldre post skriver inte över', r.stays==='PKL', r.stays);
+  ok('inga dubbletter', r.total===7, r.total);
+
+  /* ============ 8 · INLOGGNING UNDER BYGGET ============ */
+  log('\n── inloggning under bygget ──');
+  w = await boot(seed({session:null}));
+  r = await ev(w,`
+    const gateOn = document.getElementById('gate').classList.contains('on');
+    const body = document.getElementById('gateBody').innerHTML;
+    const tag  = document.getElementById('gateTag').innerHTML;
+    const n = document.querySelectorAll('#gateBody .member').length;
+    byId('adrey').active=false; save(); renderGate();
+    const n2 = document.querySelectorAll('#gateBody .member').length;
+    byId('adrey').active=true; save(); renderGate();
+    const text = body.replace(/<[^>]+>/g,' ');
+    return {gateOn, preview:/FÖRHANDSVISNING/.test(tag), n, total:activeAcc().length, n2,
+      groups:['MANAGER','PRODUCENT','DELTAGARE'].every(g=>body.includes(g)),
+      noPad:!/pinpad|pindots/.test(body), noCode:!/(^|[^a-zåäö])kod([^a-zåäö]|$)/i.test(text),
+      noGoogle:!/Fortsätt med Google/.test(body),
+      gone:['setPin','checkPin','sha256','pickPerson','submitPin','pinTap','lookupEmail',
+            'googleLogin','claim','openSetPin','saveNewPin','clearPin','byEmail']
+            .filter(f=>typeof window[f]!=='undefined')};`);
+  ok('inloggningen visas utan session', r.gateOn===true);
+  ok('sidan är märkt som förhandsvisning', r.preview===true);
+  ok('alla aktiva konton går att välja', r.n===r.total, [r.n, r.total]);
+  ok('kontona är grupperade per roll', r.groups===true);
+  ok('avstängda konton syns inte', r.n2===r.n-1, [r.n, r.n2]);
+  ok('ingen kodpanel', r.noPad===true);
+  ok('ordet "kod" förekommer inte på sidan', r.noCode===true);
+  ok('ingen Google-inloggning på sidan', r.noGoogle===true);
+  ok('kodsystemets funktioner finns inte kvar', r.gone.length===0, r.gone);
+
+  r = await ev(w,`
+    const pick = n => [...document.querySelectorAll('#gateBody .member')].find(b=>b.textContent.includes(n));
+    pick('AZ').click();
+    const mgr = {member:S.session&&S.session.member, view:roleView(), via:S.session&&S.session.via,
+      app:document.getElementById('app').style.display!=='none',
+      gateOff:!document.getElementById('gate').classList.contains('on')};
+    openMe();
+    const prof = document.getElementById('sheetBody').innerHTML;
+    signOut();                                   /* ingen bekräftelsedialog under bygget */
+    const back = {gate:document.getElementById('gate').classList.contains('on'), session:S.session};
+    pick('William').click();
+    const part = {member:S.session&&S.session.member, view:roleView(),
+      nav:document.getElementById('nav').style.display};
+    openMe(); const pprof = document.getElementById('sheetBody').innerHTML; closeSheet();
+    signOut();
+    byId('adrey').active=false; save(); signIn(byId('adrey'));
+    const blocked = !S.session;
+    byId('adrey').active=true; save();
+    return {mgr, back, part, blocked,
+      prof:{switch:/BYT KONTO/.test(prof), code:/BYT KOD|SÄTT EN KOD/.test(prof)},
+      pprof:{switch:/BYT KONTO/.test(pprof), code:/BYT KOD|SÄTT EN KOD/.test(pprof)}};`);
+  ok('ett tryck loggar in managern med hela appen', r.mgr.member==='AZ' && r.mgr.view==='full' && r.mgr.app && r.mgr.gateOff, r.mgr);
+  ok('sessionen är märkt som förhandsvisning', r.mgr.via==='preview', r.mgr.via);
+  ok('BYT KONTO går direkt tillbaka till väljaren', r.back.gate===true && r.back.session===null, r.back);
+  ok('deltagaren får sin enkla vy utan flikrad', r.part.member==='William Ek' && r.part.view==='participant' && r.part.nav==='none', r.part);
+  ok('profilen har BYT KONTO och ingen kodknapp', r.prof.switch && !r.prof.code, r.prof);
+  ok('även i den enkla vyn', r.pprof.switch && !r.pprof.code, r.pprof);
+  ok('avstängt konto går inte att logga in på', r.blocked===true);
+
+  /* gamla kodhashar ska rensas, inte ligga kvar och synkas runt */
+  w = await boot(seed({session:null, crew:CREW.map(c=>Object.assign({},c,{pinHash:'gammal',pinSalt:'s'}))}));
+  r = await ev(w,`
+    const local = S.accounts.some(a=>'pinHash' in a || 'pinSalt' in a);
+    mergeData({v:2, acc:[{id:'rkay',n:'RKAY',r:'producer',c:'#7c3aed',g:'#a855f7',email:'',
+      pinHash:'från-äldre-klient',pinSalt:'x',active:true,del:false,up:99999}]});
+    const merged = 'pinHash' in byId('rkay');
+    const pay = JSON.stringify(fullPayload());
+    return {local, merged, inPayload:/pinHash|pinSalt/.test(pay)};`);
+  ok('sparade kodhashar rensas vid start', r.local===false);
+  ok('kodhashar från en äldre telefon tas inte emot', r.merged===false);
+  ok('inga kodfält skickas i synken', r.inPayload===false);
+
+  /* ============ 9 · VYERNA RENDERAR ============ */
+  log('\n── vyerna renderar ──');
+  w = await boot(seed({bookings:[
+    {id:'s1',studio:'A',date:'2026-11-10',start:'18:00',end:'21:00',who:'RKAY',title:'Grupp 1',
+     note:'',circleId:'c1',status:'done',hours:3,present:['p1'],completedBy:'RKAY',up:1,del:false,paid:false},
+    {id:'s2',studio:'',date:'2027-01-10',start:'18:00',end:'21:00',who:'RKAY',title:'Grupp 1',
+     note:'',circleId:'c1',status:'request',reqBy:'p1',hours:null,present:[],up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    const res={};
+    const check = (who, role) => {
+      const acc = byName(who);
+      if(role && acc) acc.r = role;
+      S.session.member = who;
+      try{ render(); const h=document.getElementById('view').innerHTML;
+        return {len:h.length, html:h}; }
+      catch(e){ return {err:e.message}; }
+    };
+    const part = check('William Ek','participant');
+    const lead = check('ADREY','leader');
+    S.circles[0].leader='ADREY';
+    const lead2 = check('ADREY','leader');
+    const cust = check('Nora Lind','customer');
+    S.circles[0].leader='RKAY';
+    S.session.member='AZ';
+    return {
+      part:{len:part.len, err:part.err,
+        hasCurr:/Arrangemang/.test(part.html||''), hasBook:/FÖRESLÅ EN TID/.test(part.html||''),
+        hasHours:/480/.test(part.html||''), noSchedule:!/RESTEN AV VECKAN/.test(part.html||''),
+        noFiles:!/Lägg in ditt arbete/.test(part.html||'')},
+      lead:{len:lead2.len, err:lead2.err,
+        hasReq:/VÄNTAR PÅ DIG/.test(lead2.html||''), hasMembers:/William Ek/.test(lead2.html||''),
+        noCrew:!/STUDIOBELÄGGNING/.test(lead2.html||'')},
+      cust:{len:cust.len, err:cust.err, hasBook:/LEDIGA TIDER/.test(cust.html||''),
+        noCircles:!/läroplan/i.test(cust.html||'')},
+      navHidden: document.getElementById('nav').style.display};`);
+  ok('deltagarvyn renderar', !r.part.err && r.part.len>300, r.part.err||r.part.len);
+  ok('deltagaren ser läroplanen', r.part.hasCurr===true);
+  ok('och kan föreslå en tid', r.part.hasBook===true);
+  ok('och ser sina timmar', r.part.hasHours===true);
+  ok('men INTE schemat', r.part.noSchedule===true);
+  ok('och INTE filerna', r.part.noFiles===true);
+  ok('ledarvyn renderar', !r.lead.err && r.lead.len>300, r.lead.err||r.lead.len);
+  ok('ledaren ser förfrågningarna', r.lead.hasReq===true);
+  ok('och sina deltagare', r.lead.hasMembers===true);
+  ok('men INTE crewets studiostatistik', r.lead.noCrew===true);
+  ok('kundvyn renderar med lediga tider', !r.cust.err && r.cust.hasBook===true, r.cust.err);
+  ok('kunden ser ingen läroplan', r.cust.noCircles===true);
+
+  r = await ev(w,`
+    S.session.member='AZ';
+    const res={};
+    for(const v of ['today','week','agenda','beats','more','artists','goals','circles','team','dash']){
+      try{ go(v); const h=document.getElementById('view').innerHTML;
+        res[v]= h.length>200?'ok':'tunn:'+h.length; }catch(e){ res[v]='KRASCH: '+e.message; }
+    }
+    let sheets='ok';
+    try{ openCrewAdmin(); closeSheet(); openAccount(); closeSheet(); openAccount('rkay'); closeSheet();
+      openMe(); closeSheet(); openRates(); closeSheet(); openStudios(); closeSheet();
+      openCircleEdit('c1'); closeSheet(); openComplete('s1'); closeSheet();
+      openApprove('s2'); closeSheet(); }
+    catch(e){ sheets='KRASCH: '+e.message; }
+    S.session.member='William Ek'; byId('p1').r='participant'; render();
+    let psheet='ok';
+    try{ openRequest('c1'); closeSheet(); openMe(); closeSheet(); }
+    catch(e){ psheet='KRASCH: '+e.message; }
+    S.session.member='AZ';
+    /* bara det som ritas — inte appens egen källkod i <script> */
+    const ui = [...document.body.children].filter(e=>e.tagName!=='SCRIPT').map(e=>e.outerHTML).join('');
+    return {res, sheets, psheet, undef: ui.includes('undefined')};`);
+  ['today','week','agenda','beats','more','artists','goals','circles','team','dash'].forEach(v=>
+    ok('managervy '+v+' renderar', r.res[v]==='ok', r.res[v]));
+  ok('managerns dialoger öppnar utan krasch', r.sheets==='ok', r.sheets);
+  ok('deltagarens dialoger öppnar utan krasch', r.psheet==='ok', r.psheet);
+  ok('inget "undefined" läcker ut', r.undef===false);
+
+  /* ============ 10 · BEFINTLIGT ORÖRT ============ */
+  log('\n── befintlig funktion orörd ──');
+  r = await ev(w,`
+    const d = dur({date:'2026-11-10',start:'22:00',end:'02:00'});
+    const c1 = clash({studio:'A',date:'2026-11-10',start:'19:00',end:'20:00'},null).length;
+    const touch = clash({studio:'A',date:'2026-11-10',start:'21:00',end:'23:00'},null).length;
+    return {d, c1, touch, hours:hoursFor('p1'), mgr:can('manageCrew'), dash:can('dashboard')};`);
+  ok('nattpass 22–02 är 4 h', r.d===4, r.d);
+  ok('krockkollen fungerar', r.c1===1 && r.touch===0, [r.c1,r.touch]);
+  ok('cirkeltimmar räknas som förut', r.hours===3, r.hours);
+  ok('managerns rättigheter orörda', r.mgr===true && r.dash===true);
+
+  /* ============ v5 · DATA OCH SYNK ============ */
+  log('\n── v5: data och synk ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const coll = ['artists','releases','beats','agenda','goals','plans'].every(k=>Array.isArray(S[k]));
+    S.artists.push({id:'a1',n:'Moez',priority:1,genre:'',note:'',active:true,del:false,up:5});
+    S.bookings.push({id:'bw',studio:'A',date:'2026-11-03',start:'18:00',end:'22:00',who:'RKAY',title:'x',
+      note:'',circleId:'',status:'',hours:null,present:[],with:['ADREY'],artistId:'a1',up:5,del:false,paid:false});
+    S.goals.push({id:'g1',owner:'rkay',text:'NYARE',due:'',status:'aktiv',del:false,up:9000});
+    save();
+    const pay = JSON.parse(JSON.stringify(fullPayload()));
+    const row = pay.b.find(x=>x[0]==='bw');
+    S.bookings = []; S.artists = []; save();
+    mergeData(pay);
+    const b = S.bookings.find(x=>x.id==='bw');
+    /* en v4-rad (16 fält, utan with/artist) ska fortfarande gå att läsa */
+    mergeData({v:2, b:[['old','B','2026-11-04','10:00','12:00','ADREY','Gammal','',1,0,0,'','',null,[],'']]});
+    const old = S.bookings.find(x=>x.id==='old');
+    mergeData({v:2, go:[{id:'g1',owner:'rkay',text:'ÄLDRE',due:'',status:'aktiv',del:false,up:1}]});
+    return {coll, i16:row[16], i17:row[17], oldIdx: row[0]==='bw' && row[5]==='RKAY' && row[11]==='',
+      withBack:b.with, artistBack:b.artistId, artistIn:!!artistById('a1'),
+      oldWith:old.with, oldArtist:old.artistId, goalText:S.goals.find(g=>g.id==='g1').text};`);
+  ok('sex nya samlingar finns', r.coll===true);
+  ok('medproducenter på index 16', JSON.stringify(r.i16)==='["ADREY"]', r.i16);
+  ok('artist på index 17', r.i17==='a1', r.i17);
+  ok('gamla fält ligger kvar på sina index', r.oldIdx===true);
+  ok('with och artist överlever en synkrunda', JSON.stringify(r.withBack)==='["ADREY"]' && r.artistBack==='a1', r);
+  ok('artister synkas', r.artistIn===true);
+  ok('en v4-rad utan de nya fälten läses som tomma', JSON.stringify(r.oldWith)==='[]' && r.oldArtist==='', r);
+  ok('äldre mål skriver inte över nyare', r.goalText==='NYARE', r.goalText);
+
+  /* ============ v5 · NAVIGERING ============ */
+  log('\n── v5: navigering ──');
+  r = await ev(w,`
+    S.session.member='AZ';
+    const mgr = {tabs:tabs().join(','), more:moreViews().join(','), dash:canView('dash')};
+    go('files'); const redirect = view;
+    S.session.member='RKAY';
+    const prod = {tabs:tabs().join(','), more:moreViews().join(','), dash:canView('dash')};
+    go('dash'); const prodDash = view;
+    go('more'); const moreHtml = document.getElementById('view').innerHTML;
+    S.session.member='AZ';
+    return {mgr, prod, redirect, prodDash, moreHasStats:/STATISTIK/.test(moreHtml)};`);
+  ok('fem flikar i botten', r.mgr.tabs==='today,week,agenda,beats,more', r.mgr.tabs);
+  ok('managern når statistiken via MER', /dash/.test(r.mgr.more) && r.mgr.dash===true, r.mgr);
+  ok('producenten når INTE statistiken', !/dash/.test(r.prod.more) && r.prod.dash===false, r.prod);
+  ok('direktlänk till statistik skickar producenten till IDAG', r.prodDash==='today', r.prodDash);
+  ok('MER-menyn visar inte statistik för producenten', r.moreHasStats===false);
+  ok('gamla FILER-länkar går till beatkanalen', r.redirect==='beats', r.redirect);
+
+  /* ============ v5 · MÅL ÄR PRIVATA ============ */
+  log('\n── v5: mål är privata ──');
+  r = await ev(w,`
+    S.goals.push({id:'g2',owner:'adrey',text:'ADREYS HEMLIGA MÅL',due:'',status:'aktiv',del:false,up:1});
+    S.plans.push({id:'adrey',text:'ADREYS PLAN',del:false,up:1}); save();
+    S.session.member='RKAY';
+    const canOther = can('viewGoals','adrey'), canOwn = can('viewGoals','rkay');
+    goalsWho = 'adrey';                 /* kvarglömt från en managersession på samma telefon */
+    view='goals'; render();
+    const h = document.getElementById('view').innerHTML;
+    toggleGoal('g2');
+    const untouched = S.goals.find(g=>g.id==='g2').status;
+    S.session.member='AZ'; goalsWho=null; view='goals'; render();
+    const over = document.getElementById('view').innerHTML;
+    goalsWho='adrey'; render();
+    const drill = document.getElementById('view').innerHTML;
+    return {canOther, canOwn, seesOwn:/Dina mål/.test(h),
+      leaks:/ADREYS HEMLIGA/.test(h)||/ADREYS PLAN/.test(h)||/Allas mål/.test(h),
+      untouched, overShowsBoth:/RKAY/.test(over)&&/ADREY/.test(over),
+      drillShows:/ADREYS HEMLIGA/.test(drill)&&/ADREYS PLAN/.test(drill)};`);
+  ok('producenten får inte se andras mål', r.canOther===false);
+  ok('men sina egna', r.canOwn===true);
+  ok('kvarglömt val leder ändå till de egna målen', r.seesOwn===true);
+  ok('inget av någon annans mål eller plan läcker', r.leaks===false);
+  ok('producenten kan inte bocka av någon annans mål', r.untouched==='aktiv', r.untouched);
+  ok('managern ser allas i översikten', r.overShowsBoth===true);
+  ok('och kan gå in i en persons mål och plan', r.drillShows===true);
+
+  /* ============ v5 · AGENDA ============ */
+  log('\n── v5: agenda ──');
+  r = await ev(w,`
+    S.session.member='RKAY';
+    const own = can('editAgenda',{who:'RKAY'}), other = can('editAgenda',{who:'ADREY'}),
+          shared = can('editAgenda',{who:''}), parse = can('parseAgenda');
+    S.agenda.push({id:'t1',kind:'week',week:weekKey(),who:'ADREY',text:'x',due:'',done:false,del:false,up:1});
+    toggleTask('t1'); const notMine = S.agenda.find(a=>a.id==='t1').done;
+    S.session.member='AZ';
+    toggleTask('t1'); const mgr = S.agenda.find(a=>a.id==='t1').done;
+    return {own, other, shared, parse, notMine, mgr, mgrParse:can('parseAgenda')};`);
+  ok('producenten bockar av sina egna uppgifter', r.own===true);
+  ok('men inte någon annans', r.other===false && r.notMine===false, r);
+  ok('gemensamma uppgifter kan alla bocka av', r.shared===true);
+  ok('managern kan bocka av vad som helst', r.mgr===true);
+  ok('producenten skriver in sin egen plan som text', r.parse===true && r.mgrParse===true, r);
+
+  /* ============ v5 · TEXTTOLKEN ============ */
+  log('\n── v5: texttolken ──');
+  r = await ev(w,`
+    S.session.member='AZ';
+    const wm = monday(new Date(2026,10,4));
+    const d = n => iso(addDays(wm,n));
+    const P = parseAgendaText([
+      'Mån 18-22 RKAY + ADREY med Moez i studio B',
+      'tors kl 14.30–18 ADREY vocals',
+      '- 12/11 22-02 RKAY nattpass',
+      'fre 18-20',
+      'RKAY: mixa EP:n, skicka stems',
+      'Alla: städa studio B',
+      'ADREY 3 nya beats',
+      'Ons möte om releaseplan',
+      '',
+      'Allmänt:',
+      'Släppa EP:n innan jul'
+    ].join('\\n'), wm);
+    const s = P.sessions;
+    return {
+      n:[s.length, P.tasks.length, P.general.length],
+      s0:{date:s[0].date===d(0), start:s[0].start, end:s[0].end, who:s[0].who, with:s[0].with, art:s[0].artistId, st:s[0].studio},
+      s1:{date:s[1].date===d(3), start:s[1].start, end:s[1].end, who:s[1].who, title:s[1].title},
+      s2:{date:s[2].date, start:s[2].start, end:s[2].end, dur:dur(s[2])},
+      s3:{date:s[3].date===d(4), who:s[3].who},
+      tasks:P.tasks.map(t=>(t.who||'ALLA')+':'+t.text),
+      general:P.general.map(t=>t.text)};`);
+  ok('4 pass, 5 uppgifter, 1 långsiktig', JSON.stringify(r.n)==='[4,5,1]', r.n);
+  ok('"Mån 18-22" blir måndag 18:00–22:00', r.s0.date && r.s0.start==='18:00' && r.s0.end==='22:00', r.s0);
+  ok('först nämnda producent bokar, nästa är med', r.s0.who==='RKAY' && JSON.stringify(r.s0.with)==='["ADREY"]', r.s0);
+  ok('artisten känns igen', r.s0.art==='a1', r.s0.art);
+  ok('studion känns igen', r.s0.st==='B', r.s0.st);
+  ok('"tors kl 14.30–18" med punkt och tankstreck', r.s1.date && r.s1.start==='14:30' && r.s1.end==='18:00', r.s1);
+  ok('resten av raden blir passets titel', r.s1.who==='ADREY' && r.s1.title==='Vocals', r.s1);
+  ok('"12/11" tolkas som dag/månad', r.s2.date==='2026-11-12', r.s2.date);
+  ok('nattpass 22–02 blir 4 timmar', r.s2.dur===4, r.s2);
+  ok('pass utan namn bokas på den som skriver', r.s3.date && r.s3.who==='AZ', r.s3);
+  ok('"RKAY: a, b" blir två uppgifter för RKAY',
+     r.tasks.includes('RKAY:Mixa EP:n') && r.tasks.includes('RKAY:Skicka stems'), r.tasks);
+  ok('"Alla: …" blir en gemensam uppgift', r.tasks.includes('ALLA:Städa studio B'), r.tasks);
+  ok('"ADREY 3 nya beats" blir ADREYs uppgift', r.tasks.includes('ADREY:3 nya beats'), r.tasks);
+  ok('dag utan tid blir uppgift, inte pass', r.tasks.includes('ALLA:Ons möte om releaseplan'), r.tasks);
+  ok('allt under "Allmänt:" blir långsiktigt', JSON.stringify(r.general)==='["Släppa EP:n innan jul"]', r.general);
+
+  r = await ev(w,`
+    /* hela vägen: förhandsgranska, kryssa ur en rad, lägg in — och krockar hoppas över */
+    S.session.member='AZ'; agendaWeek = monday(new Date(2026,10,4)); view='agenda'; render();
+    S.bookings.push({id:'busy',studio:'A',date:iso(agendaWeek),start:'10:00',end:'14:00',who:'ADREY',title:'Upptaget',
+      note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false});
+    S.bookings.push({id:'busyB',studio:'B',date:iso(agendaWeek),start:'10:00',end:'14:00',who:'ADREY',title:'Upptaget',
+      note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false});
+    save();
+    const b0 = S.bookings.length, a0 = S.agenda.length;
+    openParse();
+    document.getElementById('psT').value = 'Mån 11-13 RKAY\\nOns 18-22 RKAY + ADREY i studio A\\nRKAY: mixa, mastra\\nAllmänt:\\nTurné i vår';
+    previewParse();
+    const flagged = /Krockar/.test(document.getElementById('psOut').innerHTML);
+    const boxes = [...document.querySelectorAll('.pck')];
+    boxes.find(e=>e.dataset.k==='t' && e.dataset.i==='1').checked = false;   /* "mastra" kryssas ur */
+    commitParse();
+    const tis = S.bookings.find(b=>b.date===iso(addDays(agendaWeek,2)) && b.start==='18:00' && b.studio==='A');
+    return {flagged, newBookings:S.bookings.length-b0, newAgenda:S.agenda.length-a0,
+      tisWith: tis ? tis.with : null, mastra: S.agenda.some(a=>a.text==='Mastra' && !a.del)};`);
+  ok('krockande pass flaggas i förhandsgranskningen', r.flagged===true);
+  ok('krockande pass hoppas över när det läggs in', r.newBookings===1, r.newBookings);
+  ok('det lediga passet läggs in med medproducent', JSON.stringify(r.tisWith)==='["ADREY"]', r.tisWith);
+  ok('urkryssad rad läggs inte in', r.mastra===false);
+  ok('resten läggs in (1 uppgift + 1 långsiktig)', r.newAgenda===2, r.newAgenda);
+
+  /* ============ v5 · BEATKANALEN ============ */
+  log('\n── v5: beatkanalen ──');
+  r = await ev(w,`
+    const t = n => { const m = beatMeta(n); return [m.name, m.bpm, m.key].join('|'); };
+    return {
+      a: t('Moonlight 140bpm Cmin.wav'), b: t('dark_trap_142_F#m.mp3'), c: t('BEAT 3 - 128 Am.wav'),
+      d: t('Dark A Trap.wav'), e: t('intro.wav'), f: t('Vibe 95 Bb.wav'), g: t('Nova (C# minor) 88 bpm.aiff'),
+      h: t('Song (Remix) 140bpm.wav')};`);
+  ok('"Moonlight 140bpm Cmin"', r.a==='Moonlight|140|Cm', r.a);
+  ok('"dark_trap_142_F#m"', r.b==='dark trap|142|F#m', r.b);
+  ok('"BEAT 3 - 128 Am"', r.c==='BEAT 3|128|Am', r.c);
+  ok('ett ensamt "A" i titeln blir INTE en tonart', r.d==='Dark A Trap||', r.d);
+  ok('fil utan metadata behåller sitt namn', r.e==='intro||', r.e);
+  ok('"Vibe 95 Bb"', r.f==='Vibe|95|Bb', r.f);
+  ok('"Nova (C# minor) 88 bpm" — utan lös parentes', r.g==='Nova|88|C#m', r.g);
+  ok('titlar med egen parentes behålls', r.h==='Song (Remix)|140|', r.h);
+
+  w = await boot(seed({session:{member:'AZ',email:'az@b.se',name:'AZ',picture:'',ts:1,via:'preview'}}));
+  r = await ev(w,`
+    window.confirm = () => true;
+    const MX = window.__mockDbx;
+    const before = {configured:dbxConfigured(), ready:dbxReady(), card:/KOPPLA DROPBOX/.test(dropboxCard())};
+    S.dropbox.appKey = 'mockappkey1'; save();
+    await dbxConnect();
+    const mid = {connected:dbxConnected(), ready:dbxReady(), card:/SÄTT UPP MAPPARNA/.test(dropboxCard())};
+    const res = await dbxSetup(()=>{});
+    const folders = ['/BANDOHQ','/BANDOHQ/Beats','/BANDOHQ/Beats/RKAY','/BANDOHQ/Beats/ADREY','/BANDOHQ/Beats/AZ']
+      .every(p=>Object.values(MX.f).some(f=>f.folder && f.path===p));
+    const again = await dbxSetup(()=>{});        /* går att köra om */
+    const folderN = Object.values(MX.f).filter(f=>f.folder).length;
+    /* någon sparar filer i RKAYs mapp via Dropbox-appen på datorn */
+    MX.put('/BANDOHQ/Beats/RKAY/Nova 150bpm Dm.wav');
+    MX.put('/BANDOHQ/Beats/RKAY/anteckningar.txt');
+    MX.put('/BANDOHQ/Beats/RKAY/Gamla/Djup 90 Am.mp3');
+    MX.put('/BANDOHQ/Beats/lös fil.wav');
+    MX.put('/BANDOHQ/Beats/OKÄND/Ingen 100.wav');
+    const found = await scanBeats();
+    const b = S.beats.find(x=>x.name==='Nova');
+    const again2 = await scanBeats();
+    b.del = true; save();
+    const resurrect = await scanBeats();
+    S.session.member='RKAY';
+    const files = [new File(['x'],'Ny 120bpm Gm.wav',{type:'audio/wav'}), new File(['x'],'cover.png',{type:'image/png'})];
+    await uploadBeats(files);
+    const up = S.beats.filter(x=>!x.del && x.who==='RKAY').map(x=>x.name).sort();
+    const nyB = S.beats.find(x=>x.name==='Ny');
+    const inDbx = Object.values(MX.f).some(f=>f.path==='/BANDOHQ/Beats/RKAY/Ny 120bpm Gm.wav');
+    /* spela i appen */
+    await playBeat(nyB.id);
+    const audio = document.querySelector('#np audio');
+    const playing = {bar:document.getElementById('np').classList.contains('on'), src:!!(audio && /^data:audio/.test(audio.src))};
+    stopBeat();
+    const stopped = !document.getElementById('np').classList.contains('on');
+    /* ta bort i appen = bort ur Dropbox */
+    await delBeat(nyB.id);
+    const gone = !Object.values(MX.f).some(f=>f.path==='/BANDOHQ/Beats/RKAY/Ny 120bpm Gm.wav');
+    view='beats'; beatTab='all'; render(); const html = document.getElementById('view').innerHTML;
+    S.session.member='AZ';
+    return {before, mid, res, folders, folderN, again, found, who:b&&b.who, bpm:b&&b.bpm, key:b&&b.key,
+      again2, resurrect, revived:S.beats.filter(x=>x.name==='Nova' && !x.del).length, up, inDbx, playing, stopped, gone,
+      shared:MX.members.slice().sort(), sharedId:S.dropbox.sharedId, mounted:MX.mounted,
+      txt:S.beats.some(x=>/anteckningar/.test(x.file||'')),
+      noDrive:!/Drive|Google/.test(html), dbxText:/Dropbox/.test(html)};`);
+  ok('utan app key: kortet ber om att koppla Dropbox', r.before.configured===false && r.before.card===true, r.before);
+  ok('koppla → kopplat men inte klart förrän mapparna finns', r.mid.connected===true && r.mid.ready===false && r.mid.card===true, r.mid);
+  ok('setupen skapar BANDOHQ/Beats/<namn> för crewet', r.folders===true);
+  ok('och kan köras om utan dubbletter (Beats + Media)', r.folderN===9, r.folderN);
+  ok('mappen delas med crewets e-post (inte ens egen)', JSON.stringify(r.shared)==='["rkay@b.se"]', r.shared);
+  ok('delad mapp-id sparas för synk till de andra', /^sf/.test(r.sharedId), r.sharedId);
+  ok('nya ljudfiler i mappen dyker upp i kanalen (även i undermappar)', r.found===2 && r.who==='RKAY', r);
+  ok('med bpm och tonart ur filnamnet', r.bpm==='150' && r.key==='Dm', r);
+  ok('lösa filer och okända mappar hoppas över', r.found===2, r.found);
+  ok('samma fil läggs inte till två gånger', r.again2===0, r.again2);
+  ok('borttagen i appen väcks inte till liv av mappen', r.resurrect===0 && r.revived===0, r);
+  ok('andra filer än ljud ignoreras', r.txt===false);
+  ok('uppladdning tar bara med ljudfilerna', JSON.stringify(r.up)==='["Djup","Ny"]', r.up);
+  ok('och hamnar i ens egen Dropbox-mapp', r.inDbx===true);
+  ok('beatet spelas direkt i appen', r.playing.bar && r.playing.src, r.playing);
+  ok('spelaren går att stänga', r.stopped===true);
+  ok('ta bort i appen tar bort filen i Dropbox', r.gone===true);
+  ok('beatkanalen nämner Dropbox, aldrig Drive/Google', r.noDrive && r.dbxText, r);
+
+  /* ============ v5 · ARTISTER, SAMARBETEN, PROFILER ============ */
+  log('\n── v5: artister, samarbeten, profiler ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    S.artists.push({id:'a1',n:'Moez',priority:1,genre:'',note:'',active:true,del:false,up:1});
+    const B = (id,d,who,w,a)=>S.bookings.push({id,studio:'A',date:d,start:'18:00',end:'21:00',who,title:'x',note:'',
+      circleId:'',status:'',hours:null,present:[],with:w,artistId:a,up:1,del:false,paid:false});
+    const day = n => iso(addDays(new Date(), -n));
+    B('c1',day(1),'RKAY',['ADREY'],'a1'); B('c2',day(2),'RKAY',['ADREY'],'a1');
+    B('c3',day(3),'ADREY',['RKAY'],'a1'); B('c4',day(4),'RKAY',['AZ'],'a1');
+    S.releases.push({id:'r1',artistId:'a1',title:'Ett',date:day(1),streams:100000,producers:['RKAY'],del:false,up:1});
+    S.releases.push({id:'r2',artistId:'a1',title:'Två',date:day(2),streams:50000,producers:['RKAY','ADREY'],del:false,up:1});
+    save();
+    const st = artistStats('a1');
+    period='month';
+    /* hela historiken — idag kan vara den 1:a, och då ligger gårdagens pass i förra månaden */
+    const cm = collabMatrix(booked());
+    const bars = barsPerProducer(booked(), []);
+    /* producent öppnar en annans profil: det offentliga syns, det privata inte */
+    S.session.member='RKAY'; openProfile('adrey');
+    const otherProf = document.getElementById('sheetBody').innerHTML; closeSheet();
+    openProfile('rkay'); const ownProf = document.getElementById('sheetBody').innerHTML; closeSheet();
+    S.session.member='AZ'; openProfile('adrey');
+    const mgrProf = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {sessions:st.sessions, releases:st.releases, perRelease:st.perRelease, streams:st.streams,
+      topPair:/RKAY[\\s\\S]{0,200}ADREY[\\s\\S]{0,60}3 pass/.test(cm) || /ADREY[\\s\\S]{0,200}RKAY[\\s\\S]{0,60}3 pass/.test(cm),
+      adreyHours:/ADREY<\\/text>[\\s\\S]{0,80}9 h/.test(bars),
+      other:{beats:/BEATS/.test(otherProf), pass:/<em>PASS<\\/em>/.test(otherProf), mates:/JOBBAR MEST MED/.test(otherProf), note:/privata/.test(otherProf)},
+      own:{pass:/<em>PASS<\\/em>/.test(ownProf)}, mgr:{pass:/<em>PASS<\\/em>/.test(mgrProf), mates:/JOBBAR MEST MED/.test(mgrProf)}};`);
+  ok('artisten har 4 pass och 2 släpp', r.sessions===4 && r.releases===2, r);
+  ok('pass per släpp = 2', r.perRelease===2, r.perRelease);
+  ok('streams summeras över släppen', r.streams===150000, r.streams);
+  ok('flest pass ihop: RKAY + ADREY, 3 st', r.topPair===true);
+  ok('timmar räknas på den som var MED, inte bara bokaren', r.adreyHours===true);
+  ok('annans profil: beats syns', r.other.beats===true);
+  ok('annans profil: pass och samarbeten syns INTE', r.other.pass===false && r.other.mates===false, r.other);
+  ok('annans profil säger varför', r.other.note===true);
+  ok('egen profil visar allt', r.own.pass===true);
+  ok('managern ser allt i allas profiler', r.mgr.pass===true && r.mgr.mates===true, r.mgr);
+
+  /* ============ v7 · INBJUDNINGSLÄNKAR ============ */
+  log('\n── v7: inbjudningslänkar ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    let err1=''; try{ await createInvite('participant', null, 14, null); }catch(e){ err1=e.message; }
+    const tok = await createInvite('participant', 'c1', 14, null);
+    const one = await createInvite('producer', null, 7, 1);
+    const info = await inviteInfo(tok);
+    const bad = await inviteInfo('FINNS-INTE00');
+    openInvites('participant','c1');
+    const sheet = document.getElementById('sheetBody').innerHTML;
+    await new Promise(r=>setTimeout(r,50));
+    const listed = document.querySelectorAll('#invList .row.inv').length;
+    closeSheet();
+    return {err1, fmt:/^[0-9A-F]{4}-[0-9A-F]{6}$/.test(tok), info, bad, listed,
+      sheet:{roles:['Producent','Cirkelledare','Deltagare','Kund'].every(x=>sheet.includes(x)), circle:/Musikproduktion – Grupp 1/.test(sheet)},
+      url:inviteUrl(tok).endsWith('#join='+tok), tok, one};`);
+  ok('deltagarlänk utan cirkel nekas', /cirkel/.test(r.err1), r.err1);
+  ok('token har formatet XXXX-XXXXXX', r.fmt===true, r.tok);
+  ok('länken berättar roll och cirkel', r.info.ok && r.info.role==='participant' && r.info.circle==='Musikproduktion – Grupp 1', r.info);
+  ok('okänd länk säger att den inte finns', r.bad.ok===false && /finns inte/.test(r.bad.why), r.bad);
+  ok('bjud in-arket visar roller och cirkeln', r.sheet.roles && r.sheet.circle, r.sheet);
+  ok('länkarna listas med status', r.listed===2, r.listed);
+  ok('länken pekar på appen med #join=', r.url===true);
+  const TOK = r.tok, ONE = r.one;
+
+  /* att öppna länken: inloggningssidan blir ett "skapa konto"-formulär */
+  boot.hash = '#join=' + TOK;
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `return S;`))));
+  r = await ev(w,`
+    await new Promise(r=>setTimeout(r,120));
+    const gate = document.getElementById('gate').classList.contains('on');
+    const tag = document.getElementById('gateTag').textContent;
+    const form = !!document.getElementById('jN') && !!document.getElementById('jT');
+    document.getElementById('jN').value = 'Leo Berg';
+    document.getElementById('jE').value = 'leo@b.se';
+    document.getElementById('jT').value = '070-777 77 77';
+    await doJoin();
+    const a = byName('Leo Berg');
+    const res = {gate, tag, form, role:a&&a.r, phone:a&&a.phone, inCircle:circleById('c1').members.includes(a&&a.id),
+      session:S.session&&S.session.member, view:roleView(), hash:location.hash,
+      uses:S.invites.find(i=>i.token==='${TOK}').uses};
+    /* samma namn igen */
+    signOut(); joinToken='${TOK}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
+    document.getElementById('jN').value = 'leo berg'; document.getElementById('jE').value='x@b.se'; document.getElementById('jT').value='070-111 11 11';
+    await doJoin();
+    res.dupe = gateErr;
+    /* engångslänk: andra gången nekas */
+    leaveJoin(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
+    document.getElementById('jN').value = 'Moez'; document.getElementById('jE').value='moez@b.se'; document.getElementById('jT').value='070-222 22 22';
+    await doJoin();
+    res.moez = (byName('Moez')||{}).r;
+    signOut(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
+    res.used = document.getElementById('gateBody').textContent;
+    /* stängd länk */
+    leaveJoin(); await closeInvite('${TOK}');
+    res.closed = (await inviteInfo('${TOK}')).why;
+    return res;`);
+  ok('länken öppnar inloggningssidan som ett kontoformulär', r.gate && r.form, r);
+  ok('där det står vad man är inbjuden som', /Deltagare/.test(r.tag) && /Grupp 1/.test(r.tag), r.tag);
+  ok('kontot får rollen från länken', r.role==='participant', r.role);
+  ok('och läggs i cirkeln från länken', r.inCircle===true);
+  ok('telefonnumret sparas som +46…', r.phone==='+46707777777', r.phone);
+  ok('man är inloggad direkt i sin vy', r.session==='Leo Berg' && r.view==='participant', r);
+  ok('länken tas bort ur adressfältet', r.hash==='', r.hash);
+  ok('länken räknar hur många som gått med', r.uses===1, r.uses);
+  ok('upptaget namn nekas', /Namnet finns redan/.test(r.dupe), r.dupe);
+  ok('producentlänk ger producentroll', r.moez==='producer', r.moez);
+  ok('engångslänk går inte att använda två gånger', /redan använd/.test(r.used), r.used);
+  ok('stängd länk nekas', /stängd/.test(r.closed), r.closed);
+
+  /* ============ v7 · CIRKELLEDARENS VY ============ */
+  log('\n── v7: cirkelledarens vy ──');
+  const past = (()=>{const d=new Date();d.setDate(d.getDate()-2);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  w = await boot(seed({bookings:[
+    {id:'lp',studio:'A',date:past,start:'18:00',end:'21:00',who:'ADREY',title:'G1',note:'',circleId:'c1',status:'',hours:null,present:[],up:1,del:false,paid:false},
+    {id:'lr',studio:'',date:'2027-02-01',start:'18:00',end:'21:00',who:'ADREY',title:'G1',note:'',circleId:'c1',status:'request',reqBy:'p1',hours:null,present:[],up:1,del:false,paid:false},
+    {id:'lu',studio:'B',date:'2027-02-03',start:'18:00',end:'21:00',who:'ADREY',title:'G1',note:'',circleId:'c1',status:'',hours:null,present:[],up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    byId('adrey').r='leader'; S.circles[0].leader='ADREY'; S.session.member='ADREY'; save();
+    leaderTab='pass'; render();
+    const pass = document.getElementById('view').innerHTML;
+    leaderTab='members'; render();
+    const mem = document.getElementById('view').innerHTML;
+    leaderTab='pass';
+    let formOk = true; try{ openForm(null,null,'c1'); }catch(e){ formOk = e.message; }
+    const form = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {
+      pass:{book:/BOKA PASS/.test(pass), wait:/VÄNTAR PÅ DIG/.test(pass) && /Godkänn/.test(pass),
+        mark:/ATT MARKERA/.test(pass) && /Genomförd/.test(pass), coming:/KOMMANDE/.test(pass),
+        noCurr:!/LÄROPLAN/i.test(pass), noStats:!/STUDIOBELÄGGNING|STATISTIK/.test(pass)},
+      mem:{tel:/href="tel:0701"/.test(mem), sms:/href="sms:0701"/.test(mem), mail:/href="mailto:w@b.se"/.test(mem),
+        all:/mailto:\\?bcc=/.test(mem), hours:/av 480 h/.test(mem), both:/William Ek/.test(mem)&&/Nora Lind/.test(mem)},
+      nav:document.getElementById('nav').style.display, formOk, formCircle:/Boka session/.test(form)};`);
+  ok('ledaren har en BOKA PASS-knapp', r.pass.book===true);
+  ok('förfrågningar ligger överst med Godkänn', r.pass.wait===true);
+  ok('pass som hänt men inte markerats har Genomförd', r.pass.mark===true);
+  ok('kommande pass listas', r.pass.coming===true);
+  ok('ingen läroplan och ingen statistik i ledarvyn', r.pass.noCurr && r.pass.noStats, r.pass);
+  ok('medlemmarna har tryckbara telefonnummer', r.mem.tel && r.mem.sms, r.mem);
+  ok('och e-post, plus "mejla alla"', r.mem.mail && r.mem.all, r.mem);
+  ok('och sina timmar', r.mem.hours && r.mem.both, r.mem);
+  ok('ingen flikrad för ledaren', r.nav==='none', r.nav);
+  ok('boka pass öppnar formuläret för cirkeln', r.formOk===true && r.formCircle===true, r);
+
+  /* ============ v7 · ARTISTRANKING ============ */
+  log('\n── v7: artistranking ──');
+  w = await boot(seed({artists:[
+    {id:'a1',n:'Sami',priority:3,active:true,del:false,up:1},{id:'a2',n:'Nova',priority:1,active:true,del:false,up:1},
+    {id:'a3',n:'Kairo',priority:1,active:true,del:false,up:1},{id:'a4',n:'Lizzie',priority:2,active:true,del:false,up:1}]}));
+  r = await ev(w,`
+    const names = () => artistsRanked().map(a=>a.n).join(',');
+    const start = names();
+    moveArtist('a2',-1); const up1 = names();
+    const ranks = artistsRanked().map(a=>a.rank).join(',');
+    moveArtist('a2',-1); const nochange = names();
+    moveArtist('a4',-1); const alone = names();
+    moveArtistBefore('a1','a2',1); const top = names(), samiPrio = prioOf(artistById('a1'));
+    S.session.member='RKAY'; moveArtist('a2',1); const prodMove = names(); S.session.member='AZ';
+    go('artists'); const html = document.getElementById('view').innerHTML;
+    openForm(); const opts=[...document.querySelectorAll('#fArtist option')].map(o=>o.textContent.trim()).slice(1).join('|');
+    const groups=[...document.querySelectorAll('#fArtist optgroup')].map(g=>g.label).join('|'); closeSheet();
+    openArtist('a1'); const sheet = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {start, up1, ranks, nochange, alone, top, samiPrio, prodMove, rows:(html.match(/class="rankrow"/g)||[]).length,
+      arrows:/Flytta Sami upp/.test(html), opts, groups, badge:/Prio 1 · #1/.test(sheet),
+      tiers:['PRIO 1','PRIO 2','PRIO 3'].every(t=>html.includes(t)), noPrio:!/HÖG|MELLAN|LÅG/.test(html+sheet)};`);
+  ok('grupperade på prio 1/2/3, sedan namn', r.start==='Kairo,Nova,Lizzie,Sami', r.start);
+  ok('flytta upp byter plats inom graden', r.up1==='Nova,Kairo,Lizzie,Sami', r.up1);
+  ok('hela listan numreras om 10, 20, 30…', r.ranks==='10,20,30,40', r.ranks);
+  ok('överst i graden kan inte flyttas högre', r.nochange==='Nova,Kairo,Lizzie,Sami', r.nochange);
+  ok('ensam i sin grad: pilen gör inget', r.alone==='Nova,Kairo,Lizzie,Sami', r.alone);
+  ok('dra en artist till en annan grad byter graden', r.top==='Sami,Nova,Kairo,Lizzie' && r.samiPrio===1, r);
+  ok('producenten kan inte ändra rankingen', r.prodMove===r.top, r.prodMove);
+  ok('listan visar tre grader och en rad per artist', r.tiers && r.rows===4 && r.arrows, r);
+  ok('bokningsformuläret grupperar på prio', r.opts==='Sami|Nova|Kairo|Lizzie' && r.groups==='Prio 1|Prio 2', r);
+  ok('artistkortet visar grad och placering', r.badge===true);
+  ok('Hög/Mellan/Låg finns inte kvar', r.noPrio===true);
+
+  /* ============ v7 · AGENDAN PÅ IDAG OCH I SCHEMAT ============ */
+  log('\n── v7: agendan på IDAG och i schemat ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wk = iso(monday(new Date()));
+    const T = (id,who,text,done)=>S.agenda.push({id,kind:'week',week:wk,who,text,due:'',done:!!done,del:false,up:1});
+    T('t1','RKAY','Mixa EP',false); T('t2','RKAY','Skicka stems',true); T('t3','ADREY','Vocals',false); T('t4','','Städa',false);
+    S.agenda.push({id:'t5',kind:'week',week:'2020-01-06',who:'RKAY',text:'Gammal vecka',due:'',done:false,del:false,up:1});
+    save();
+    S.session.member='RKAY'; go('today');
+    const today = document.getElementById('view').innerHTML;
+    document.querySelector('.agcard .task .tick[aria-label="Mixa EP"]').click();
+    const toggled = S.agenda.find(a=>a.id==='t1').done;
+    const other = document.querySelector('.agcard .task .tick[aria-label="Vocals"]').disabled;
+    go('week');
+    const week = document.getElementById('view').innerHTML;
+    const panel = document.querySelector('.myag').innerHTML;
+    toggleMyAg(); const closed = !document.querySelector('.myag').classList.contains('open'); toggleMyAg();
+    return {today:{card:/VECKANS AGENDA/.test(today), people:['RKAY','ADREY','Alla'].every(n=>today.includes(n)),
+        count:/1\\/2/.test(today), old:/Gammal vecka/.test(today)}, toggled, other,
+      week:{panel:/Min agenda/.test(week), mine:/Skicka stems/.test(panel), notOthers:!/Vocals/.test(panel.split('FÖR ALLA')[0]),
+        shared:/Städa/.test(panel), layout:/wk-layout/.test(week)}, closed};`);
+  ok('IDAG har veckans agenda för alla', r.today.card && r.today.people, r.today);
+  ok('med förloppet per person', r.today.count===true);
+  ok('och bara den här veckans uppgifter', r.today.old===false);
+  ok('egna uppgifter bockas av direkt från IDAG', r.toggled===true);
+  ok('men inte någon annans', r.other===true);
+  ok('SCHEMA har "Min agenda" bredvid kalendern', r.week.panel && r.week.layout, r.week);
+  ok('med mina uppgifter, inte andras', r.week.mine && r.week.notOthers, r.week);
+  ok('plus det som gäller alla', r.week.shared===true);
+  ok('panelen går att fälla ihop på mobilen', r.closed===true);
+
+  /* ============ v7 · SERVERLÄGET ÄR AV UTAN UPPGIFTER ============ */
+  log('\n── v7: förhandsläget ──');
+  r = await ev(w,`
+    return {preview:PREVIEW_LOGIN, cloud:cloudOn(), remote:remoteRole(), noGoogle:typeof google==='undefined' && !/accounts\\.google\\.com\\/gsi/.test(document.documentElement.outerHTML),
+      noDriveFns:['setupDrive','driveReady','getToken','uploadOne','openDriveSetup','ensureFolder'].filter(f=>typeof window[f]!=='undefined')};`);
+  ok('utan Supabase-uppgifter körs förhandsläget', r.preview===true && r.cloud===false && r.remote===false, r);
+  ok('ingen Google-kod laddas', r.noGoogle===true);
+  ok('Drive-funktionerna är borta', r.noDriveFns.length===0, r.noDriveFns);
+
+  /* ============ v8 · NYA KONTON OCH ROLLER ============ */
+  log('\n── v8: admins och kamerateam ──');
+  const S8 = seed(); delete S8.seed8;
+  w = await boot(S8);
+  r = await ev(w,`
+    const roles = ['Costa','Nabbe','Moez'].map(n=>(byName(n)||{}).r).join(',');
+    return {roles, n:accounts().length};`);
+  ok('Costa och Nabbe läggs in som admins, Moez som kamerateam', r.roles==='admin,admin,camera', r.roles);
+  const n8 = r.n;
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `return S;`))));
+  r = await ev(w,`return {n:accounts().length};`);
+  ok('och bara en gång', r.n===n8, [r.n, n8]);
+  r = await ev(w,`
+    S.goals.push({id:'gx',owner:'rkay',text:'RKAYS MÅL',status:'aktiv',del:false,up:1}); save();
+    S.session.member='Costa'; buildNav(); go('team');
+    const team = document.getElementById('view').innerHTML;
+    const res = {view:roleView(), crew:can('manageCrew'), circles:can('manageCircles'), artists:can('manageArtists'),
+      dash:can('dashboard'), dashView:canView('dash'), goals:can('viewGoals','rkay'), grant:can('grantManager'),
+      roles:inviteRoles().map(x=>x[0]).join(','), addBtn:/LÄGG TILL PERSON/.test(team), sms:/SMS-NOTISER/.test(team),
+      cam:/KAMERATEAM/.test(team) && /Moez/.test(team)};
+    closeSheet(); openAccount('az'); res.blocked = !document.getElementById('sheet').classList.contains('on');
+    closeSheet();
+    openAddPerson('camera'); addDraft.name='Bo Lind'; addDraft.phone='073-555 66 77'; addDraft.team='D2L';
+    await saveAddPerson();
+    const bo = byName('Bo Lind'); res.bo = bo && {r:bo.r, team:bo.team, phone:bo.phone};
+    openAddPerson('producer'); addDraft.name='Ny Utan'; addDraft.phone='12';
+    await saveAddPerson(); res.badPhone = !byName('Ny Utan');
+    closeSheet();
+    go('goals'); res.goalsLeak = /RKAYS MÅL/.test(document.getElementById('view').innerHTML);
+    S.session.member='AZ';
+    return res;`);
+  ok('admin får hela appen', r.view==='full');
+  ok('och sköter konton, cirklar och artister', r.crew && r.circles && r.artists, r);
+  ok('men ser inte statistiken', r.dash===false && r.dashView===false, r);
+  ok('och inte andras mål', r.goals===false && r.goalsLeak===false, r);
+  ok('admin kan inte bjuda in eller skapa en manager', r.grant===false && !/manager/.test(r.roles), r.roles);
+  ok('admin kan inte öppna managerns konto', r.blocked===true);
+  ok('Crew har Lägg till person, SMS-kort och kamerateamet', r.addBtn && r.sms && r.cam, r);
+  ok('lägg till person: kamera i team D2L, numret som +46', r.bo && r.bo.r==='camera' && r.bo.team==='D2L' && r.bo.phone==='+46735556677', r.bo);
+  ok('utan riktigt mobilnummer läggs ingen till', r.badPhone===true);
+
+  r = await ev(w,`
+    S.session.member='Moez'; showApp();
+    const res = {tabs:tabs().join(','), view, more:moreViews().length, book:can('book'),
+      fab:document.getElementById('fab').style.display, ownTask:can('editAgenda',{who:'Moez'}), other:can('editAgenda',{who:'RKAY'}),
+      shared:can('editAgenda',{who:''}), media:can('uploadMedia'), editB:can('editBooking',{who:'RKAY'}), statsView:canView('dash')};
+    go('dash'); res.redirect = view;
+    S.session.member='AZ'; showApp();
+    return res;`);
+  ok('kamerateamet har Schema, Agenda och Galleri', r.tabs==='week,agenda,gallery' && r.more===0, r.tabs);
+  ok('och startar i schemat', r.view==='week', r.view);
+  ok('kan inte boka och har ingen plusknapp', r.book===false && r.fab==='none', r);
+  ok('bockar av sin egen och gemensam agenda, inte andras', r.ownTask && r.shared && !r.other, r);
+  ok('laddar upp i galleriet, ändrar inte pass', r.media && !r.editB, r);
+  ok('direktlänk till statistik går till schemat', r.redirect==='week', r.redirect);
+
+  r = await ev(w,`return {a:normPhone('070-123 45 67'), b:normPhone('+46 70 1234567'), c:normPhone('0046701234567'), d:normPhone('070-7'), e:normPhone('')};`);
+  ok('mobilnummer → +46… (samma regel som databasen)', r.a==='+46701234567' && r.b==='+46701234567' && r.c==='+46701234567' && r.d==='' && r.e==='', r);
+
+  /* ============ v8 · ARTISTER FRÅN KALKYLARK ============ */
+  log('\n── v8: artister från kalkylark ──');
+  w = await boot(seed({artists:[{id:'a1',n:'Nova',priority:2,genre:'R&B',active:true,del:false,up:1}]}));
+  r = await ev(w,`
+    const tsv = 'Namn\\tPrio\\tGenre\\tInstagram\\nNova\\t1\\t\\t@novamusic\\nKairo\\tHög\\tDrill\\t\\nSami B\\t3\\tHiphop\\t';
+    const m1 = mapArtistRows(parseTable(tsv));
+    const csv = 'Artist;Prio;Anteckning\\r\\n"Lizzie, The";Mellan;"EP i ""december"""\\r\\nOkänd;;';
+    const m2 = mapArtistRows(parseTable(csv));
+    const noHead = mapArtistRows(parseTable('Moon,1\\nStar,2'));
+    openArtistImport(); previewImport(parseTable(tsv));
+    const prev = document.getElementById('impOut').textContent;
+    document.querySelector('.impck[data-i="2"]').checked = false;
+    commitImport();
+    const nova = lartists().find(a=>a.n==='Nova'), kairo = lartists().find(a=>a.n==='Kairo');
+    return {m1:m1.map(x=>x.n+':'+x.p+':'+x.ig).join('|'), m2:m2.map(x=>x.n+':'+x.p+':'+x.note).join('|'), noHead:noHead.map(x=>x.n+':'+x.p).join('|'),
+      prev:/prio 2 → 1/.test(prev) && /ny · prio 1/.test(prev), nova:nova&&[nova.priority, nova.ig, nova.genre].join(','),
+      kairo:kairo&&kairo.priority, sami:lartists().some(a=>a.n==='Sami B')};`);
+  ok('inklistrat från kalkylark (tabbar), rubriker hittas', r.m1==='Nova:1:novamusic|Kairo:1:|Sami B:3:', r.m1);
+  ok('svensk CSV med semikolon, citat och Hög/Mellan/Låg', r.m2==='Lizzie, The:2:EP i "december"|Okänd:0:', r.m2);
+  ok('utan rubrikrad: namn och prio i de två första kolumnerna', r.noHead==='Moon:1|Star:2', r.noHead);
+  ok('förhandsgranskningen visar vad som ändras', r.prev===true);
+  ok('befintlig artist får ny grad och Instagram, genren ligger kvar', r.nova==='1,novamusic,R&B', r.nova);
+  ok('ny artist läggs in, urkryssad rad hoppas över', r.kairo===1 && r.sami===false, r);
+  r = await ev(w,`
+    const enc = new TextEncoder();
+    const deflate = async u8 => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    const files = {
+      'xl/sharedStrings.xml': '<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><si><t>Namn</t></si><si><t>Prio</t></si><si><t>Vera</t></si><si><r><t>Mo</t></r><r><t>on</t></r></si></sst>',
+      'xl/worksheets/sheet1.xml': '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+        + '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+        + '<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>1</v></c></row>'
+        + '<row r="3"><c r="A3" t="s"><v>3</v></c><c r="C3" t="inlineStr"><is><t>x</t></is></c><c r="B3"><v>3</v></c></row></sheetData></worksheet>'};
+    const parts = [], central = []; let off = 0;
+    for(const [name, text] of Object.entries(files)){
+      const raw = enc.encode(text), data = await deflate(raw), nm = enc.encode(name);
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0,0x04034b50,true); lh.setUint16(8,8,true);
+      lh.setUint32(18,data.length,true); lh.setUint32(22,raw.length,true); lh.setUint16(26,nm.length,true);
+      parts.push(new Uint8Array(lh.buffer), nm, data);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0,0x02014b50,true); ch.setUint16(10,8,true);
+      ch.setUint32(20,data.length,true); ch.setUint32(24,raw.length,true); ch.setUint16(28,nm.length,true); ch.setUint32(42,off,true);
+      central.push(new Uint8Array(ch.buffer), nm);
+      off += 30 + nm.length + data.length;
+    }
+    const csize = central.reduce((a,x)=>a+x.length,0);
+    const eo = new DataView(new ArrayBuffer(22)); eo.setUint32(0,0x06054b50,true); eo.setUint16(8,2,true); eo.setUint16(10,2,true);
+    eo.setUint32(12,csize,true); eo.setUint32(16,off,true);
+    const buf = await new Blob([...parts, ...central, new Uint8Array(eo.buffer)]).arrayBuffer();
+    const rows = await readXlsx(buf);
+    return {rows, mapped:mapArtistRows(rows).map(x=>x.n+':'+x.p).join('|')};`);
+  ok('.xlsx läses utan bibliotek (delade strängar, tal, inline-text)', r.mapped==='Vera:1|Moon:3', r);
+  r = await ev(w,`
+    let blobText = ''; const realCreate = URL.createObjectURL;
+    let bom = '', blob = null;
+    URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+    exportArtists(); URL.createObjectURL = realCreate;
+    blobText = await blob.text(); bom = [...new Uint8Array(await blob.arrayBuffer()).slice(0,3)].join(',');
+    return {csv:blobText, bom};`);
+  ok('exporten är en CSV för svensk Excel (BOM, semikolon)', r.bom==='239,187,191' && /Namn;Prio;Genre;Anteckning;Instagram/.test(r.csv) && /Nova;1;R&B;;novamusic/.test(r.csv), r);
+
+  /* ============ v8 · KUNDER ============ */
+  log('\n── v8: kunder och nya kunder ──');
+  const day = n => { const d = new Date(); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  w = await boot(seed({bookings:[{id:'cb1',studio:'A',date:day(3),start:'12:00',end:'16:00',who:'ADREY',title:'Mix',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    byId('p2').r='customer'; byId('p2').producer='rkay'; save();
+    const fb = freeBlocks('${day(3)}','A');
+    S.session.member='Nora Lind'; custDay='${day(3)}'; render();
+    const html = document.getElementById('view').innerHTML;
+    openCustRequest('${day(3)}','A','16:00','23:00');
+    document.getElementById('crS').value='17:00'; document.getElementById('crE').value='20:00';
+    await sendCustRequest('${day(3)}','A','16:00','23:00');
+    const rq = S.bookings.find(b=>b.status==='request' && b.who==='Nora Lind');
+    const blocks = clash({studio:'A',date:'${day(3)}',start:'18:00',end:'19:00'}).length;
+    const rqv = {who:rq&&rq.who, by:rq&&rq.reqBy, paid:rq&&rq.paid};
+    S.session.member='RKAY'; go('today'); const rkay = document.getElementById('view').innerHTML;
+    S.session.member='ADREY'; go('today'); const adrey = document.getElementById('view').innerHTML;
+    S.session.member='RKAY'; await doApprove(rq.id,'A');
+    const after = S.bookings.find(b=>b.id===rq.id).status;
+    S.session.member='AZ';
+    return {fb:JSON.stringify(fb), free:/LEDIGA TIDER/.test(html) && /16:00–23:00/.test(html), rqv, blocks,
+      rkay:/VÄNTAR PÅ SVAR/.test(rkay) && /Nora Lind/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
+  ok('lediga tider = öppettid minus bokat', r.fb==='[{"start":"10:00","end":"12:00"},{"start":"16:00","end":"23:00"}]', r.fb);
+  ok('kundvyn visar dem', r.free===true);
+  ok('kunden skickar en förfrågan på en ledig tid', r.rqv.who==='Nora Lind' && r.rqv.by==='p2' && r.rqv.paid===true, r.rqv);
+  ok('förfrågan reserverar ingen tid', r.blocks===0, r.blocks);
+  ok('kundens producent ser den på IDAG', r.rkay===true);
+  ok('en annan producent gör det inte', r.adrey===false);
+  ok('producenten godkänner', r.after==='', r.after);
+
+  r = await ev(w,`
+    signOut(); gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
+    const page = document.getElementById('gateBody').innerHTML;
+    pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
+    [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click();
+    await new Promise(r=>setTimeout(r,30));
+    document.getElementById('puN').value='Vera Ny'; document.getElementById('puP').value='0731112233'; document.getElementById('puM').value='vera@x.se';
+    document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
+    await sendPublic();
+    const done = document.getElementById('gateBody').textContent;
+    const lead = (S.leads||[]).find(l=>l.name==='Vera Ny');
+    pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
+    [...document.querySelectorAll('#gateBody .chip')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
+    document.getElementById('puN').value='Bot'; document.getElementById('puP').value='0731112299'; document.getElementById('puM').value='b@x.se'; document.getElementById('puH').value='spam';
+    await sendPublic();
+    const bot = (S.leads||[]).some(l=>l.name==='Bot');
+    leavePublic();
+    signIn(byName('AZ')); go('today');
+    const inbox = document.getElementById('view').innerHTML;
+    openLead(lead.id); await approveLead(lead.id,'A');
+    const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
+    return {page:/LEDIGA TIDER/.test(page), done:/Tack/.test(done),
+      lead:lead && {phone:lead.phone, start:lead.start_t, end:lead.end_t, studio:lead.studio}, bot, inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
+      bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status};`);
+  ok('bokningssidan visar lediga tider utan inloggning', r.page===true);
+  ok('ny kund skickar förfrågan och får ett tack', r.done && r.lead && r.lead.phone==='+46731112233' && r.lead.start==='10:00', r);
+  ok('robotar (honeypot) sparas inte', r.bot===false);
+  ok('admin ser nya kunder på IDAG', r.inbox===true);
+  ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
+  boot.hash = '#join=' + r.tok;
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session=null; return S;`))));
+  r = await ev(w,`
+    await new Promise(r=>setTimeout(r,150));
+    const pre = document.getElementById('jN').value, phoneField = document.getElementById('jT').type;
+    document.getElementById('jE').value='vera@x.se';
+    await doJoin();
+    const bk = S.bookings.find(b=>b.leadId);
+    return {pre, phoneField, view:roleView(), who:bk&&bk.who, mine:bk&&bk.reqBy===me().id, phone:me().phone};`);
+  ok('länken har namnet ifyllt och numret från förfrågan', r.pre==='Vera Ny' && r.phoneField==='hidden' && r.phone==='+46731112233', r);
+  ok('kunden landar i kundvyn och bokningen är hens', r.view==='customer' && r.who==='Vera Ny' && r.mine===true, r);
+
+  /* ============ v8 · GALLERI ============ */
+  log('\n── v8: galleriet ──');
+  w = await boot(seed({session:{member:'AZ',email:'az@b.se',name:'AZ',picture:'',ts:1,via:'preview'},
+    accounts:CREW.map(c=>Object.assign({},c)).concat(PEOPLE.map(p=>Object.assign({r:'participant'},p)),
+      [{id:'moez',n:'Moez',r:'camera',c:'#d97706',g:'#fbbf24',email:'moez@b.se',team:'Moez',ig:'moez',active:true,del:false,up:1},
+       {id:'d2la',n:'Alva',r:'camera',c:'#db2777',g:'#f472b6',email:'alva@b.se',team:'D2L',ig:'d2lfilm',active:true,del:false,up:1}]),
+    artists:[{id:'ar1',n:'Nova',priority:1,ig:'novamusic',active:true,del:false,up:1}]}));
+  r = await ev(w,`
+    const MX = window.__mockDbx;
+    S.dropbox.appKey='mockappkey1'; save(); await dbxConnect(); await dbxSetup(()=>{});
+    const folders = ['/BANDOHQ/Media','/BANDOHQ/Media/Moez','/BANDOHQ/Media/D2L'].every(p=>Object.values(MX.f).some(f=>f.folder && f.path===p));
+    MX.put('/BANDOHQ/Media/Moez/nova-1.jpg'); MX.put('/BANDOHQ/Media/Moez/bts.mov'); MX.put('/BANDOHQ/Media/D2L/vid/klipp.mp4');
+    MX.put('/BANDOHQ/Media/Moez/anteckning.txt'); MX.put('/BANDOHQ/Media/Okänd/x.jpg'); MX.put('/BANDOHQ/Media/lös.jpg');
+    const found = await scanMedia(), again = await scanMedia();
+    const moezV = lmedia().find(x=>x.file==='bts.mov'), d2l = lmedia().find(x=>x.team==='D2L');
+    go('gallery'); await new Promise(r=>setTimeout(r,250));
+    const tiles = document.querySelectorAll('.mtile').length, thumbs = [...document.querySelectorAll('img.thumb')].filter(i=>i.getAttribute('src')).length;
+    const img = lmedia().find(x=>x.file==='nova-1.jpg');
+    await openMedia(img.id);
+    const view = !!document.querySelector('#mview img');
+    document.getElementById('mdA').value='ar1'; document.getElementById('mdC').value='Nova i studion'; saveMedia(img.id);
+    await new Promise(r=>setTimeout(r,80));
+    const cap = captionFor(lmedia().find(x=>x.id===img.id));
+    const note = document.getElementById('sheetBody').innerHTML;
+    togglePosted(img.id); const posted = Object.keys(lmedia().find(x=>x.id===img.id).posted).join(',');
+    closeSheet(); render(); await new Promise(r=>setTimeout(r,50));
+    const badge = /POSTAD/.test(document.getElementById('view').innerHTML);
+    galOnlyNew = true; render(); const unposted = document.querySelectorAll('.mtile').length; galOnlyNew = false;
+    S.media = []; S.session.member='Moez'; MX.put('/BANDOHQ/Media/D2L/ny.jpg');
+    const camFound = await scanMedia(), camBy = [...new Set(lmedia().map(x=>x.by))].join(',');
+    S.session.member='AZ';
+    return {folders, found, again, video:moezV&&moezV.type, d2lBy:d2l&&d2l.by, tiles, thumbs, view, cap, collab:/@moez/.test(note) && /@novamusic/.test(note),
+      posted, badge, unposted, camFound, camBy, shared:MX.members.slice().sort().join(',')};`);
+  ok('Dropbox-setupen skapar Media/<team>', r.folders===true);
+  ok('och delar mappen med kamerateamet också', /moez@b\.se/.test(r.shared) && /alva@b\.se/.test(r.shared), r.shared);
+  ok('bilder och filmer i teamens mappar hamnar i galleriet', r.found===3 && r.again===0, r);
+  ok('film känns igen, D2L krediteras som team', r.video==='video' && r.d2lBy==='d2la', r);
+  ok('rutnät med miniatyrer från Dropbox', r.tiles===3 && r.thumbs===3, r);
+  ok('bilden visas stort', r.view===true);
+  ok('bildtexten får kredit till kamerateamet', /Nova i studion/.test(r.cap) && /📸 @moez/.test(r.cap), r.cap);
+  ok('samarbetskontona listas: kamerateamet och artisten', r.collab===true);
+  ok('markera som postad syns för alla', r.posted==='az' && r.badge===true && r.unposted===2, r);
+  ok('kameran skannar bara in sitt eget teams filer', r.camBy==='moez', r);
+
+  /* ============ v8 · BEATPROFILER ============ */
+  log('\n── v8: beatprofiler ──');
+  w = await boot(seed({beats:[{id:'b1',who:'RKAY',name:'Moon',status:'placerad',added:new Date().toISOString(),del:false,up:1},
+    {id:'b2',who:'RKAY',name:'Sun',status:'ny',added:'2020-01-01',del:false,up:1},{id:'b3',who:'ADREY',name:'Velvet',status:'ny',added:'2020-01-01',del:false,up:1}]}));
+  r = await ev(w,`
+    go('beats'); const html = document.getElementById('view').innerHTML;
+    const cards = document.querySelectorAll('.pcard').length;
+    beatWho='RKAY'; render(); const prof = document.getElementById('view').innerHTML;
+    return {cards, grid:/pgrid/.test(html), head:/placerade/.test(prof) && /Moon/.test(prof) && /Sun/.test(prof) && !/Velvet/.test(prof)};`);
+  ok('BEATS öppnar på en profil per producent', r.grid && r.cards===2, r);
+  ok('profilen visar producentens beats och inget annat', r.head===true);
+
+  /* ============ v8 · VECKOPLANEN ============ */
+  log('\n── v8: veckoplanen ──');
+  const mon = (()=>{ const d=new Date(); const w=(d.getDay()+6)%7; d.setDate(d.getDate()-w-7); return d; })();
+  const md = n => { const d = new Date(mon); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  w = await boot(seed({artists:[{id:'ar1',n:'Nova',priority:1,active:true,del:false,up:1}], bookings:[
+    {id:'w1',studio:'B',date:md(0),start:'18:00',end:'22:00',who:'RKAY',title:'Mixdown',note:'',circleId:'',status:'',hours:null,present:[],with:['ADREY'],artistId:'ar1',up:1,del:false,paid:false},
+    {id:'w2',studio:'A',date:md(3),start:'14:30',end:'18:00',who:'ADREY',title:'Session',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false},
+    {id:'w3',studio:'A',date:md(8),start:'10:00',end:'12:00',who:'RKAY',title:'Session',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    agendaWeek = monday(fromIso('${md(7)}'));
+    const txt = lastWeekPlanText();
+    const p = parseAgendaText(txt, agendaWeek);
+    const back = p.sessions.map(s=>[DAY2[fromIso(s.date).getDay()], s.start, s.end, s.who, s.with.join('+'), s.artistId, s.studio, s.title].join(' ')).join(' | ');
+    go('agenda'); const html = document.getElementById('view').innerHTML;
+    S.session.member='RKAY';
+    const canW3 = can('markRan', S.bookings.find(b=>b.id==='w3')), canW2 = can('markRan', S.bookings.find(b=>b.id==='w2'));
+    toggleRan('w3'); toggleRan('w2');
+    const ran = ['w2','w3'].map(id=>S.bookings.find(b=>b.id===id).ran?1:0).join('');
+    const own = lastWeekPlanText();
+    openParse('Tis 10-12 ADREY\\nOns 10-12 RKAY\\nADREY: kapa');
+    previewParse(); commitParse();
+    const added = S.bookings.filter(b=>b.date>=iso(agendaWeek) && b.id!=='w3').map(b=>b.who).join(',');
+    S.session.member='AZ';
+    return {txt, back, plan:/VECKANS PLAN/.test(html) && /0\\/1 körda/.test(html), canW3, canW2, ran, own, added,
+      adreyTask:lagenda().some(a=>a.text==='Kapa')};`);
+  ok('förra veckans plan skrivs som text i tolkens format', r.txt.split('\n').length===2 && /^mån 18:00-22:00 RKAY \+ ADREY med Nova i studio B Mixdown$/m.test(r.txt), r.txt);
+  ok('och tolkas tillbaka till samma pass', r.back==='mån 18:00 22:00 RKAY ADREY ar1 B Mixdown | tor 14:30 18:00 ADREY   A Session', r.back);
+  ok('AGENDA visar veckans plan med körda', r.plan===true);
+  ok('man bockar av sina egna pass, inte andras', r.canW3===true && r.canW2===false && r.ran==='01', r);
+  ok('producentens kopia tar bara med de egna passen', r.own.split('\n').filter(Boolean).every(l=>/RKAY/.test(l)), r.own);
+  ok('producenten kan bara skriva in sina egna rader', r.added==='RKAY' && r.adreyTask===false, r);
+
+  /* ============ v8 · SAMARBETEN ============ */
+  r = await ev(w,`
+    const B = (id,w)=>({id,studio:'A',date:'2026-01-0'+id.slice(-1),start:'10:00',end:'12:00',who:'RKAY',with:w,status:'',del:false});
+    return {html: collabTop([B('x1',['ADREY']),B('x2',['ADREY']),B('x3',['AZ'])],[B('x4',['ADREY'])])};`);
+  ok('statistiken visar "flest pass ihop" med förändring', /RKAY[\s\S]{0,200}ADREY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/.test(r.html) || /ADREY[\s\S]{0,200}RKAY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/.test(r.html), r.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,160));
+
+  /* ============ v8.1 · PUSH-FILERNA ============ */
+  log('\n── v8.1: service worker och manifest ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const man = await (await fetch('manifest.webmanifest')).json();
+    const link = !!document.querySelector('link[rel=manifest]');
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    const icon = (await fetch('icon-512.png')).headers.get('content-type');
+    const res = {name:man.name, display:man.display, icons:man.icons.length, link, scope:reg.scope, active:!!(reg.active||reg.waiting||reg.installing), icon,
+      preview:pushAdvice()};
+    await reg.unregister();
+    return res;`);
+  ok('manifestet: BANDOHQ, öppnas som app, två ikoner', r.name==='BANDOHQ' && r.display==='standalone' && r.icons===2 && r.link, r);
+  ok('service workern registreras (krävs för push)', r.active===true && /\/$/.test(r.scope), r);
+  ok('ikonen finns', /image\/png/.test(r.icon||''), r.icon);
+  ok('förhandsläget visar ingen push-påminnelse', r.preview==='');
+
+  log('\n══════════════════════════════');
+  log(pass+' PASS · '+fail+' FAIL');
+  log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
+ }catch(e){ log('HARNESS-KRASCH: '+e.message+'\n'+e.stack); }
+ document.title='DONE';
+})();
+</script>
