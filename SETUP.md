@@ -28,23 +28,24 @@ lösenord.
 3. **Settings → Pages** → *Deploy from a branch* → **main** / **(root)** → **Save**.
 4. Efter 1–2 minuter ligger appen på `https://prodbyrk.github.io/bandohq/`.
 
-### 1b · Egen adress: bandohq.se (Loopia)
-Domänen ligger hos Loopia. Lättast är att låta lanseringsverktyget sätta DNS-posterna: skapa en
-API-användare i Loopia Kundzon → **Kontoinställningar → LoopiaAPI**, och ge den rättigheterna
-`getDomains`, `getSubdomains`, `addSubdomain`, `getZoneRecords`, `addZoneRecord`,
-`removeZoneRecord` och `updateZoneRecord`.
+### 1b · Egen adress: www.bandohq.se (Loopia)
+Domänen ligger hos Loopia. LoopiaAPI kan inte ändra DNS-poster (de rättigheterna finns inte att välja),
+så posterna läggs in för hand: Kundzon → **bandohq.se → DNS-editor**.
 
-För hand i Loopias DNS-editor i stället:
-
-| Namn | Typ | Värde |
+| Subdomän | Typ | Data |
 |---|---|---|
-| `@` | A | `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` |
-| `@` | AAAA | `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153` |
-| `www` | CNAME | `prodbyrk.github.io.` |
+| `@` | A | `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` (fyra poster) |
+| `www` | CNAME | `prodbyrk.github.io.` — **måste** vara CNAME, inte A, annars underkänner GitHub den |
 
-Ta bort Loopias egna A-poster (parkeringen) på `@` och `www`. När DNS:en slagit igenom:
-GitHub-repot → **Settings → Pages → Custom domain** = `bandohq.se` → **Enforce HTTPS**.
-Adressen blir **https://bandohq.se**.
+Ta bort Loopias parkeringsposter på `@` och `www` (och gärna jokern `*`). Loopias formulär vill ha
+**TTL** (`3600`), och en andra post på en subdomän som redan finns läggs till *under* den — inte via
+*Lägg till subdomän*. Kontrollera med `dig @ns1.loopia.se www.bandohq.se` (via TCP, `+tcp`, om svaret
+ser gammalt ut — Loopias server kan ge sparade svar en stund).
+
+GitHub-repot → **Settings → Pages → Custom domain** = `www.bandohq.se` → **Enforce HTTPS** när
+certifikatet är klart. Adressen blir **https://www.bandohq.se**, och `bandohq.se` skickas dit.
+(Vi körde först `bandohq.se` som huvudadress, men GitHubs certifikat fastnade i `bad_authz` efter att
+första försöket gjorts medan gamla DNS-svar låg kvar i cacharna. www fick en ny beställning.)
 
 **På telefonen:** öppna adressen i Safari → dela-knappen → **Lägg till på hemskärmen**. Då får
 BANDOHQ husikonen och öppnas i helskärm som en vanlig app. **På iPhone fungerar gratis-notiserna
@@ -78,11 +79,11 @@ redan kört en äldre version räcker det att köra alla fyra igen**, i samma or
 
 ### 2c · Inloggningen
 **Authentication → URL Configuration:**
-- **Site URL:** `https://bandohq.se/`
+- **Site URL:** `https://www.bandohq.se/`
 - **Redirect URLs** → *Add URL*, lägg in båda:
   ```
-  https://bandohq.se/
-  https://bandohq.se/index.html
+  https://www.bandohq.se/
+  https://www.bandohq.se/index.html
   ```
 
 **Authentication → Sign In / Providers → Email** ska vara på (det är det från början).
@@ -206,7 +207,7 @@ Ingen behöver skriva in någon annans e-post.
 *[cirkeln]* · *Hela gruppen* → klistra in i gruppchatten. Under länklistan ser du hur många
 som gått med och kan stänga en länk.
 
-**Nya kunder** behöver ingen inbjudan. Lägg länken `https://bandohq.se/#boka`
+**Nya kunder** behöver ingen inbjudan. Lägg länken `https://www.bandohq.se/#boka`
 i Instagram-bion: där ser de lediga tider och skickar en förfrågan. Den hamnar under
 **Väntar på svar** på IDAG. Godkänn → tiden bokas och kunden får ett SMS med en länk för att
 skapa sitt konto.
