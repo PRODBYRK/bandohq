@@ -1006,9 +1006,9 @@ const myCirclesAsLeader = () => { const m = me();
    Auth — appen ser dem aldrig efter inloggningen.
    Utan uppgifterna körs förhandsvisningen: välj konto, allt på den här enheten. */
 /* ↓↓↓ FYLL I FRÅN SUPABASE (Project Settings → API). Se SETUP.md. ↓↓↓ */
-const CLOUD_CONFIG = { url: '', key: '' };      /* key = "anon public", aldrig service_role */
+const CLOUD_CONFIG = { url: 'https://gwvtqrbrkkfgyesamcfy.supabase.co', key: 'sb_publishable_jdhJX4ns98mvM2qSuUFCQg_rRUvmxpf' };      /* key = "anon public", aldrig service_role */
 /* Vem som ansvarar för personuppgifterna — visas i integritetstexten. */
-const ORG = { name: 'Bando Collective', email: '' };
+const ORG = { name: 'Bando Collective', email: 'bandocollect@gmail.com' };
 /* Tester och lokal utveckling kan peka om servern via localStorage — bara
    samma webbplats kan sätta den, så en länk utifrån kan inte styra om den. */
 const CLOUD = Object.assign({}, CLOUD_CONFIG, (()=>{

@@ -35,6 +35,7 @@ function boot(seedVal){
     fr.onload=null; fr.src='about:blank';
     setTimeout(()=>{
       localStorage.clear();
+      localStorage.setItem('bandosesh_cloud', '{"url":"","key":""}');   /* förhandsläget, även när appen har en riktig server */
       if(seedVal) localStorage.setItem('bandosesh_v2', JSON.stringify(seedVal));
       fr.onload=()=>setTimeout(()=>res(fr.contentWindow),260);
       fr.src='../index.html?mock=1&cb='+Math.random()+(boot.hash||''); boot.hash='';

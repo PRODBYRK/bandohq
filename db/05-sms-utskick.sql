@@ -17,7 +17,7 @@ do $$ begin
   perform vault.create_secret('DIN-CRON-HEMLIGHET', 'bandohq_cron');
 exception when others then null; end $$;
 -- Skrev du fel? Rätta så här:
---   update vault.secrets set secret = 'rätt värde' where name = 'bandohq_url';
+--   select vault.update_secret(id, 'rätt värde') from vault.secrets where name = 'bandohq_url';
 
 -- Varje minut: skicka det som ligger i utkorgen (push, annars SMS).
 select cron.schedule('bandohq-notiser', '* * * * *', $$

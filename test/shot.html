@@ -123,7 +123,7 @@ const S = {v:2, session: P.get('gate') ? null
   rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1}};
 localStorage.clear();
 localStorage.setItem('bandosesh_v2', JSON.stringify(S));
-if(P.get('cloud')) localStorage.setItem('bandosesh_cloud', JSON.stringify({url:'http://localhost:8738', key:'anon-test-key'}));
+localStorage.setItem('bandosesh_cloud', JSON.stringify(P.get('cloud') ? {url:'http://localhost:8738', key:'anon-test-key'} : {url:'', key:''}));
 if(P.get('dbx')) localStorage.setItem('bandosesh_dbx', JSON.stringify({access:'mock',refresh:'mock',exp:Date.now()+864e5,root:'/bandosesh'}));
 fr.onload=()=>setTimeout(()=>{
   try{
