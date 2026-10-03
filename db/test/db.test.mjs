@@ -373,6 +373,29 @@ ok('statistiken skiljer push från SMS och visar vem som saknar push', st2.push=
 await q(`insert into records(kind,id,data,up) values('setting','notify','{"criticalSms":true}',1)`);
 ok('policyn för viktiga SMS läses av servern', (await one(`select notify_policy() p`)).p.criticalSms===true);
 
+
+/* ============ LANSERING · RADERA PERSON, STUDIOINFO ============ */
+head('lansering: radera person och studioinfo');
+await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"STUDIO A","B":"THE BOOTH","openFrom":"11:00","openTo":"22:00"}',2)
+         on conflict (kind,id) do update set data=excluded.data, up=excluded.up`);
+const si = await asAnon(db,()=>rpc('studio_info',{}));
+ok('bokningssidan får studionamn och öppettider utan inloggning', si.B==='THE BOOTH' && si.openFrom==='11:00' && si.openTo==='22:00', si);
+ok('admin kan inte radera konton', /Bara managern/.test(await boom(()=>C(()=>rpc('delete_member',{p_id:'will'})))||''));
+ok('managern kan inte radera sig själv', /eget konto/.test(await boom(()=>as(db,U.az,()=>rpc('delete_member',{p_id:'az'})))||''));
+await q(`insert into records(kind,id,data,up) values('agenda','dw1',$1,1)`,[JSON.stringify({id:'dw1',who:'William Ek',text:'Hemligt'})]);
+await q(`insert into records(kind,id,data,up) values('booking','dwb',$1,1)`,[JSON.stringify({id:'dwb',studio:'A',date:'2026-12-30',start:'10:00',end:'11:00',who:'RKAY',with:['William Ek','ADREY'],status:''})]);
+const hoursBefore = +(await one(`select bs_hours('will') h`)).h;
+await as(db,U.will,()=>rpc('save_push_sub', sub('will-del')));
+const dm = await as(db,U.az,()=>rpc('delete_member',{p_id:'will'}));
+ok('managern raderar en person', dm.deleted==='William Ek', dm);
+ok('kontot och inloggningen är borta', !(await one(`select 1 from members where id='will'`)) && !(await one(`select 1 from auth.users where id=$1`,[U.will])));
+ok('enheterna för push är borta', !(await one(`select 1 from push_subs where endpoint='https://push.example/will-del'`)));
+ok('namnet är borta ur pass han var med på', JSON.stringify((await one(`select data from records where id='dwb'`)).data.with)==='["ADREY"]');
+ok('och ur cirkeln', !(await one(`select data from records where id='c1'`)).data.members.includes('will'));
+ok('hans agenda är borta', (await one(`select del from records where id='dw1'`)).del===true);
+ok('timmarna finns kvar för rapporteringen', +(await one(`select bs_hours('will') h`)).h===hoursBefore && hoursBefore>0, hoursBefore);
+ok('ingen kvarvarande rad nämner namnet', !(await one(`select 1 from records where not del and data::text like '%William Ek%'`)));
+
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

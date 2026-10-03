@@ -4,7 +4,7 @@
      /auth/v1/*  signup, token (password/refresh), user, recover, logout
      /rest/v1/*  rpc, tabeller (GET med filter, POST upsert, PATCH)
    Starta:  node emulator.mjs [port]     (standard 8738)
-   Testkrokar: GET /__mail (skickade mejl), GET /__sms (SMS-utkorgen), POST /__config {confirm:true}
+   Testkrokar: GET /__mail (skickade mejl), GET /__sms (SMS-utkorgen), POST /__sql {sql}, POST /__config {confirm:true}
    Detta är ett testverktyg. Det har inga riktiga lösenordshashar och hör
    inte hemma i drift — där är det Supabase som kör.
    ===================================================================== */
@@ -175,6 +175,8 @@ http.createServer((req, res) => {
     let body = null; try{ body = raw ? JSON.parse(raw) : null; }catch(e){}
     if(url.pathname === '/__mail') return send(res, 200, mail);
     if(url.pathname === '/__sms') return send(res, 200, await q(`select id, member_id, phone, body, kind, dedupe_key, n, send_after from sms_outbox order by id`));
+    /* bara för tester: kör SQL som databasens ägare (t.ex. simulera att en post försvunnit) */
+    if(url.pathname === '/__sql'){ try{ return send(res, 200, await q(body.sql)); }catch(e){ return send(res, 400, {message:e.message}); } }
     if(url.pathname === '/__config'){ Object.assign(cfg, body||{}); return send(res, 200, cfg); }
     if(req.headers.apikey !== ANON) return send(res, 401, {message:'Invalid API key'});
     const bearer = String(req.headers.authorization||'').replace(/^Bearer /, '');

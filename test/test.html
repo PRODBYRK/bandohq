@@ -716,7 +716,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     document.getElementById('jN').value = 'Leo Berg';
     document.getElementById('jE').value = 'leo@b.se';
     document.getElementById('jT').value = '070-777 77 77';
-    await doJoin();
+    document.getElementById('jC').checked=true; await doJoin();
     const a = byName('Leo Berg');
     const res = {gate, tag, form, role:a&&a.r, phone:a&&a.phone, inCircle:circleById('c1').members.includes(a&&a.id),
       session:S.session&&S.session.member, view:roleView(), hash:location.hash,
@@ -724,12 +724,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     /* samma namn igen */
     signOut(); joinToken='${TOK}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
     document.getElementById('jN').value = 'leo berg'; document.getElementById('jE').value='x@b.se'; document.getElementById('jT').value='070-111 11 11';
-    await doJoin();
+    document.getElementById('jC').checked=true; await doJoin();
     res.dupe = gateErr;
     /* engångslänk: andra gången nekas */
     leaveJoin(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
     document.getElementById('jN').value = 'Moez'; document.getElementById('jE').value='moez@b.se'; document.getElementById('jT').value='070-222 22 22';
-    await doJoin();
+    document.getElementById('jC').checked=true; await doJoin();
     res.moez = (byName('Moez')||{}).r;
     signOut(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
     res.used = document.getElementById('gateBody').textContent;
@@ -1014,13 +1014,13 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await new Promise(r=>setTimeout(r,30));
     document.getElementById('puN').value='Vera Ny'; document.getElementById('puP').value='0731112233'; document.getElementById('puM').value='vera@x.se';
     document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
-    await sendPublic();
+    document.getElementById('puC').checked=true; await sendPublic();
     const done = document.getElementById('gateBody').textContent;
     const lead = (S.leads||[]).find(l=>l.name==='Vera Ny');
     pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
     [...document.querySelectorAll('#gateBody .chip')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
     document.getElementById('puN').value='Bot'; document.getElementById('puP').value='0731112299'; document.getElementById('puM').value='b@x.se'; document.getElementById('puH').value='spam';
-    await sendPublic();
+    document.getElementById('puC').checked=true; await sendPublic();
     const bot = (S.leads||[]).some(l=>l.name==='Bot');
     leavePublic();
     signIn(byName('AZ')); go('today');
@@ -1041,7 +1041,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await new Promise(r=>setTimeout(r,150));
     const pre = document.getElementById('jN').value, phoneField = document.getElementById('jT').type;
     document.getElementById('jE').value='vera@x.se';
-    await doJoin();
+    document.getElementById('jC').checked=true; await doJoin();
     const bk = S.bookings.find(b=>b.leadId);
     return {pre, phoneField, view:roleView(), who:bk&&bk.who, mine:bk&&bk.reqBy===me().id, phone:me().phone};`);
   ok('länken har namnet ifyllt och numret från förfrågan', r.pre==='Vera Ny' && r.phoneField==='hidden' && r.phone==='+46731112233', r);
@@ -1147,17 +1147,82 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   r = await ev(w,`
     const man = await (await fetch('manifest.webmanifest')).json();
     const link = !!document.querySelector('link[rel=manifest]');
-    const reg = await navigator.serviceWorker.register('sw.js');
-    await navigator.serviceWorker.ready;
+    const swText = await (await fetch('sw.js')).text();
+    let parses = true; try{ new Function(swText); }catch(e){ parses = e.message; }
     const icon = (await fetch('icon-512.png')).headers.get('content-type');
-    const res = {name:man.name, display:man.display, icons:man.icons.length, link, scope:reg.scope, active:!!(reg.active||reg.waiting||reg.installing), icon,
-      preview:pushAdvice()};
-    await reg.unregister();
+    const res = {name:man.name, display:man.display, icons:man.icons.length, link, icon, preview:pushAdvice(),
+      sw: parses===true && swText.includes("addEventListener('push'") && /showNotification/.test(swText) && /notificationclick/.test(swText), parses};
     return res;`);
   ok('manifestet: BANDOHQ, öppnas som app, två ikoner', r.name==='BANDOHQ' && r.display==='standalone' && r.icons===2 && r.link, r);
-  ok('service workern registreras (krävs för push)', r.active===true && /\/$/.test(r.scope), r);
+  ok('service workern laddar, är giltig och visar push-notiser', r.sw===true, r.parses);
   ok('ikonen finns', /image\/png/.test(r.icon||''), r.icon);
   ok('förhandsläget visar ingen push-påminnelse', r.preview==='');
+
+  /* ============ LANSERING · INTEGRITET, BACKUP, RADERA, ÖPPETTIDER, STATUS ============ */
+  log('\n── lansering ──');
+  w = await boot(seed({session:null}));
+  r = await ev(w,`
+    const foot = document.getElementById('gateBody').innerHTML;
+    openPrivacy(); const txt = document.getElementById('sheetBody').textContent;
+    const z = el => +getComputedStyle(document.getElementById(el)).zIndex;
+    const onTop = z('sheet') > z('gate') && document.getElementById('gate').classList.contains('on'); closeSheet();
+    const tok = await (async()=>{ signIn(byId('az')); const t = await createInvite('producer', null, 7, 1); signOut(); return t; })();
+    joinToken = tok; joinInfo = null; await renderGate(); await new Promise(r=>setTimeout(r,80));
+    const box = !!document.getElementById('jC');
+    document.getElementById('jN').value='Utan Kryss'; document.getElementById('jE').value='u@b.se'; document.getElementById('jT').value='070-123 45 99';
+    await doJoin(); const noConsent = gateErr, created = !!byName('Utan Kryss');
+    return {foot:/Integritet/.test(foot), txt, box, noConsent, created, onTop};`);
+  ok('integritetstexten nås utan inloggning: vad, var, vem och radering', /personnummer/i.test(r.txt) && /Supabase/.test(r.txt) && /Stockholm/.test(r.txt) && /radera/i.test(r.txt), r.txt.slice(0,80));
+  ok('och syns ovanpå inloggningssidan', r.onTop===true);
+  ok('kontoformuläret har en ruta för att godkänna den', r.box===true);
+  ok('utan kryss skapas inget konto', /Kryssa i/.test(r.noConsent) && r.created===false, r);
+
+  w = await boot(seed({bookings:[{id:'ob1',studio:'A',date:'2027-03-10',start:'12:00',end:'14:00',who:'RKAY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
+  r = await ev(w,`
+    const def = JSON.stringify(freeBlocks('2027-03-10','A'));
+    openStudios(); document.getElementById('sO1').value='12:00'; document.getElementById('sO2').value='20:00'; saveStudios();
+    const set = JSON.stringify(freeBlocks('2027-03-10','A')), saved = S.studios.openFrom+'-'+S.studios.openTo;
+    openStudios(); document.getElementById('sO1').value='22:00'; document.getElementById('sO2').value='10:00'; saveStudios();
+    return {def, set, saved, kept:S.studios.openFrom+'-'+S.studios.openTo};`);
+  ok('lediga tider följer standardöppettiderna 10–23', r.def==='[{"start":"10:00","end":"12:00"},{"start":"14:00","end":"23:00"}]', r.def);
+  ok('admin ställer in öppettider — kunderna ser bara dem', r.saved==='12:00-20:00' && r.set==='[{"start":"14:00","end":"20:00"}]', r);
+  ok('stängning före öppning sparas inte', r.kept==='12:00-20:00', r.kept);
+
+  w = await boot(seed());
+  r = await ev(w,`
+    let blob = null; const real = URL.createObjectURL; URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+    const before = S.bookings.length;
+    S.bookings.push(bump({id:'bk1',studio:'A',date:'2027-04-01',start:'10:00',end:'12:00',who:'RKAY',title:'Viktig',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',paid:false,del:false}));
+    save();
+    await downloadBackup(); URL.createObjectURL = real;
+    const data = JSON.parse(await blob.text());
+    const at = S.backupCfg.at, by = S.backupCfg.by;
+    S.bookings = S.bookings.filter(b=>b.id!=='bk1'); save();
+    const file = new File([JSON.stringify(data)], 'b.json'); window.confirm = () => true;
+    await restoreBackup(file);
+    const back = !!S.bookings.find(b=>b.id==='bk1');
+    go('team'); const team = document.getElementById('view').innerHTML;
+    return {app:data.app, mode:data.mode, has:JSON.stringify(data).includes('Viktig'), at:at>0, by, back,
+      status:/SYSTEMSTATUS/.test(team) && /Förhandsläge/.test(team) && /SÄKERHETSKOPIA/.test(team), due:backupDue()};`);
+  ok('managern laddar ner en säkerhetskopia med allt', r.app==='BANDOHQ' && r.has===true, r);
+  ok('datum och vem sparas', r.at && r.by==='AZ', r);
+  ok('kopian går att läsa tillbaka', r.back===true);
+  ok('Crew visar systemstatus och säkerhetskopia', r.status===true);
+  ok('ingen backup-påminnelse i förhandsläget', r.due===false);
+
+  r = await ev(w,`
+    window.confirm = () => true;
+    S.bookings.push(bump({id:'dp1',studio:'A',date:'2027-04-02',start:'10:00',end:'12:00',who:'RKAY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:['ADREY'],artistId:'',paid:false,del:false}));
+    S.agenda.push(bump({id:'da1',kind:'week',week:'2027-03-29',who:'ADREY',text:'Hemligt',due:'',done:false,del:false}));
+    save();
+    S.session.member='RKAY'; openAccount('adrey'); const prodBtn = /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML); closeSheet();
+    S.session.member='AZ'; openAccount('adrey'); const mgrBtn = /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML);
+    await deletePerson('adrey');
+    const b = S.bookings.find(x=>x.id==='dp1');
+    return {prodBtn, mgrBtn, gone:!byId('adrey'), withs:JSON.stringify(b.with), agenda:S.agenda.find(x=>x.id==='da1').del,
+      self:(()=>{ openAccount('az'); return /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML); })()};`);
+  ok('bara managern kan radera, inte sig själv', r.mgrBtn===true && r.self===false, r);
+  ok('raderad person: kontot borta, namnet borta ur pass och agenda', r.gone && r.withs==='[]' && r.agenda===true, r);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

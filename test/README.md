@@ -9,9 +9,10 @@ python3 -m http.server 8000
 
 | Sida | Vad | Antal |
 |---|---|---|
-| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar, lägg till person, kunder och bokningssidan, artistgrader och kalkylarksimport | 286 |
-| `test/cloud.html` | appen mot Supabase-emulatorn: inloggning, inbjudningslänkar, RLS sett från webbläsaren, godkännanden, kundförfrågningar, ny kund via bokningssidan, admin, SMS-utkorgen, glömt lösenord, e-postbekräftelse, flytten från förhandsvisningen | 76 |
-| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, SMS-kön, påminnelser och nya kunder direkt i Postgres (`node db.test.mjs`) | 141 |
+| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar, lägg till person, kunder och bokningssidan, artistgrader och kalkylarksimport, push-filerna, integritet, säkerhetskopia, radera person, öppettider | 304 |
+| `test/cloud.html` | appen mot Supabase-emulatorn: inloggning, inbjudningslänkar, RLS sett från webbläsaren, godkännanden, kundförfrågningar, ny kund via bokningssidan, admin, SMS-utkorgen, push, säkerhetskopia, radering, glömt lösenord, e-postbekräftelse, flytten från förhandsvisningen | 99 |
+| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, SMS-kön, påminnelser, nya kunder, push och radering direkt i Postgres (`node db.test.mjs`) | 170 |
+| `db/test/notify.test.mjs` | edge-funktionen notify-send: kryptering mot RFC 8291:s testvärden, VAPID, push först / SMS som reserv (`node notify.test.mjs`) | 22 |
 | `test/shot.html` | demodata att titta på | — |
 
 **Molntestet** kräver emulatorn: `cd db/test && npm install && node emulator.mjs`. Den kör

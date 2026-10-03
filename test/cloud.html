@@ -30,7 +30,7 @@ const ev=(w,c)=>w.eval('(async()=>{window.confirm=()=>true;'+c+'})()');
 const wait = ms => `await new Promise(r=>setTimeout(r,${ms}));`;
 const LOGIN = (em,pw) => `document.getElementById('gE').value='${em}'; document.getElementById('gP').value='${pw}'; await doLogin();`;
 const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='${n}'; document.getElementById('jE').value='${em}';
-  document.getElementById('jT').value='${ph}'; document.getElementById('jP').value='${pw}'; await doJoin();`;
+  document.getElementById('jT').value='${ph}'; document.getElementById('jP').value='${pw}'; document.getElementById('jC').checked=true; await doJoin();`;
 
 (async function run(){
  try{
@@ -229,7 +229,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click(); ${wait(80)}
     document.getElementById('puN').value='Vera Ny'; document.getElementById('puP').value='073-111 22 33'; document.getElementById('puM').value='vera@x.se';
     document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
-    await sendPublic();
+    document.getElementById('puC').checked=true; await sendPublic();
     return {page:/LEDIGA TIDER/.test(page), done:document.getElementById('gateBody').textContent, err:gateErr};`);
   ok('bokningssidan hämtar lediga tider från servern utan inloggning', r.page===true);
   ok('förfrågan skickas och tackas', /Tack/.test(r.done), r.err || r.done);
@@ -270,7 +270,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     ${wait(250)}
     const pre = document.getElementById('jN').value, hidden = document.getElementById('jT').type==='hidden';
     document.getElementById('jE').value='vera@x.se'; document.getElementById('jP').value='vera12345';
-    await doJoin();
+    document.getElementById('jC').checked=true; await doJoin();
     const bk = S.bookings.find(b=>!b.busy && b.who==='Vera Ny');
     return {pre, hidden, view:roleView(), bk:!!bk, phone:me()&&me().phone, err:gateErr};`);
   ok('kundlänken har namnet ifyllt och numret från förfrågan', r.pre==='Vera Ny' && r.hidden===true, r);
@@ -281,7 +281,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   r = await ev(w,`
     ${wait(250)}
     document.getElementById('jE').value='costa@b.se'; document.getElementById('jP').value='costa1234';
-    await doJoin(); ${wait(200)}
+    document.getElementById('jC').checked=true; await doJoin(); ${wait(200)}
     const res = {view:roleView(), role:me()&&me().r, dash:canView('dash'), crew:can('manageCrew'), leads:Array.isArray(S.leads)};
     let mgr = ''; try{ await sbRpc('create_invite',{p_role:'manager',p_circle:null,p_days:14,p_max:1}); }catch(e){ mgr = e.message; }
     let hack = ''; try{ await sb('/members?id=eq.az',{method:'PATCH',body:JSON.stringify({phone:'0700000000'})}); }catch(e){ hack = e.message; }
@@ -331,7 +331,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     localStorage.setItem('bandohq_push','https://push.example/az-telefon');
     pushEnv = () => ({supported:true, ios:false, standalone:true, perm:'granted'});
     signOut(); ${wait(300)}
-    return {before, shown, anonKey, pub:S.pushCfg ? '' : '', ban:/Slå på notiser/i.test(ban) && /SLÅ PÅ/.test(ban), gone:!/pushban/.test(after),
+    return {before, shown, anonKey, pub:S.pushCfg ? '' : '', ban:/Slå på notiser/i.test(ban) && /SLÅ PÅ/.test(ban), gone:!/Slå på notiser/i.test(after),
       subs, pol:pol && pol.data, team:/har push påslaget/.test(team) && /PUSH/.test(team), home, homeTxt:/hemskärmen/.test(homeTxt), denied, unsup,
       ls:localStorage.getItem('bandohq_push')};`);
   ok('utan nycklar finns ingen servernyckel', r.before===null || r.before==='', r.before);
@@ -351,6 +351,51 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   w = await boot();
   r = await ev(w,`${LOGIN('az@b.se','losen123')} ${wait(200)} return {subs:(await sb('/push_subs?select=endpoint')).length};`);
   ok('efter utloggning får enheten inte längre AZ:s notiser', r.subs===0, r.subs);
+
+  /* ============ LANSERING ============ */
+  log('\n── lansering: backup, radera person, bokningssidan, status ──');
+  w = await boot();
+  r = await ev(w,`
+    const foot = document.getElementById('gateBody').innerHTML;
+    gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); ${wait(300)}
+    const page = document.getElementById('gateBody').innerHTML;
+    return {foot:/Integritet/.test(foot), booth:/THE BOOTH/.test(page), consent:!!document.getElementById('puC') || /LEDIGA TIDER/.test(page)};`);
+  ok('inloggningssidan länkar till integritetstexten', r.foot===true);
+  ok('bokningssidan hämtar studionamnen från servern', r.booth===true);
+  w = await boot();
+  r = await ev(w,`
+    ${LOGIN('az@b.se','losen123')}
+    ${wait(200)}
+    go('today'); const due = /säkerhetskopia/i.test(document.getElementById('view').innerHTML);
+    let blob = null; const real = URL.createObjectURL; URL.createObjectURL = b => { blob = b; return 'blob:x'; };
+    await downloadBackup(); URL.createObjectURL = real;
+    const data = JSON.parse(await blob.text());
+    go('today'); const after = /Det är|Ingen säkerhetskopia/.test(document.getElementById('view').innerHTML);
+    return {due, mode:data.mode, recs:data.records.length, goal:data.records.some(x=>x.kind==='goal'), mem:data.members.length,
+      noPw:!/password|losen123/i.test(JSON.stringify(data)), after, json:JSON.stringify(data)};`);
+  ok('managern påminns om säkerhetskopia på IDAG', r.due===true);
+  ok('kopian innehåller alla poster och konton', r.mode==='cloud' && r.recs>10 && r.goal && r.mem>5, r);
+  ok('men inga lösenord', r.noPw===true);
+  ok('påminnelsen försvinner efteråt', r.after===false);
+  const BK = r.json;
+  /* en post försvinner på servern (som vid en olycka) — och läses tillbaka */
+  await fetch(EMU+'/__sql',{method:'POST',body:JSON.stringify({sql:"delete from records where kind='goal' and id='g1'"})});
+  w = await boot();
+  r = await ev(w,`
+    ${LOGIN('az@b.se','losen123')} ${wait(200)}
+    const lost = !(await sb('/records?select=id&kind=eq.goal&id=eq.g1')).length;
+    await restoreBackup(new File([${JSON.stringify(BK)}], 'b.json'));
+    const back = (await sb('/records?select=id&kind=eq.goal&id=eq.g1')).length===1;
+    smsStatsAt = 0; outboxPeekAt = 0; go('team'); ${wait(400)}
+    const team = document.getElementById('view').innerHTML;
+    /* radera en person */
+    const target = accounts().find(a=>a.n==='Vera Ny');
+    await deletePerson(target.id);
+    const srv = (await sb('/members?select=name')).map(m=>m.name);
+    return {lost, back, status:/SYSTEMSTATUS/.test(team) && /Ansluten/.test(team) && /Notisutskick/.test(team), srv, local:!byName('Vera Ny')};`);
+  ok('en förlorad post läses tillbaka från kopian', r.lost===true && r.back===true, r);
+  ok('systemstatus visar servern och notisutskicket', r.status===true);
+  ok('managern raderar en person — borta på servern och i appen', !r.srv.includes('Vera Ny') && r.local===true, r.srv);
 
   /* ============ GLÖMT LÖSENORD ============ */
   log('\n── glömt lösenord ──');

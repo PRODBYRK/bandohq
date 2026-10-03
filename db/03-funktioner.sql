@@ -481,9 +481,55 @@ begin
   return bs_put_booking(d || '{"del":true}');
 end $$;
 
+-- =====================================================================
+--  RADERA EN PERSON (managern, på begäran — GDPR)
+--  Kontot och inloggningen försvinner. Namnet ersätts med "Raderad person"
+--  i gamla pass, men passen och cirkeltimmarna ligger kvar: de behövs för
+--  rapporteringen och för de andra som var med.
+-- =====================================================================
+create or replace function delete_member(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare m members; t bigint := now_ms(); n int := 0; gone text := 'Raderad person';
+begin
+  if not bs_is_manager() then raise exception 'Bara managern kan radera konton'; end if;
+  select * into m from members where id = p_id;
+  if m.id is null then raise exception 'Kontot finns inte'; end if;
+  if m.id = bs_my_id() then raise exception 'Du kan inte radera ditt eget konto'; end if;
+  /* pass: bokare och medproducent */
+  update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t
+   where kind = 'booking' and data->>'who' = m.name;
+  get diagnostics n = row_count;
+  update records set data = jsonb_set(data, '{with}', coalesce((select jsonb_agg(x) from jsonb_array_elements_text(data->'with') x
+           where x <> m.name), '[]'::jsonb)) || jsonb_build_object('up', t), up = t
+   where kind = 'booking' and data->'with' ? m.name;
+  /* cirklar: ledare och medlemskap */
+  update records set data = data || jsonb_build_object('leader', '', 'up', t), up = t
+   where kind = 'circle' and data->>'leader' = m.name;
+  update records set data = jsonb_set(data, '{members}', coalesce((select jsonb_agg(x) from jsonb_array_elements_text(data->'members') x
+           where x <> m.id), '[]'::jsonb)) || jsonb_build_object('up', t), up = t
+   where kind = 'circle' and data->'members' ? m.id;
+  /* personligt: agenda, mål och plan tas bort; beats och galleri behåller filerna men inte namnet */
+  update records set del = true, up = t, data = data || jsonb_build_object('del', true, 'up', t)
+   where (kind = 'agenda' and data->>'who' = m.name) or (kind = 'goal' and data->>'owner' = m.id) or (kind = 'plan' and id = m.id);
+  update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t where kind = 'beat' and data->>'who' = m.name;
+  update records set data = data || jsonb_build_object('by', '', 'up', t), up = t where kind = 'media' and data->>'by' = m.id;
+  delete from sms_outbox where member_id = m.id and sent_at is null;
+  delete from members where id = m.id;                       -- push_subs följer med (on delete cascade)
+  if m.user_id is not null then delete from auth.users where id = m.user_id; end if;
+  return jsonb_build_object('deleted', m.name, 'bookings', n);
+end $$;
+
+/* Studionamn och öppettider — bokningssidan för nya kunder behöver dem utan inloggning. */
+create or replace function studio_info() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce((select data from records where kind = 'setting' and id = 'studios' and not del), '{}'::jsonb)
+$$;
+
 -- Anonyma får bara läsa vad en inbjudan gäller. Allt annat kräver inloggning.
 revoke all on function invite_info(text) from public, anon;
 grant execute on function invite_info(text) to anon, authenticated;
+revoke all on function studio_info() from public, anon;
+grant execute on function studio_info() to anon, authenticated;
 revoke all on function free_slots(date, date) from public, anon;
 grant execute on function free_slots(date, date) to anon, authenticated;
 revoke all on function public_request(text,text,text,date,text,text,text,text,text) from public, anon;

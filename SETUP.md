@@ -334,6 +334,28 @@ avståndssystem och färre versaler.
 
 ---
 
+## I drift
+
+**Systemstatus** (Crew, för admins): servern, push-nycklarna, senaste notisutskicket, Dropbox och
+senaste säkerhetskopian på ett ställe. Gult = behöver göras, rött = något är fel.
+
+**Säkerhetskopia** — gratisplanen hos Supabase har ingen egen backup. Under Crew finns **Ladda ner
+säkerhetskopia**: en fil med alla poster och konton (inga lösenord). Appen påminner på IDAG när det
+gått mer än 7 dagar. Spara filen säkert — den innehåller kontaktuppgifter. **Läs tillbaka en kopia**
+lägger bara tillbaka det som saknas; inget som finns skrivs över.
+
+**Radera en person** (managern, under Hantera konton): kontot och inloggningen försvinner, namnet
+tas bort ur gamla pass, agenda och mål raderas. Passen och cirkeltimmarna ligger kvar för
+rapporteringen. Går inte att ångra. *Stäng av kontot* finns kvar för den som bara ska pausas.
+
+**Öppettider** för kunder och bokningssidan: Crew → Studios och öppettider.
+
+**Integritetstexten** (`…/#integritet`, länkad från inloggningen, kontoformuläret och
+bokningssidan) beskriver vad som sparas och hur man får det raderat. Fyll i en e-postadress för
+frågor överst i `index.html`: `const ORG = { name: 'Bando Collective', email: '' };` — annars
+hänvisar texten till en admin i appen. Alla som skapar konto eller skickar en förfrågan kryssar i
+att de läst den.
+
 ## Om något strular
 
 **"Invalid API key"** — fel nyckel i `CLOUD_CONFIG`. Det ska vara *anon public* från
@@ -380,7 +402,7 @@ edge-funktionen anropas (fel URL eller nyckel i 05-filen).
 python3 -m http.server 8000
 ```
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 290 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 304 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -388,12 +410,12 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, push och nya kunder i riktig Postgres, 159 testfall
+node db.test.mjs                  # behörigheter, notiskön, push, nya kunder och radering i riktig Postgres, 170 testfall
 node notify.test.mjs              # push-krypteringen mot RFC 8291:s egna testvärden + hela utskicket, 22 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
 
 … och sedan `http://localhost:8000/test/cloud.html` — appen mot emulatorn: inloggning,
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
-SMS-utkorgen, push, glömt lösenord, e-postbekräftelse och flytten från förhandsvisningen, 90 testfall. Starta om emulatorn före varje körning.
+SMS-utkorgen, push, säkerhetskopia, radering, glömt lösenord, e-postbekräftelse och flytten från förhandsvisningen, 99 testfall. Starta om emulatorn före varje körning.
 Se `test/README.md`.

@@ -488,6 +488,21 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .rankmove svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tbl td.hl{color:var(--pur3)}
 .tbl .l{text-align:left}
+ /* ark som öppnas från inloggningssidan (integritetstexten) måste ligga ovanpå den */
+#gate.on ~ .scrim{z-index:85} #gate.on ~ .sheet{z-index:86}
+.consent{display:flex;gap:10px;align-items:flex-start;margin-top:16px;font-size:13px;line-height:1.5;color:var(--mut);cursor:pointer}
+.consent input{margin-top:1px}
+.consent a,.gate-foot a{color:var(--pur3)}
+.privacy h3{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin:18px 0 6px}
+.privacy p{font-size:14px;line-height:1.65;color:var(--txt)}
+.statuscard{padding:6px var(--s4)}
+.srow-s{display:grid;grid-template-columns:12px 110px minmax(0,1fr);gap:10px;align-items:baseline;padding:9px 0;
+  border-bottom:1px solid var(--line3);font-size:13px}
+.srow-s:last-child{border-bottom:0}
+.srow-s b{font-weight:650}
+.srow-s span{color:var(--mut)}
+.srow-s i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.sdot-ok{background:var(--ok2)} .sdot-warn{background:var(--warn)} .sdot-err{background:var(--bad2)}
 .pushban{display:flex;align-items:center;gap:var(--s3);padding:12px 14px;margin:0 0 var(--s4);border-radius:var(--r);
   border:1px solid rgba(168,85,247,.38);background:rgba(168,85,247,.1);font-size:13px;line-height:1.5;color:var(--mut)}
 .pushban b{color:var(--txt)}
@@ -736,6 +751,7 @@ function blank(){
     artists:[], releases:[], beats:[], agenda:[], goals:[], plans:[], media:[], leads:[],
     dropbox:{appKey:'', sharedId:'', setupAt:0, up:0},   /* delas via synken; token per enhet */
     pushCfg:{publicKey:'', up:0},                          /* push-nyckelns publika del (den privata bor på servern) */
+    backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
     notify:{criticalSms:false, up:0},                      /* admins val: viktiga notiser även som SMS */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
     invites:[],                                         /* bara förhandsvisningen — annars i databasen */
@@ -773,6 +789,7 @@ function heal(s){
   s = Object.assign(b, s);
   s.dropbox = Object.assign(blank().dropbox, s.dropbox||{});
   s.pushCfg = Object.assign(blank().pushCfg, s.pushCfg||{});
+  s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
   s.notify = Object.assign(blank().notify, s.notify||{});
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
   if(!Array.isArray(s.invites)) s.invites = [];
@@ -990,6 +1007,8 @@ const myCirclesAsLeader = () => { const m = me();
    Utan uppgifterna körs förhandsvisningen: välj konto, allt på den här enheten. */
 /* ↓↓↓ FYLL I FRÅN SUPABASE (Project Settings → API). Se SETUP.md. ↓↓↓ */
 const CLOUD_CONFIG = { url: '', key: '' };      /* key = "anon public", aldrig service_role */
+/* Vem som ansvarar för personuppgifterna — visas i integritetstexten. */
+const ORG = { name: 'Bando Collective', email: '' };
 /* Tester och lokal utveckling kan peka om servern via localStorage — bara
    samma webbplats kan sätta den, så en länk utifrån kan inte styra om den. */
 const CLOUD = Object.assign({}, CLOUD_CONFIG, (()=>{
@@ -1160,7 +1179,8 @@ function renderGate(){
         ${gateErrBox()}
       </form>
       <button class="linkbtn" onclick="gateEmail=(document.getElementById('gE')||{}).value||gateEmail;gateMode='forgot';gateErr='';renderGate()">Glömt lösenordet?</button>
-      <div class="gate-foot">Nytt här? Du behöver en <b>inbjudningslänk</b> från oss.</div>
+      <div class="gate-foot">Nytt här? Du behöver en <b>inbjudningslänk</b> från oss. ·
+        <a href="#integritet" onclick="event.preventDefault();openPrivacy()">Integritet</a></div>
       <button class="btn ghost" style="margin-top:14px" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID UTAN KONTO</button>`;
     return;
   }
@@ -1275,6 +1295,8 @@ async function renderJoin(tag, b){
       <input id="jT" type="tel" autocomplete="tel" placeholder="070-123 45 67" required>` : `<input id="jT" type="hidden" value="">`}
       ${PREVIEW_LOGIN ? '' : `<label class="lbl" for="jP">VÄLJ LÖSENORD</label>
       <input id="jP" type="password" autocomplete="new-password" minlength="8" placeholder="Minst 8 tecken" required>`}
+      <label class="consent"><input type="checkbox" id="jC" required>
+        <span>Jag har läst <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur BANDOHQ hanterar mina uppgifter</a></span></label>
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKAPAR KONTOT…':'SKAPA KONTO'}</button>
       ${gateErrBox()}
     </form>
@@ -1291,7 +1313,9 @@ function doJoin(){
   const f = {token:joinToken, name:document.getElementById('jN').value, email:document.getElementById('jE').value,
     phone:document.getElementById('jT').value, password:(document.getElementById('jP')||{}).value||''};
   gateEmail = f.email.trim();
+  const agreed = (document.getElementById('jC')||{}).checked;
   return gateRun(async ()=>{
+    if(!agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
     let r;
     try{ r = await joinWithInvite(f); }
     catch(e){
@@ -1429,6 +1453,7 @@ async function cloudPush(){
   setting('rates', S.rates, S.rates.up);
   setting('dropbox', {appKey:S.dropbox.appKey||'', sharedId:S.dropbox.sharedId||'', setupAt:S.dropbox.setupAt||0}, S.dropbox.up);
   setting('push', {publicKey:S.pushCfg.publicKey||''}, S.pushCfg.up);
+  setting('backup', {at:S.backupCfg.at||0, by:S.backupCfg.by||''}, S.backupCfg.up);
   setting('notify', {criticalSms:!!S.notify.criticalSms}, S.notify.up);
   for(let i=0; i<rows.length; i+=200) await sbRpc('push_records', {rows: rows.slice(i, i+200)});
   if(can('manageCrew')){
@@ -1450,6 +1475,7 @@ function applyRecord(r){
     if(r.id==='rates'   && up > (S.rates.up||0))   S.rates = Object.assign({}, r.data, {up});
     if(r.id==='dropbox' && up > (S.dropbox.up||0)) S.dropbox = Object.assign({}, S.dropbox, r.data, {up});
     if(r.id==='push'    && up > (S.pushCfg.up||0)) S.pushCfg = Object.assign({}, S.pushCfg, r.data, {up});
+    if(r.id==='backup'  && up > (S.backupCfg.up||0)) S.backupCfg = Object.assign({}, S.backupCfg, r.data, {up});
     if(r.id==='notify'  && up > (S.notify.up||0))  S.notify  = Object.assign({}, S.notify, r.data, {up});
     return;
   }
@@ -1470,7 +1496,10 @@ async function cloudPull(){
     if(rows.length < LIM) break;
     from = +rows[rows.length-1].ts;
   }
-  ((await sb('/members?select=*'))||[]).forEach(m=>upsertAcc(memberToAcc(m)));
+  const mem = (await sb('/members?select=*')) || [];
+  const ids = new Set(mem.map(m=>m.id));
+  S.accounts = S.accounts.filter(a=>ids.has(a.id));       /* raderade konton försvinner här också */
+  mem.forEach(m=>upsertAcc(memberToAcc(m)));
   S.cloud.pulledTs = max; save();
 }
 
@@ -3385,6 +3414,7 @@ function vToday(){
   return `
     <div class="h1">${DAY2[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}</div>
     <div class="sub">Vecka ${weekNo(d)} · ${todays.length} pass idag · ${hh(wkH)} h bokade i veckan</div>
+    ${backupBanner()}
     ${inboxCard()}
     <div class="stagger live-pair">
       ${['A','B'].map((s,i)=>liveCard(s,i)).join('')}
@@ -3636,11 +3666,15 @@ function vTeam(){
         <div class="bar"><i style="width:${p}%;background:${SC[s]};box-shadow:0 0 12px ${SC[s]}"></i></div></div>`;
     }).join('')}
     ${adm ? `
+      <div class="eyebrow">SYSTEMSTATUS<span class="ln"></span></div>
+      ${statusCard()}
+      <div class="eyebrow">SÄKERHETSKOPIA<span class="ln"></span></div>
+      ${backupCard()}
       <div class="eyebrow">SMS-NOTISER<span class="ln"></span></div>
       ${smsCard()}
       <div class="eyebrow">ADMIN<span class="ln"></span></div>
       <button class="btn ghost" onclick="openCrewAdmin()">HANTERA KONTON</button>
-      <button class="btn ghost" style="margin-top:9px" onclick="openStudios()">BYT NAMN PÅ STUDIOS</button>
+      <button class="btn ghost" style="margin-top:9px" onclick="openStudios()">STUDIOS OCH ÖPPETTIDER</button>
       <button class="btn ghost" style="margin-top:9px" onclick="openRates()">PRISLISTA</button>`
     : `<div class="note">Admins (${crew().filter(c=>isAdminRole(c.r)).map(c=>esc(c.n)).join(', ')}) sköter konton, studionamn och priser.</div>`}
   `;
@@ -3804,6 +3838,168 @@ async function makeVapid(again){
   const priv = (await crypto.subtle.exportKey('jwk', kp.privateKey)).d;
   S.pushCfg = {publicKey:pub, up:Date.now()}; save(); sync(true);
   vapidMade = {pub, priv}; render();
+}
+
+/* ---------- INTEGRITET ----------
+   Kort och begriplig: vad som sparas, varför, vem som ser det, var det ligger,
+   hur länge och hur man får det raderat. Nås utan inloggning (#integritet). */
+function openPrivacy(){
+  const contact = ORG.email ? `<a href="mailto:${esc(ORG.email)}">${esc(ORG.email)}</a>` : 'en admin i appen (eller AZ)';
+  openSheet(`${X}<h2>Dina uppgifter i BANDOHQ</h2>
+    <div class="sub">${esc(ORG.name)} ansvarar för uppgifterna. Frågor och radering: ${contact}.</div>
+    <div class="privacy">
+      <h3>Vad vi sparar</h3>
+      <p>Namn, e-post, mobilnummer och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
+        uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Nya kunder: det som fylls i på
+        bokningssidan. <b>Vi sparar inte personnummer.</b></p>
+      <h3>Varför</h3>
+      <p>För att boka studion, driva studiecirklarna (timmarna rapporteras till studieförbundet), svara på
+        bokningsförfrågningar och skicka påminnelser. Påminnelserna är en del av tjänsten och går därför inte att stänga av.</p>
+      <h3>Vem ser vad</h3>
+      <p>Crewet och admins ser schemat och kontona. En cirkelledare ser sina deltagares namn, telefon och e-post.
+        Deltagare ser bara sin ledares namn. Kunder ser bara sina egna bokningar och lediga tider.
+        Mål och personliga planer ser bara du och managern.</p>
+      <h3>Var det ligger</h3>
+      <p>Konton och data hos Supabase (servrar i Stockholm). Filer i Bando Collectives Dropbox.
+        SMS skickas via 46elks och mejl via Resend. Notiser via Apple och Google — innehållet är krypterat
+        hela vägen till din telefon.</p>
+      <h3>Hur länge</h3>
+      <p>Så länge du är med. När du slutar, eller ber om det, raderas ditt konto. Timmar i studiecirklar kan behöva
+        sparas för rapporteringen — då tas ditt namn bort från dem.</p>
+      <h3>Dina rättigheter</h3>
+      <p>Du får veta vad vi har om dig, rätta det, och be oss radera det. Hör av dig till ${contact}.</p>
+    </div>
+    <button class="btn ghost" style="margin-top:18px" onclick="closeSheet()">STÄNG</button>`);
+}
+
+/* ---------- SÄKERHETSKOPIA ----------
+   Gratisplanen hos Supabase har ingen backup — därför en knapp. Filen innehåller
+   allt managern/admin får läsa och går att läsa tillbaka. Inga lösenord. */
+const BACKUP_DAYS = 7;
+const backupDue = () => !PREVIEW_LOGIN && can('manageCrew') && Date.now() - (S.backupCfg.at||0) > BACKUP_DAYS*864e5;
+async function backupData(){
+  if(PREVIEW_LOGIN) return {app:'BANDOHQ', v:1, mode:'preview', at:new Date().toISOString(), payload:fullPayload()};
+  const records = []; let from = -1;
+  for(let page=0; page<200; page++){
+    const rows = (await sb('/records?select=kind,id,data,up,del,ts&ts=gt.' + from + '&order=ts.asc&limit=1000')) || [];
+    records.push(...rows);
+    if(rows.length < 1000) break;
+    from = +rows[rows.length-1].ts;
+  }
+  const get = async path => { try{ return (await sb(path)) || []; }catch(_){ return []; } };
+  return {app:'BANDOHQ', v:1, mode:'cloud', at:new Date().toISOString(), by:(me()||{}).n||'',
+    records, members:await get('/members?select=*'), invites:await get('/invites?select=*'), leads:await get('/leads?select=*')};
+}
+async function downloadBackup(){
+  if(!can('manageCrew')) return;
+  try{
+    const data = await backupData();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], {type:'application/json'}));
+    const el = document.createElement('a'); el.href = url; el.download = `bandohq-backup-${iso(new Date())}.json`;
+    document.body.appendChild(el); el.click(); el.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    S.backupCfg = {at:Date.now(), by:(me()||{}).n||'', up:Date.now()}; save(); sync(true); render();
+    toast(`Säkerhetskopia sparad · ${data.records ? data.records.length + ' poster' : 'förhandsläget'}`);
+    return data;
+  }catch(e){ toast('Säkerhetskopian misslyckades: ' + e.message); }
+}
+/* Läs tillbaka: bara det som saknas eller är nyare än serverns kommer in. */
+async function restoreBackup(file){
+  if(!can('manageCrew') || !file) return;
+  let d; try{ d = JSON.parse(await file.text()); }catch(_){ return toast('Filen är inte en säkerhetskopia från BANDOHQ'); }
+  if(d.app!=='BANDOHQ') return toast('Filen är inte en säkerhetskopia från BANDOHQ');
+  if(!confirm(`Läsa tillbaka säkerhetskopian från ${String(d.at).slice(0,10)}?\n\nDet som finns nu skrivs inte över — bara det som saknas, eller är äldre här än i filen, kommer tillbaka.`)) return;
+  try{
+    if(PREVIEW_LOGIN || d.mode==='preview'){ if(d.payload) mergeData(d.payload); else (d.records||[]).forEach(applyRecord); save(); }
+    else {
+      const rows = (d.records||[]).map(r=>({kind:r.kind, id:r.id, data:r.data, up:+r.up||0, del:!!r.del}));
+      for(let i=0; i<rows.length; i+=200) await sbRpc('push_records', {rows:rows.slice(i, i+200)});
+      const acc = (d.members||[]).filter(m=>can('grantManager') || m.role!=='manager')
+        .map(m=>({id:m.id, role:m.role, name:m.name, email:m.email, phone:m.phone, color:m.color, glow:m.glow,
+          team:m.team||null, ig:m.ig||null, producer:m.producer||null, active:m.active!==false, up:+m.up||0}));
+      if(acc.length) await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify(acc)});
+      S.cloud.pulledTs = 0; await sync(true);
+    }
+    render(); toast('Säkerhetskopian är tillbakaläst');
+  }catch(e){ toast('Gick inte: ' + e.message); }
+}
+function backupCard(){
+  const at = S.backupCfg.at;
+  return `<div class="card">
+    <div class="row"><div class="grow"><div class="studio-name">SÄKERHETSKOPIA</div>
+      <div class="tiny ${backupDue()?'':'muted'}" style="margin-top:6px;${backupDue()?'color:var(--warn)':''}">${at
+        ? 'Senast ' + new Date(at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'}) + (S.backupCfg.by?' av '+esc(S.backupCfg.by):'')
+        : 'Ingen säkerhetskopia än'}</div></div></div>
+    <button class="btn ${backupDue()?'':'ghost'} slim" style="margin-top:12px" onclick="downloadBackup()">LADDA NER SÄKERHETSKOPIA</button>
+    <button class="btn ghost slim" style="margin-top:8px" onclick="document.getElementById('restorepick').click()">LÄS TILLBAKA EN KOPIA</button>
+    <input type="file" id="restorepick" accept=".json,application/json" style="display:none" onchange="restoreBackup(this.files[0]);this.value=''">
+    <div class="tiny muted" style="margin-top:10px">En gång i veckan räcker. Spara filen på ett säkert ställe — den innehåller kontaktuppgifter.</div></div>`;
+}
+function backupBanner(){
+  if(!backupDue()) return '';
+  const at = S.backupCfg.at, days = at ? Math.floor((Date.now()-at)/864e5) : 0;
+  return `<div class="pushban denied" role="status"><div class="grow"><b>${at ? `Det är ${days} dagar sedan senaste säkerhetskopian.` : 'Ingen säkerhetskopia är tagen än.'}</b>
+    Gratisplanen har ingen egen backup — ta en nu.</div>
+    <button class="btn slim" style="width:auto;flex:none;padding:10px 14px" onclick="downloadBackup()">LADDA NER</button></div>`;
+}
+
+/* ---------- SYSTEMSTATUS ----------
+   Allt som behöver fungera för att appen ska vara "på", på ett ställe. */
+let outboxPeek = null, outboxPeekAt = 0;
+function statusCard(){
+  const rows = [];
+  const R = (st, label, txt) => rows.push(`<div class="srow-s"><i class="sdot-${st}"></i><b>${label}</b><span>${txt}</span></div>`);
+  if(PREVIEW_LOGIN) R('warn', 'Servern', 'Förhandsläge — Supabase är inte inkopplat');
+  else R(syncState==='err' ? 'err' : 'ok', 'Servern', syncState==='err' ? esc(syncMsg) : 'Ansluten' + (syncMsg ? ' · ' + esc(syncMsg) : ''));
+  R(S.pushCfg.publicKey ? 'ok' : 'warn', 'Push-nycklar', S.pushCfg.publicKey ? 'Uppsatta' : 'Saknas — skapa dem under SMS-notiser');
+  if(!PREVIEW_LOGIN){
+    if(Date.now() - outboxPeekAt > 60000){ outboxPeekAt = Date.now();
+      sb('/sms_outbox?select=id,sent_at,channel,error,send_after&order=id.desc&limit=40').then(r=>{ outboxPeek = r||[]; if(view==='team') render(); }).catch(()=>{}); }
+    const o = outboxPeek;
+    if(!o) R('warn', 'Notisutskick', 'Läser…');
+    else {
+      const sent = o.filter(x=>x.sent_at).sort((a,b)=>String(b.sent_at).localeCompare(String(a.sent_at)))[0];
+      const stuck = o.filter(x=>!x.sent_at && Date.now() - Date.parse(x.send_after) > 10*60000);
+      const err = o.find(x=>x.error && x.error!=='skickas');
+      R(stuck.length ? 'err' : 'ok', 'Notisutskick', stuck.length
+        ? `${stuck.length} fastnar i kön${err ? ' — ' + esc(String(err.error).slice(0,80)) : ' — kolla edge-funktionen och db/05'}`
+        : sent ? 'Senast ' + new Date(sent.sent_at).toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) + ' (' + esc(sent.channel||'sms') + ')'
+        : 'Inget skickat än');
+    }
+  }
+  R(dbxReady() ? 'ok' : 'warn', 'Dropbox', dbxReady() ? 'Uppsatt och kopplat här' : S.dropbox.setupAt ? 'Uppsatt — inte kopplat på den här enheten' : 'Inte uppsatt');
+  R(S.backupCfg.at && !backupDue() ? 'ok' : 'warn', 'Säkerhetskopia', S.backupCfg.at ? new Date(S.backupCfg.at).toLocaleDateString('sv-SE') : 'Aldrig');
+  return `<div class="card statuscard">${rows.join('')}</div>`;
+}
+
+/* ---------- RADERA PERSON (managern, på begäran) ---------- */
+async function deletePerson(id){
+  const a = byId(id); if(!a || !can('grantManager') || a.id===(me()||{}).id) return;
+  if(!confirm(`Radera ${a.n}?\n\nKontot och inloggningen försvinner. Namnet tas bort från gamla pass, men passen och cirkeltimmarna ligger kvar. Det går inte att ångra.`)) return;
+  try{
+    if(PREVIEW_LOGIN) deleteLocally(a);
+    else { await sbRpc('delete_member', {p_id:id}); deleteLocally(a); await sync(true); }
+    closeSheet(); buildNav(); render(); toast(a.n + ' är raderad');
+  }catch(e){ toast(e.message); }
+}
+/* Samma regler som delete_member i databasen. */
+function deleteLocally(a){
+  const gone = 'Raderad person';
+  S.bookings.forEach(b=>{ let ch = false;
+    if(b.who===a.n){ b.who = gone; ch = true; }
+    if((b.with||[]).includes(a.n)){ b.with = b.with.filter(n=>n!==a.n); ch = true; }
+    if(ch) bump(b); });
+  S.circles.forEach(c=>{ let ch = false;
+    if(c.leader===a.n){ c.leader = ''; ch = true; }
+    if((c.members||[]).includes(a.id)){ c.members = c.members.filter(x=>x!==a.id); ch = true; }
+    if(ch) bump(c); });
+  S.agenda.forEach(x=>{ if(x.who===a.n) bump(Object.assign(x, {del:true})); });
+  S.goals.forEach(x=>{ if(x.owner===a.id) bump(Object.assign(x, {del:true})); });
+  S.plans.forEach(x=>{ if(x.id===a.id) bump(Object.assign(x, {del:true})); });
+  S.beats.forEach(x=>{ if(x.who===a.n) bump(Object.assign(x, {who:gone})); });
+  (S.media||[]).forEach(x=>{ if(x.by===a.id) bump(Object.assign(x, {by:''})); });
+  S.accounts = S.accounts.filter(x=>x.id!==a.id);
+  save();
 }
 
 /* ---------- LÄGG TILL PERSON ----------
@@ -4564,13 +4760,15 @@ function vLeader(){
 
 /* ---------- KUND ---------- */
 /* Lediga tider: studions öppettid minus det som är bokat, i block om minst en timme. */
-const OPEN_FROM = '10:00', OPEN_TO = '23:00';
+/* Öppettiderna ställs in under Crew → Studios (sparas med studionamnen). */
+const openFrom = () => /^\d\d:\d\d$/.test(S.studios.openFrom||'') ? S.studios.openFrom : '10:00';
+const openTo   = () => /^\d\d:\d\d$/.test(S.studios.openTo||'') ? S.studios.openTo : '23:00';
 const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };
 const toHm  = n => String(Math.floor(n/60)).padStart(2,'0') + ':' + String(n%60).padStart(2,'0');
 function freeBlocks(date, studio, busyList){
   const busy = (busyList || booked()).filter(b=>b.date===date && b.studio===studio)
     .map(b=>[toMin(b.start), toMin(b.end) <= toMin(b.start) ? 24*60 : toMin(b.end)]).sort((x,y)=>x[0]-y[0]);
-  let from = toMin(OPEN_FROM); const to = toMin(OPEN_TO), out = [];
+  let from = toMin(openFrom()); const to = toMin(openTo()) || 24*60, out = [];
   if(date === iso(new Date())){ const n = new Date(); from = Math.max(from, Math.ceil((n.getHours()*60 + n.getMinutes())/30)*30 + 30); }
   for(const [s0, e0] of busy){ if(s0 - from >= 60) out.push([from, Math.min(s0, to)]); from = Math.max(from, e0); }
   if(to - from >= 60) out.push([from, to]);
@@ -4720,6 +4918,11 @@ async function renderPublic(tag, b){
   const from = iso(new Date()), to = iso(addDays(new Date(), 30));
   if(!pubBusy){
     b.innerHTML = `<div class="skel" style="height:140px"></div>`;
+    if(!PREVIEW_LOGIN) try{
+      const r = await fetch(CLOUD.url + '/rest/v1/rpc/studio_info', {method:'POST',
+        headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'}, body:'{}'});
+      if(r.ok) S.studios = Object.assign({}, S.studios, await r.json());
+    }catch(_){}
     try{ pubBusy = PREVIEW_LOGIN ? booked().map(x=>({studio:x.studio, date:x.date, start:x.start, end:x.end}))
                                  : await (async()=>{ const r = await fetch(CLOUD.url + '/rest/v1/rpc/free_slots', {method:'POST',
                                      headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'},
@@ -4748,6 +4951,8 @@ async function renderPublic(tag, b){
       <label class="lbl" for="puX">VAD SKA DU GÖRA? <span class="muted">(valfritt)</span></label>
       <textarea id="puX" maxlength="300" placeholder="Inspelning, mix, hur många ni är…"></textarea>
       <input id="puH" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px" aria-hidden="true">
+      <label class="consent"><input type="checkbox" id="puC" required>
+        <span>Jag har läst <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur mina uppgifter hanteras</a></span></label>
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKICKAR…':'SKICKA FÖRFRÅGAN'}</button>
       ${gateErrBox()}</form>` : ''}
     <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
@@ -4755,7 +4960,9 @@ async function renderPublic(tag, b){
 function sendPublic(){
   const d = pubDraft, v = id => document.getElementById(id).value.trim();
   const f = {name:v('puN'), phone:v('puP'), email:v('puM'), msg:v('puX'), hp:v('puH'), start:v('puS'), end:v('puE')};
+  const agreed = (document.getElementById('puC')||{}).checked;
   return gateRun(async ()=>{
+    if(!agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
     if(!f.start || !f.end || toMin(f.end) <= toMin(f.start)) throw new Error('Sluttiden måste vara efter starttiden');
     if(toMin(f.start) < toMin(d.block) || toMin(f.end) > toMin(d.bEnd)) throw new Error(`Välj en tid mellan ${d.block} och ${d.bEnd}`);
     if(!normPhone(f.phone)) throw new Error('Fyll i ett mobilnummer — svaret kommer som SMS');
@@ -4960,6 +5167,7 @@ function smsNote(){
   return `<div class="kv"><span>NOTISER</span><b>${st.on ? 'Push på den här enheten' : ph ? 'SMS till ' + esc(ph) : '<span style="color:var(--warn)">Varken push eller nummer</span>'}</b></div>
     ${pushCard()}`;
 }
+const privacyLink = () => `<button class="linkbtn" style="margin-top:14px" onclick="openPrivacy()">Hur BANDOHQ hanterar dina uppgifter</button>`;
 function accountCard(){
   if(PREVIEW_LOGIN) return `${smsNote()}<button class="btn ghost" onclick="signOut()">BYT KONTO</button>
     <div class="note" style="margin-top:10px"><b>Förhandsvisning.</b> Servern är inte inkopplad än, så man
@@ -4968,7 +5176,7 @@ function accountCard(){
   return `${smsNote()}<button class="btn ghost" onclick="sync(false)">SYNKA NU</button>
     <button class="btn ghost" style="margin-top:9px" onclick="signOut()">LOGGA UT</button>
     <div class="note" style="margin-top:10px">Du är inloggad med <b>${esc(S.session.email||'')}</b>.
-      Vad du ser styrs av din roll, och gränsen hålls av servern — inte av appen.</div>`;
+      Vad du ser styrs av din roll, och gränsen hålls av servern — inte av appen.</div>${privacyLink()}`;
 }
 function dropboxCard(){
   const mgr = can('manageDropbox');
@@ -5097,6 +5305,7 @@ function openAccount(id){
 
     <button class="btn" style="margin-top:22px" onclick="saveAccount('${a?a.id:''}')">SPARA</button>
     ${a && a.id!==(me()||{}).id ? `
+      ${can('grantManager') ? `<button class="btn danger" style="margin-top:9px" onclick="deletePerson('${a.id}')">RADERA PERSON</button>` : ''}
       <button class="btn ghost" style="margin-top:9px" ${a.r==='manager'&&!can('grantManager')?'disabled':''} onclick="toggleActive('${a.id}')">
         ${a.active===false?'AKTIVERA IGEN':'STÄNG AV KONTOT'}</button>
       `:''}`);
@@ -5262,11 +5471,17 @@ function openStudios(){
   openSheet(`${X}<h2>Studios</h2><div class="sub">Ge era rum riktiga namn.</div>
     <label class="lbl">STUDIO 1</label><input id="sA" value="${esc(S.studios.A)}" maxlength="18">
     <label class="lbl">STUDIO 2</label><input id="sB" value="${esc(S.studios.B)}" maxlength="18">
+    <label class="lbl">ÖPPET FÖR KUNDER</label>
+    <div class="two"><input type="time" id="sO1" value="${openFrom()}" step="1800"><input type="time" id="sO2" value="${openTo()}" step="1800"></div>
+    <div class="note">Styr vilka lediga tider kunder och nya kunder ser. Crewet kan boka när som helst.</div>
     <button class="btn" style="margin-top:22px" onclick="saveStudios()">SPARA</button>`);
 }
 function saveStudios(){
   S.studios.A = document.getElementById('sA').value.trim().toUpperCase() || 'STUDIO A';
   S.studios.B = document.getElementById('sB').value.trim().toUpperCase() || 'STUDIO B';
+  const o1 = document.getElementById('sO1').value, o2 = document.getElementById('sO2').value;
+  if(o1 && o2 && toMin(o2) > toMin(o1)){ S.studios.openFrom = o1; S.studios.openTo = o2; }
+  else if(o1 || o2) toast('Öppettiderna sparades inte — stängning måste vara efter öppning');
   S.studiosUp = Date.now();
   save(); closeSheet(); render(); toast('Studios uppdaterade'); sync(true);
 }
@@ -5938,6 +6153,7 @@ async function readLanding(){
     }catch(e){}
   }
   if(h==='#boka') gateMode = 'public';
+  if(h==='#integritet'){ clean(); setTimeout(openPrivacy, 300); }
   if(h.startsWith('#join=')){
     joinToken = decodeURIComponent(h.slice(6)).trim().toUpperCase();
     if(!/^[A-Z0-9-]{10,40}$/.test(joinToken)) joinToken = null;
