@@ -1,20 +1,20 @@
 # BANDOHQ — sätta upp
 
 Fyra saker görs en gång: lägga appen på en webbadress, skapa en Supabase-databas,
-skapa en Dropbox-app och koppla in SMS via 46elks. Räkna med en timme. Sedan lägger du
-till folk med namn och mobilnummer — de får en länk som SMS och väljer själva e-post och
-lösenord.
+skapa en Dropbox-app och koppla in mejlen via Resend. Räkna med en timme. Sedan lägger du
+till folk med namn och e-post — de får en inbjudan på mejlen, väljer själva användarnamn och
+lösenord och skriver in en kod från mejlet.
 
 | Var | Vad | Varför |
 |---|---|---|
 | **Supabase** | konton, inloggning, inbjudningar, schemat, cirklar, agenda, artister | alla roller måste kunna logga in på sin egen telefon och se sitt |
 | **Dropbox** | beats, bilder och film | stora filer, och Dropbox-appen på datorn synkar mappen av sig själv |
-| **Push + 46elks** | notiser | påminnelser, förfrågningar, svar, agendaändringar och timmar — gratis som push, SMS som reserv |
+| **Resend + push** | notiser | bokningsbekräftelser, förfrågningar, svar och inbjudningar som mejl; påminnelser, agenda och timmar som push (gratis), annars mejl |
 
 > **Förhandsvisning tills steg 2 är klart.** Så länge Supabase-uppgifterna är tomma i
 > `index.html` visar inloggningssidan en kontoväljare märkt *Förhandsvisning*, och allt
 > sparas bara i den webbläsaren. Så fort uppgifterna är ifyllda försvinner väljaren och det
-> blir e-post och lösenord. Det finns ingen separat flagga att komma ihåg.
+> blir användarnamn (eller e-post) och lösenord. Det finns ingen separat flagga att komma ihåg.
 
 ---
 
@@ -80,7 +80,7 @@ hela innehållet och tryck **Run**:
 1. `db/01-schema.sql` — tabellerna
 2. `db/02-rls.sql` — vem som får läsa och skriva vad
 3. `db/03-funktioner.sql` — inbjudningar, förfrågningar, nya kunder, godkännanden, timmar
-4. `db/04-sms.sql` — vilka SMS som ska skickas och när (själva utskicket är steg 5)
+4. `db/04-notiser.sql` — vilka notiser och mejl som ska skickas och när (själva utskicket är steg 5)
 
 Alla fyra ska svara *Success*. Filerna går att köra om utan att något försvinner — **har du
 redan kört en äldre version räcker det att köra alla fyra igen**, i samma ordning.
@@ -95,8 +95,10 @@ redan kört en äldre version räcker det att köra alla fyra igen**, i samma or
   ```
 
 **Authentication → Sign In / Providers → Email** ska vara på (det är det från början).
-*Confirm email* kan vara på — appen klarar det: den som går med får ett mejl, trycker på
-länken och är inne med rätt roll, även om mejlet öppnas på en annan telefon.
+*Confirm email* ska vara på: den som går med får en **sexsiffrig kod** på mejlen och skriver in
+den i appen — sedan är hen inne med rätt roll. Mallen **Authentication → Emails → Confirm signup**
+måste innehålla `{{ .Token }}` (koden) i stället för länken; lanseringsverktyget lägger in en svensk
+mall. Kommer man in på en annan telefon innan koden är inskriven skickar appen en ny kod.
 
 **Mejlen måste gå via en egen avsändare.** Supabases inbyggda mejl skickar bara till projektets
 egna medlemmar (max 2 i timmen) och är inte gjort för drift. Använd **Resend** (gratis upp till
@@ -113,8 +115,8 @@ Inbjudningar skapas av en manager, så det första kontot läggs in för hand.
 2. **SQL Editor** — byt e-posten och kör:
 
    ```sql
-   insert into members (id, user_id, role, name, email)
-   select 'az', id, 'manager', 'AZ', email from auth.users where email = 'din@epost.se';
+   insert into members (id, user_id, role, name, email, username)
+   select 'az', id, 'manager', 'AZ', email, 'az' from auth.users where email = 'din@epost.se';
    ```
 
 ### 2e · Koppla appen till databasen
@@ -198,15 +200,21 @@ spelas direkt i appen.
 
 ## Steg 4 · Lägg till alla
 
-**Crew → Lägg till person.** Namn, mobilnummer och roll → **Lägg till och skicka SMS**.
-Personen får en länk som SMS, väljer själv e-post och lösenord, och är inne med rätt roll.
-Ingen behöver skriva in någon annans e-post.
+**Crew → Lägg till person.** Namn, e-post och roll → **Lägg till och skicka inbjudan**.
+Personen får ett mejl med en länk, väljer själv användarnamn och lösenord, skriver in koden från
+mejlet och är inne med rätt roll.
+
+**Crew → Inbjudningar** listar alla som finns i appen men inte har loggat in (crewet från början
+ligger redan där). Tryck **Bjud in**, fyll i e-posten och välj vad personen ska bjudas in som —
+inloggningen kopplas till det konto som redan finns, så namnet, passen och färgen följer med.
+Har flera redan en e-post: **Skicka till alla med e-post**. **Igen** skickar en ny länk och
+stänger den gamla.
 
 | Vem | Roll |
 |---|---|
 | **Costa**, **Nabbe** | Admin — sköter konton, cirklar, schemat och artister. Leder cirklar. |
 | **Moez** | Kamerateam (team: *Moez*) |
-| **D2L** (två personer) | Kamerateam, team: **D2L** — lägg till båda; de krediteras som D2L i galleriet |
+| **D2L** (två personer) | Kamerateam, team: **D2L** — ligger som *D2L 1* och *D2L 2*; döp om dem under Crew → Hantera konton |
 | Producenter | Producent |
 | Cirkelledare som inte är producent | Cirkelledare · välj cirkel |
 | Kund som hyr studio | Kund · välj kundens producent |
@@ -217,8 +225,8 @@ som gått med och kan stänga en länk.
 
 **Nya kunder** behöver ingen inbjudan. Lägg länken `https://bandohq.se/#boka`
 i Instagram-bion: där ser de lediga tider och skickar en förfrågan. Den hamnar under
-**Väntar på svar** på IDAG. Godkänn → tiden bokas och kunden får ett SMS med en länk för att
-skapa sitt konto.
+**Väntar på svar** på IDAG. Kunden får ett kvitto direkt. Godkänn → tiden bokas och kunden får
+en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.
 
 **Artister** (de som inte ska logga in) läggs in under **Mer → Artister** — eller importeras
 från ett kalkylark (se nedan).
@@ -228,66 +236,69 @@ till manager eller ändra ditt konto.
 
 ---
 
-## Steg 5 · Notiser: push (gratis) och SMS (reserv)
+## Steg 5 · Notiser: mejl och push
 
 Notiserna går **inte** att stänga av. De skickas vid:
 
-| Händelse | Vem får det |
-|---|---|
-| Påminnelse dagen innan (skickas kl 17) | den som bokat, de som är med, cirkelns ledare och deltagare, kunden |
-| Ny bokningsförfrågan | cirkelledaren, eller kundens producent + admins; nya kunder → admins |
-| Svar på förfrågan | den som frågade |
-| Agendan ändrad | den det gäller (samlas: högst en per halvtimme) — gemensamma uppgifter till hela teamet |
-| Timmar som tar slut (400, 440, 470, 480 h) | deltagaren, och ledaren vid 480 |
+| Händelse | Vem får det | Hur |
+|---|---|---|
+| Ett pass bokas (orderbekräftelse) | alla i sessionen: den det är bokat för, medproducenter, cirkelns deltagare, kunden | mejl (+ push) |
+| Ny bokningsförfrågan | cirkelledaren, eller kundens producent + admins; nya kunder → admins | mejl (+ push) |
+| Kvitto på förfrågan | kunden (med konto eller via `#boka`) | mejl |
+| Svar på förfrågan | den som frågade — ja är en orderbekräftelse, nej ett eget mejl | mejl (+ push) |
+| Inbjudan | den som bjuds in | mejl |
+| Påminnelse dagen innan (kl 17) | den som bokat, de som är med, cirkelns ledare och deltagare, kunden | push, annars mejl |
+| Agendan ändrad | den det gäller (samlas: högst en per halvtimme) — gemensamma uppgifter till hela teamet | push, annars mejl |
+| Timmar som tar slut (400, 440, 470, 480 h) | deltagaren, och ledaren vid 480 | push, annars mejl |
 
-**Så väljs vägen:** har personen slagit på notiser i appen går det som **push** — gratis, som en
-vanlig app-notis. Har hen inte det (eller stängt av dem i telefonen) går det som **SMS** via 46elks,
-ungefär 0,35–0,50 kr styck. Nya kunder utan konto får alltid SMS. Appen påminner var och en
-tills push är påslaget, och admins ser under **Crew → SMS-notiser** vilka som fortfarande får SMS.
-Inget skickas mellan 21 och 08.
+Bokas flera pass på en gång (t.ex. *upprepa varje vecka*) blir det **ett** mejl per person med
+alla passen. Pass bakåt i tiden ger ingen bekräftelse. Påminnelser, agenda och timmar skickas
+inte mellan 21 och 08; bekräftelser och svar går direkt. Admins ser under **Crew → Notiser**
+vad som gått iväg och vem som får påminnelserna som mejl (= har inte slagit på push).
 
-Vill ni vara extra säkra kan en admin kryssa i **Påminnelser och timmar även som SMS** — då går de
-två viktigaste som både push och SMS.
+**Resends gratisplan** räcker långt: 100 mejl om dagen och 3 000 i månaden, inloggningskoderna
+inräknade. Kommer ni i närheten syns det i Resend → *Usage*.
 
 ### 5a · Push-nycklar (i appen)
-Logga in som manager → **Crew → SMS-notiser → Skapa push-nycklar**. Två nycklar visas:
+Logga in som manager → **Crew → Notiser → Skapa push-nycklar**. Två nycklar visas:
 `VAPID_PUBLIC_KEY` och `VAPID_PRIVATE_KEY`. Kopiera båda till steg 5c — den privata visas bara
 den här gången. (Skapar du nya nycklar senare måste alla slå på notiserna igen.)
 
-### 5b · 46elks (för SMS-reserven)
-1. Skapa konto på [46elks.se](https://46elks.se) och fyll på saldo.
-2. **Account → API credentials**: kopiera *API username* och *API password*.
+### 5b · Resend (mejlen)
+Domänen `bandohq.se` är redan uppsatt hos Resend (steg 2c). Skapa en nyckel som **bara får skicka**:
+Resend → **API Keys → Create API Key**, *Sending access*, domän `bandohq.se`. Den används av
+edge-funktionen nedan — samma nyckel som SMTP-lösenordet i 2c går bra.
 
-Hoppar du över 46elks går bara push — den som saknar push får då inga notiser alls, och felet
-syns i `sms_outbox`.
+### 5c · Edge-funktionerna
+I Supabase: **Edge Functions → Deploy a new function → Via Editor**, två gånger:
+- `notify-send` — klistra in `supabase/functions/notify-send/index.ts` (skickar notiserna)
+- `auth-login` — klistra in `supabase/functions/auth-login/index.ts` (inloggning med användarnamn)
 
-### 5c · Edge-funktionen
-I Supabase: **Edge Functions → Deploy a new function → Via Editor**.
-- Namn: `notify-send`
-- Klistra in hela `supabase/functions/notify-send/index.ts` → **Deploy**
-- **Secrets** (Edge Functions → Secrets):
+Stäng av **Enforce JWT verification** för båda: `notify-send` skyddas av `CRON_SECRET`, och
+`auth-login` måste nås innan man är inloggad (den lämnar aldrig ut någon mejladress och spärrar
+ett användarnamn efter tio fel på en kvart).
 
-  | Namn | Värde |
-  |---|---|
-  | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | från 5a |
-  | `VAPID_SUBJECT` | `mailto:` + din e-post |
-  | `ELKS_USER`, `ELKS_PASS` | från 5b |
-  | `CRON_SECRET` | en lång slumpsträng — samma som i 5d |
+**Secrets** (Edge Functions → Secrets):
 
-  Stäng av **Enforce JWT verification** för funktionen: den skyddas av `CRON_SECRET` i stället
-  (Supabases nya API-nycklar är inte JWT).
-
-  Vill du testa SMS gratis först: lägg även `ELKS_DRYRUN` = `yes` (46elks låtsas skicka). Ta bort
-  den när det fungerar.
+| Namn | Värde |
+|---|---|
+| `RESEND_KEY` | nyckeln från 5b |
+| `MAIL_FROM` | `BANDOHQ <noreply@bandohq.se>` |
+| `MAIL_REPLY_TO` | dit svar på mejlen ska gå, t.ex. din egen adress |
+| `APP_URL` | `https://bandohq.se/` |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | från 5a |
+| `VAPID_SUBJECT` | `mailto:` + din e-post |
+| `CRON_SECRET` | en lång slumpsträng — samma som i 5d |
 
 ### 5d · Slå på utskicket
 1. **Database → Extensions**: slå på **pg_cron** och **pg_net**.
-2. Öppna `db/05-sms-utskick.sql`, byt de två värdena högst upp (projektets URL och samma
+2. Öppna `db/05-utskick.sql`, byt de två värdena högst upp (projektets URL och samma
    `CRON_SECRET` som funktionen har) och kör den i SQL Editor.
 
 Nu skickas utkorgen varje minut och påminnelserna varje kväll. Testa: profilen → **Slå på
-notiser** → **Skicka en testnotis**. Hela kedjan går att följa i **Table Editor → sms_outbox**
-(`channel` = push eller sms, `sent_at` = skickat, `error` = vad som gick fel).
+notiser** → **Skicka en testnotis**. Hela kedjan går att följa i **Table Editor → outbox**
+(`channel` = push, mail eller push+mail, `sent_at` = skickat, `error` = vad som gick fel) och i
+Resend → *Emails*.
 
 ---
 
@@ -299,7 +310,7 @@ notiser** → **Skicka en testnotis**. Hela kedjan går att följa i **Table Edi
 | **Admin** (Costa, Nabbe) | Konton, inbjudningar, nya kunder, cirklar, schemat, artister, priser, Dropbox. Inte statistiken eller andras mål. |
 | **Producent** | Hela schemat, agenda, beats, artister, galleriet, sina egna mål och siffror, och de cirklar hen leder |
 | **Kamerateam** (Moez, D2L) | Schemat, sin agenda och galleriet — laddar upp bilder och film |
-| **Cirkelledare** | Två saker: **boka pass** för sina cirklar (godkänna förfrågningar, markera genomförda) och **medlemmarna** med telefon och e-post |
+| **Cirkelledare** | Två saker: **boka pass** för sina cirklar (godkänna förfrågningar, markera genomförda) och **medlemmarna** med e-post (och telefon om den finns) |
 | **Deltagare** | Sin läroplan, sina timmar, och föreslå tider med sin ledare |
 | **Kund** | Lediga studiotider, förfrågningar och sina egna bokningar |
 
@@ -309,17 +320,30 @@ kontaktuppgifter, och mål och planer syns bara för ägaren och managern.
 
 ---
 
+## Det nya i v9
+
+**Mejl i stället för SMS.** Orderbekräftelse till alla i sessionen när ett pass bokas, mejl
+när en kund förfrågar en tid (och ett kvitto till kunden), svar och inbjudningar på mejlen.
+Påminnelser, agenda och timmar går som push och som mejl till den som saknar push. 46elks
+behövs inte längre.
+
+**Användarnamn.** Man loggar in med användarnamn eller e-post. Det väljs första gången, efter
+inbjudningslänken, tillsammans med lösenordet — och kontot bekräftas med en kod från mejlet.
+
+**Inbjudan till dem som redan finns.** Crew → Inbjudningar: fyll i e-post, välj roll, skicka.
+Inloggningen kopplas till kontot som redan finns.
+
 ## Det nya i v8
 
 **Admins och kamerateam** — se Rollerna ovan. Admin kan inte göra sig själv eller någon annan
 till manager; det stoppas i databasen, inte bara i appen.
 
-**Lägg till person** med namn och mobilnummer — länken går som SMS.
+**Lägg till person** — i v9 med e-post, och inbjudan går som mejl.
 
 **Kunder** ser lediga studiotider och skickar förfrågningar i stället för att boka direkt.
 **Nya kunder** bokar via `#boka`-länken utan konto och får inlogg när de godkänts.
 
-**Notiser** som inte går att stänga av (steg 5) — gratis som push till dem som slagit på det, annars som SMS.
+**Notiser** som inte går att stänga av (steg 5) — i v9 som mejl och push.
 
 **Galleri** för bilder och film från kamerateamet. Filerna ligger i `BANDOHQ/Media/<team>`
 i Dropbox. Alla får posta därifrån: *Dela / spara* skickar filen till telefonens delningsmeny
@@ -418,17 +442,23 @@ minut medan appen är öppen.
 ---
 
 **Ingen push kommer** — på iPhone: öppnas appen från hemskärmen? (I Safari går det inte.) Står
-`channel` = sms i `sms_outbox` hade personen ingen fungerande push — be hen trycka **Slå på
-notiser** i profilen igen. Står det fel om nycklar: `VAPID_PUBLIC_KEY` i Supabase måste vara
-exakt samma som den appen visar under Crew.
+`channel` = mail i `outbox` för en påminnelse hade personen ingen fungerande push — be hen trycka
+**Slå på notiser** i profilen igen. Står det fel om nycklar: `VAPID_PUBLIC_KEY` i Supabase måste
+vara exakt samma som den appen visar under Crew.
 
-**Inga SMS kommer** — titta i *Table Editor → sms_outbox*. Står det något i `error`: `401` = fel
-46elks-nycklar, `402`/`saldo` = fyll på hos 46elks. Är tabellen tom: kontrollera att personen har
-ett mobilnummer (Crew → personen). Ligger raderna kvar utan `sent_at` och utan fel: kör
+**Inga mejl kommer** — titta i *Table Editor → outbox*. Står det något i `error`: `401`/`403` =
+fel `RESEND_KEY`, *domain is not verified* = DNS-posterna hos Loopia (steg 2c). Är raden
+skickad (`sent_at`) men mejlet syns inte: Resend → *Emails* visar om det levererades eller
+studsade — och kolla skräpposten. Är tabellen tom: har personen en e-post (Crew → personen)?
+Ligger raderna kvar utan `sent_at` och utan fel: kör
 `select * from cron.job_run_details order by start_time desc limit 5;` — då syns om cron och
-edge-funktionen anropas (fel URL eller nyckel i 05-filen).
+edge-funktionen anropas (fel URL eller hemlighet i 05-filen).
 
-**SMS:et kommer på morgonen i stället för direkt** — det skickades efter kl 21. Så ska det vara.
+**Koden kommer inte** — den skickas av Supabase via Resend (steg 2c, SMTP). *Skicka en ny* i
+appen ger en ny kod efter en minut. Har personen redan ett konto med den adressen skickas ingen
+kod — logga in i stället.
+
+**Påminnelsen kom på morgonen i stället för direkt** — den köades efter kl 21. Så ska det vara.
 
 ## Testa själv
 
@@ -436,7 +466,7 @@ edge-funktionen anropas (fel URL eller nyckel i 05-filen).
 python3 -m http.server 8000
 ```
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 304 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 316 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -444,12 +474,14 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, push, nya kunder och radering i riktig Postgres, 170 testfall
-node notify.test.mjs              # push-krypteringen mot RFC 8291:s egna testvärden + hela utskicket, 28 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 203 testfall
+node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 47 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
 
 … och sedan `http://localhost:8000/test/cloud.html` — appen mot emulatorn: inloggning,
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
-SMS-utkorgen, push, säkerhetskopia, radering, glömt lösenord, e-postbekräftelse och flytten från förhandsvisningen, 99 testfall. Starta om emulatorn före varje körning.
+utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
+användarnamn, inbjudan till någon som redan finns och flytten från förhandsvisningen, 116 testfall.
+Starta om emulatorn före varje körning.
 Se `test/README.md`.

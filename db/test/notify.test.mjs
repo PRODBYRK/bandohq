@@ -1,8 +1,10 @@
-/* Testar edge-funktionen notify-send utan Supabase och utan nätverk:
+/* Testar edge-funktionerna notify-send och auth-login utan Supabase och utan nätverk:
    1. krypteringen mot RFC 8291:s egna testvärden
    2. VAPID-signaturen (RFC 8292) mot den publika nyckeln
    3. hela utskicket mot riktig Postgres (PGlite), med påhittade push-tjänster
-      och 46elks — enheterna dekrypterar det de får, som en telefon gör.
+      och Resend — enheterna dekrypterar det de får, som en telefon gör.
+   4. nycklar och skydd
+   5. inloggning med användarnamn (auth-login)
    Kör: node notify.test.mjs  (Node 22+, läser .ts direkt) */
 import { boot } from './harness.mjs';
 import { fileURLToPath } from 'url';
@@ -79,25 +81,28 @@ const pk = await crypto.subtle.importKey('raw', b64uDec(vpub), { name: 'ECDSA', 
 ok('signaturen (ES256) går att verifiera med den publika nyckeln', await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pk, b64uDec(m[3]), te.encode(m[1] + '.' + m[2])));
 
 /* ---------- 3. hela utskicket ---------- */
-head('utskicket: push först, SMS som reserv');
+head('utskicket: mejl för bekräftelser och förfrågningar, push först för påminnelser');
 const db = await boot();
 const q = async (s, p) => (await db.query(s, p)).rows;
-const SETOF = ['sms_claim', 'push_targets'];
+const SETOF = ['outbox_claim', 'push_targets'];
 const env = { SUPABASE_URL: 'https://proj.test', SUPABASE_SERVICE_ROLE_KEY: 'service', VAPID_PUBLIC_KEY: VAPID.publicKey,
-  VAPID_PRIVATE_KEY: VAPID.privateKey, VAPID_SUBJECT: VAPID.subject, ELKS_USER: 'u', ELKS_PASS: 'p' };
+  VAPID_PRIVATE_KEY: VAPID.privateKey, VAPID_SUBJECT: VAPID.subject, RESEND_KEY: 're_test_123',
+  MAIL_FROM: 'BANDOHQ <noreply@bandohq.se>', MAIL_REPLY_TO: 'svar@bando.se', APP_URL: 'https://bandohq.se/' };
 Object.assign(process.env, env);
-const got = { push: {}, sms: [] };
+const got = { push: {}, mail: [] };
 const devices = {};
+let mailDown = false;
+const rpcFetch = async (url, opt) => {
+  const fn = url.split('/rpc/')[1], a = JSON.parse(opt.body || '{}'), ks = Object.keys(a);
+  const vals = ks.map(k => a[k]);
+  const sql = SETOF.includes(fn) ? `select * from ${fn}(${ks.map((k, i) => `${k} => $${i + 1}`).join(',')})`
+                                 : `select ${fn}(${ks.map((k, i) => `${k} => $${i + 1}`).join(',')}) as v`;
+  const rows = await q(sql, vals);
+  return new Response(JSON.stringify(SETOF.includes(fn) ? rows : rows[0].v), { status: 200 });
+};
 globalThis.fetch = async (url, opt) => {
   url = String(url);
-  if (url.startsWith(env.SUPABASE_URL + '/rest/v1/rpc/')) {
-    const fn = url.split('/rpc/')[1], a = JSON.parse(opt.body || '{}'), ks = Object.keys(a);
-    const vals = ks.map(k => a[k]);
-    const sql = SETOF.includes(fn) ? `select * from ${fn}(${ks.map((k, i) => `${k} => $${i + 1}`).join(',')})`
-                                   : `select ${fn}(${ks.map((k, i) => `${k} => $${i + 1}`).join(',')}) as v`;
-    const rows = await q(sql, vals);
-    return new Response(JSON.stringify(SETOF.includes(fn) ? rows : rows[0].v), { status: 200 });
-  }
+  if (url.startsWith(env.SUPABASE_URL + '/rest/v1/rpc/')) return rpcFetch(url, opt);
   if (url.startsWith('https://push.test/')) {
     const id = url.split('/').pop(), d = devices[id];
     if (!d) return new Response('', { status: 410 });
@@ -106,57 +111,78 @@ globalThis.fetch = async (url, opt) => {
     (got.push[id] = got.push[id] || []).push(Object.assign(msg, { urgency: opt.headers.Urgency }));
     return new Response('', { status: 201 });
   }
-  if (url === 'https://api.46elks.com/a1/sms') {
-    const f = new URLSearchParams(opt.body.toString());
-    got.sms.push({ to: f.get('to'), message: f.get('message'), from: f.get('from') });
-    return new Response(JSON.stringify({ status: 'created', cost: 3500 }), { status: 200 });
+  if (url === 'https://api.resend.com/emails') {
+    if (mailDown) return new Response('{"message":"Resend nere"}', { status: 500 });
+    got.mail.push(Object.assign(JSON.parse(opt.body), { headers: opt.headers }));
+    return new Response(JSON.stringify({ id: 'mail-' + got.mail.length }), { status: 200 });
   }
   throw new Error('oväntat anrop ' + url);
 };
-const M = (id, name, phone) => q(`insert into members(id,role,name,phone) values($1,'producer',$2,$3)`, [id, name, phone]);
-await M('ada', 'Ada', '+46701111111'); await M('bo', 'Bo', '+46702222222'); await M('cy', 'Cy', null); await M('di', 'Di', '+46704444444');
+const M = (id, name, email) => q(`insert into members(id,role,name,email) values($1,'producer',$2,$3)`, [id, name, email]);
+await M('ada', 'Ada', 'ada@b.se'); await M('bo', 'Bo', 'bo@b.se'); await M('cy', 'Cy', null); await M('di', 'Di', 'di@b.se');
 const devA = await newDevice(), devA2 = await newDevice(); devices.ada1 = devA; devices.ada2 = devA2;
 const sub = (mid, ep, d) => q(`insert into push_subs(member_id,endpoint,p256dh,auth) values($1,$2,$3,$4)`, [mid, 'https://push.test/' + ep, d.p256dh, d.authB]);
 await sub('ada', 'ada1', devA); await sub('ada', 'ada2', devA2);
 await sub('cy', 'cy-gammal', await newDevice());                 /* finns inte längre hos push-tjänsten → 410 */
 const now = `now() - interval '1 minute'`;
-const Q = (mid, body, kind, key) => q(`insert into sms_outbox(member_id,phone,body,kind,dedupe_key,send_after)
-  values($1, coalesce((select phone from members where id=$1),''), $2, $3, $4, ${now})`, [mid, body, kind, key]);
-await Q('ada', 'Ny förfrågan från Bo', 'request', 'k1');
-await Q('bo', 'Påminnelse: imorgon 18-21', 'reminder', 'k2');
-await Q('cy', 'Agendan har uppdaterats', 'agenda', 'k3');
-await q(`insert into sms_outbox(member_id,phone,body,kind,dedupe_key,send_after) values(null,'+46735550000','Din tid är bokad','lead','k4',${now})`);
+const Q = (mid, subject, body, kind, key, email, link) => q(`insert into outbox(member_id,email,subject,body,kind,dedupe_key,send_after,link)
+  values($1, coalesce($6, (select email from members where id=$1)), $2, $3, $4, $5, ${now}, $7)`, [mid, subject, body, kind, key, email || null, link || null]);
+await Q('ada', 'Ny bokningsförfrågan från Bo', 'Ny förfrågan från Bo', 'request', 'k1');
+await Q('bo', 'Påminnelse: imorgon 18-21', 'Påminnelse: imorgon 18-21', 'reminder', 'k2');
+await Q('cy', 'Agendan har uppdaterats', 'Agendan har uppdaterats', 'agenda', 'k3');
+await Q(null, 'Bokningsbekräftelse: tor 9 okt', 'Hej Kim! Din tid är bokad.', 'lead-ok', 'k4', 'kund@example.se', 'https://bandohq.se/#join=ABCD-123456');
+await Q('ada', 'Påminnelse: imorgon 10-12', 'Påminnelse: imorgon 10-12', 'reminder', 'k5');
+await Q('di', 'Bokningsbekräftelse', 'Hej Di! Det här är bokat:\n\ntor 9 okt 18:00-22:00 · Studio A · <script>alert(1)</script>', 'booked', 'k6', null, 'javascript:alert(1)');
 let res = await W.handle();
-const row = async k => (await q(`select * from sms_outbox where dedupe_key=$1`, [k]))[0];
-ok('Ada har push: notisen går som push till BÅDA hennes enheter', (got.push.ada1 || []).length === 1 && (got.push.ada2 || []).length === 1);
+const row = async k => (await q(`select * from outbox where dedupe_key=$1`, [k]))[0];
+const mailTo = a => got.mail.filter(m => m.to[0] === a);
+const req1 = id => (got.push[id] || []).filter(p => p.body === 'Ny förfrågan från Bo').length;
+ok('förfrågan till Ada: push till BÅDA enheterna OCH ett mejl', req1('ada1') === 1 && req1('ada2') === 1
+   && mailTo('ada@b.se').length === 1 && (await row('k1')).channel === 'push+mail');
 ok('enheten får rubrik, text och brådska', got.push.ada1[0].title === 'Ny förfrågan' && got.push.ada1[0].body === 'Ny förfrågan från Bo' && got.push.ada1[0].urgency === 'high', got.push.ada1[0]);
-ok('och inget SMS till Ada', !got.sms.some(s => s.to === '+46701111111') && (await row('k1')).channel === 'push');
-ok('Bo har inte push: notisen går som SMS', got.sms.some(s => s.to === '+46702222222' && /imorgon/.test(s.message)) && (await row('k2')).channel === 'sms');
-ok('avsändaren är BANDOHQ och kostnaden sparas', got.sms[0].from === 'BANDOHQ' && (await row('k2')).cost === 3500);
+ok('påminnelse till Ada (har push): bara push, inget mejl', (got.push.ada1 || []).some(p => /10-12/.test(p.body))
+   && !mailTo('ada@b.se').some(m => /10-12/.test(m.subject)) && (await row('k5')).channel === 'push');
+ok('påminnelse till Bo (ingen push): som mejl', mailTo('bo@b.se').some(m => m.subject === 'Påminnelse: imorgon 18-21') && (await row('k2')).channel === 'mail');
+const m1 = mailTo('ada@b.se')[0];
+ok('avsändare, svarsadress och ämne', m1.from === 'BANDOHQ <noreply@bandohq.se>' && m1.reply_to === 'svar@bando.se' && m1.subject === 'Ny bokningsförfrågan från Bo', m1);
+ok('Resend-nyckeln som Bearer, dedupe-nyckeln som Idempotency-Key', m1.headers.Authorization === 'Bearer re_test_123' && m1.headers['Idempotency-Key'] === 'k1', m1.headers);
+ok('mejlet har både HTML och textversion', /BANDO<span/.test(m1.html) && /Ny förfrågan från Bo/.test(m1.text));
+const m4 = mailTo('kund@example.se')[0];
+ok('ny kund utan konto: mejl med knappen "Skapa ditt konto" och länken', !!m4 && /Skapa ditt konto/.test(m4.html)
+   && m4.html.includes('href="https://bandohq.se/#join=ABCD-123456"') && m4.text.includes('https://bandohq.se/#join=ABCD-123456'), m4 && m4.html.slice(-400));
+const m6 = mailTo('di@b.se')[0];
+ok('text från användare escapas i HTML (ingen <script>)', !!m6 && !/<script>/.test(m6.html) && /&lt;script&gt;/.test(m6.html));
+ok('stycken och radbrytningar blir <p> och <br>', (m6.html.match(/<p style/g) || []).length >= 3);
+ok('en javascript:-länk byts mot appens adress', m6.html.includes('href="https://bandohq.se/"') && !/javascript:/.test(m6.html));
 const c3 = await row('k3');
-ok('Cy: enheten finns inte längre och inget nummer → fel, inget skickat', !c3.sent_at && /inget mobilnummer/.test(c3.error), c3.error);
+ok('Cy: enheten finns inte längre och ingen e-post → fel, inget skickat', !c3.sent_at && /ingen e-postadress/.test(c3.error), c3.error);
 ok('och den döda enheten städas bort', (await q(`select 1 from push_subs where member_id='cy'`)).length === 0);
-ok('ny kund (inget konto) får alltid SMS', got.sms.some(s => s.to === '+46735550000') && (await row('k4')).channel === 'sms');
-ok('summering från funktionen', res.claimed === 4 && res.push === 1 && res.sms === 2 && res.failed === 1, res);
+ok('summering från funktionen', res.claimed === 6 && res.mail === 4 && res.failed === 1, res);
 
-/* admin har valt "viktiga notiser även som SMS" */
-await q(`insert into records(kind,id,data,up) values('setting','notify','{"criticalSms":true}',1)`);
-got.sms = []; got.push = {};
-await Q('ada', 'Påminnelse: imorgon 10-12', 'reminder', 'k5');
-await Q('ada', 'Agendan: 2 nya', 'agenda', 'k6');
-await W.handle();
-ok('påminnelse går som push OCH SMS när admin valt det', (got.push.ada1 || []).some(p=>/10-12/.test(p.body)) && got.sms.some(s => s.to === '+46701111111') && (await row('k5')).channel === 'push+sms');
-ok('vanliga notiser går fortfarande bara som push', (await row('k6')).channel === 'push' && got.sms.length === 1);
-
-/* utan 46elks: bara push, och den som saknar push får ett tydligt fel */
-delete process.env.ELKS_USER;
-got.sms = [];
-await Q('di', 'Svar på din förfrågan', 'answer', 'k7');
+/* Resend nere: mejlet görs om — men pushen skickas inte en gång till */
+head('när Resend är nere');
+got.mail = []; got.push = {}; mailDown = true;
+await Q('ada', 'Bokningsbekräftelse', 'Hej Ada! Bokat: fre 10 okt', 'booked', 'k7');
 await W.handle();
 const c7 = await row('k7');
-ok('utan 46elks skickas inget SMS, felet säger varför', got.sms.length === 0 && /SMS är inte inkopplat/.test(c7.error), c7.error);
+ok('mejlet misslyckas → raden ligger kvar osänd med felet', !c7.sent_at && /500/.test(c7.error) && c7.attempts === 1, c7);
+ok('pushen gick fram första gången', (got.push.ada1 || []).length === 1);
+mailDown = false; got.push = {};
+await q(`update outbox set send_after = now() - interval '1 minute' where dedupe_key = 'k7'`);
+await W.handle();
+const c7b = await row('k7');
+ok('nästa körning: mejlet går, och ingen andra push', !!c7b.sent_at && mailTo('ada@b.se').length === 1 && !(got.push.ada1 || []).length, c7b);
 const again = await W.handle();
-ok('nästa körning försöker bara om det som misslyckats (Cy, Di) — skickat skickas aldrig igen', again.claimed === 2 && again.push === 0, again);
+ok('skickat skickas aldrig igen — bara Cy försöks om', again.claimed === 1 && again.mail === 0, again);
+
+/* utan Resend-nyckel: tydligt fel */
+delete process.env.RESEND_KEY;
+await Q('di', 'Tiden gick tyvärr inte', 'Tyvärr gick tor 9 okt inte.', 'answer', 'k8');
+await W.handle();
+ok('utan RESEND_KEY skickas inget mejl, felet säger varför', /Mejl är inte inkopplat/.test((await row('k8')).error));
+process.env.RESEND_KEY = env.RESEND_KEY;
+ok('ALWAYS_MAIL innehåller bekräftelser, förfrågningar, svar och inbjudningar',
+   ['booked', 'request', 'received', 'answer', 'invite', 'lead-ok', 'lead-no'].every(k => W.ALWAYS_MAIL.includes(k)) && !W.ALWAYS_MAIL.includes('reminder'));
 
 /* ---------- 4. nycklar och skydd ---------- */
 head('nycklar och skydd');
@@ -177,6 +203,57 @@ ok('utan rätt hemlighet startar inget utskick', !W.authorized(req({})) && !W.au
 ok('med hemligheten från schemaläggningen går det', W.authorized(req({ 'x-cron-secret': 'hemlig-cron-123' })));
 delete process.env.CRON_SECRET;
 ok('saknas CRON_SECRET helt är funktionen stängd', !W.authorized(req({ 'x-cron-secret': '' })));
+
+/* ---------- 5. inloggning med användarnamn ---------- */
+head('auth-login: användarnamn → inloggning');
+const A = await import(join(dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/auth-login/index.ts'));
+const uid = (await q(`insert into auth.users(email) values('rkay@b.se') returning id`))[0].id;
+await q(`insert into members(id,user_id,role,name,email,username) values('rkay',$1,'producer','RKAY','rkay@b.se','rkay')`, [uid]);
+process.env.SUPABASE_PUBLISHABLE_KEYS = JSON.stringify({ default: 'sb_publishable_xyz' });
+const authCalls = [];
+globalThis.fetch = async (url, opt) => {
+  url = String(url);
+  if (url.startsWith(env.SUPABASE_URL + '/rest/v1/rpc/')) return rpcFetch(url, opt);
+  if (url.startsWith(env.SUPABASE_URL + '/auth/v1/')) {
+    const b = JSON.parse(opt.body || '{}'); authCalls.push({ url, body: b, headers: opt.headers });
+    if (url.includes('/token?grant_type=password'))
+      return b.email === 'rkay@b.se' && b.password === 'ratt-losen'
+        ? new Response(JSON.stringify({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, user: { id: uid, email: b.email } }), { status: 200 })
+        : new Response(JSON.stringify({ code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' }), { status: 400 });
+    if (url.includes('/recover')) return new Response('{}', { status: 200 });
+  }
+  throw new Error('oväntat anrop ' + url);
+};
+let r = await A.handle({ username: 'rkay', password: 'ratt-losen' }, '81.2.3.4');
+const tok = authCalls.find(c => c.url.includes('grant_type=password'));
+ok('rätt användarnamn och lösenord → sessionen', r.status === 200 && r.body.access_token === 'at', r);
+ok('inloggningen görs med personens e-post och den publika nyckeln', tok.body.email === 'rkay@b.se' && tok.headers.apikey === 'sb_publishable_xyz', tok);
+ok('besökarens IP skickas vidare (Supabases egen gräns räknas per besökare)', tok.headers['X-Forwarded-For'] === '81.2.3.4');
+r = await A.handle({ username: '  RKAY ', password: 'ratt-losen' });
+ok('stora bokstäver och mellanslag spelar ingen roll', r.status === 200);
+const wrong = await A.handle({ username: 'rkay', password: 'fel' });
+const unknown = await A.handle({ username: 'finnsinte', password: 'fel' });
+ok('fel lösenord → samma svar som ett okänt användarnamn', wrong.status === 400 && unknown.status === 400
+   && /Invalid login credentials/.test(wrong.body.msg || wrong.body.error_description) && /Invalid login credentials/.test(unknown.body.error_description), [wrong, unknown]);
+ok('ingen e-postadress läcker i svaren', !JSON.stringify([wrong, unknown]).includes('@'));
+ok('felen räknas per användarnamn', (await q(`select count(*)::int n from login_fails where username='rkay'`))[0].n === 1);
+for (let i = 0; i < 9; i++) await A.handle({ username: 'rkay', password: 'fel' });
+authCalls.length = 0;
+r = await A.handle({ username: 'rkay', password: 'ratt-losen' });
+ok('efter 10 fel på en kvart: spärrat, även med rätt lösenord', r.status === 429 && /vänta en kvart/.test(r.body.error_description) && authCalls.length === 0, r);
+await q(`update login_fails set at = now() - interval '20 minutes'`);
+r = await A.handle({ username: 'rkay', password: 'ratt-losen' });
+ok('efter en kvart går det igen', r.status === 200);
+authCalls.length = 0;
+r = await A.handle({ action: 'recover', username: 'rkay', redirect_to: 'https://bandohq.se/' });
+const rec = authCalls.find(c => c.url.includes('/recover'));
+ok('glömt lösenordet med användarnamn → återställningsmejl till personens e-post', r.status === 200 && rec && rec.body.email === 'rkay@b.se'
+   && rec.url.includes('redirect_to=' + encodeURIComponent('https://bandohq.se/')), rec);
+authCalls.length = 0;
+const r2 = await A.handle({ action: 'recover', username: 'finnsinte' });
+ok('okänt användarnamn: samma svar, inget mejl', r2.status === 200 && JSON.stringify(r2.body) === JSON.stringify(r.body) && authCalls.length === 0);
+r = await A.handle({ username: 'a b"; drop', password: 'x' });
+ok('ogiltigt användarnamn avvisas direkt', r.status === 400 && authCalls.length === 0);
 
 console.log('\n══════════════════════════════');
 console.log(pass + ' PASS · ' + fail + ' FAIL'); console.log(fail ? '✗ TRASIGT' : '✓ ALLT GRÖNT');

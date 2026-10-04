@@ -29,8 +29,13 @@ function boot(hash){
 const ev=(w,c)=>w.eval('(async()=>{window.confirm=()=>true;'+c+'})()');
 const wait = ms => `await new Promise(r=>setTimeout(r,${ms}));`;
 const LOGIN = (em,pw) => `document.getElementById('gE').value='${em}'; document.getElementById('gP').value='${pw}'; await doLogin();`;
-const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='${n}'; document.getElementById('jE').value='${em}';
-  document.getElementById('jT').value='${ph}'; document.getElementById('jP').value='${pw}'; document.getElementById('jC').checked=true; await doJoin();`;
+const JOIN = (n,user,em,pw) => `${wait(150)} if(document.getElementById('jN')) document.getElementById('jN').value='${n}';
+  document.getElementById('jU').value='${user}'; document.getElementById('jE').value='${em}';
+  document.getElementById('jP').value='${pw}'; document.getElementById('jC').checked=true; await doJoin();`;
+/* samma enhet öppnar appen igen (localStorage kvar) */
+const reload = () => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow),700); fr.src='../index.html?cb='+Math.random(); });
+const outbox = async () => (await fetch(EMU+'/__outbox')).json();
+const mails = async () => (await fetch(EMU+'/__mail')).json();
 
 (async function run(){
  try{
@@ -45,11 +50,18 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     ${LOGIN('az@b.se','fel')}
     const wrong = gateErr, noSess = !S.session && !AUTH;
     ${LOGIN('AZ@b.se','losen123')}
-    return {gate, form, picker, preview, wrong, noSess, member:S.session&&S.session.member, view:roleView(),
-      accs:accounts().map(a=>a.n).sort().join(','), via:S.session&&S.session.via};`);
+    const res = {gate, form, picker, preview, wrong, noSess, member:S.session&&S.session.member, view:roleView(),
+      accs:accounts().map(a=>a.n).sort().join(','), via:S.session&&S.session.via};
+    signOut();
+    ${LOGIN('nisse','losen123')} res.wrongUser = gateErr;
+    ${LOGIN('Az','fel')} res.wrongPw = gateErr;
+    ${LOGIN('Az','losen123')} res.byName = S.session && S.session.member;
+    return res;`);
   ok('servern inkopplad → inget förhandsläge', r.preview===false);
   ok('inloggningssidan har e-post och lösenord, ingen kontoväljare', r.gate && r.form && r.picker===0, r);
-  ok('fel lösenord ger ett begripligt fel', r.wrong==='Fel e-post eller lösenord' && r.noSess, r.wrong);
+  ok('fel lösenord ger ett begripligt fel', r.wrong==='Fel användarnamn, e-post eller lösenord' && r.noSess, r.wrong);
+  ok('inloggning med användarnamn (oavsett stora bokstäver)', r.byName==='AZ', r);
+  ok('okänt användarnamn och fel lösenord ger samma svar', r.wrongUser===r.wrongPw && r.wrongUser===r.wrong, [r.wrongUser, r.wrongPw]);
   ok('rätt lösenord loggar in managern (skiftläge spelar ingen roll)', r.member==='AZ' && r.view==='full' && r.via==='cloud', r);
   ok('kontona kommer från servern', r.accs==='AZ,RKAY', r.accs);
 
@@ -91,7 +103,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   r = await ev(w,`
     ${wait(200)}
     const tag = document.getElementById('gateTag').textContent, pw = !!document.getElementById('jP');
-    ${JOIN('Sofia Marks','sofia@b.se','070-444 44 44','sofia1234')}
+    ${JOIN('Sofia Marks','sofia','sofia@b.se','sofia1234')}
     return {tag, pw, member:S.session&&S.session.member, view:roleView(), leads:myCirclesAsLeader().map(c=>c.n),
       goals:S.goals.length, artists:S.artists.length};`);
   ok('länken visar rollen och cirkeln', /Cirkelledare/.test(r.tag) && /Grupp 1/.test(r.tag), r.tag);
@@ -104,7 +116,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   log('\n── deltagaren går med och föreslår en tid ──');
   w = await boot('#join='+T.P);
   r = await ev(w,`
-    ${JOIN('William Ek','will@b.se','070-555 55 55','will12345')}
+    ${JOIN('William Ek','william','will@b.se','will12345')}
     const view = roleView(), circles = myCirclesAsMember().map(c=>c.n);
     const direct = await sb('/records?select=id');
     const mems = (await sb('/members?select=name')).map(m=>m.name);
@@ -153,7 +165,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
       busy, clashMsg, booked, appr, done:{status:done.status, hours:done.hours, present:done.present.length}, hours:hoursFor(will.id),
       secret:S.bookings.some(b=>/Hemlig/.test(b.title||''))};`);
   ok('ledaren ser förfrågan i VÄNTAR PÅ DIG', r.wait===true);
-  ok('och medlemmens telefon och e-post', r.tel && r.mail, r);
+  ok('och medlemmens e-post (telefon bara om den lämnats)', r.mail && r.tel===false, r);
   ok('andras pass syns som upptagen tid, utan namn', r.busy.length===1 && r.busy[0]==='Upptaget|', r.busy);
   ok('och inte med titel', r.secret===false);
   ok('servern nekar en krock', /upptagen/.test(r.clashMsg), r.clashMsg);
@@ -170,10 +182,10 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     const will = byName('William Ek'), sofia = byName('Sofia Marks');
     const req = S.bookings.find(b=>b.date==='${D(5)}');
     const done = S.bookings.find(b=>b.status==='done');
-    return {accs:accounts().length, will:will&&will.r, phone:will&&will.phone, sofia:sofia&&sofia.r,
+    return {accs:accounts().length, will:will&&will.r, username:will&&will.username, sofia:sofia&&sofia.r,
       req:req&&req.status+'|'+req.studio, hours:will?hoursFor(will.id):null, done:!!done, goal:S.goals.length,
       members:(circleById('c1')||{}).members.length};`);
-  ok('nya konton syns hos managern med roll och telefon', r.will==='participant' && r.phone==='+46705555555' && r.sofia==='leader', r);
+  ok('nya konton syns hos managern med roll och användarnamn', r.will==='participant' && r.username==='william' && r.sofia==='leader', r);
   ok('ledarens godkännande har synkats', r.req==='|A', r.req);
   ok('och det genomförda passet med timmarna', r.done && r.hours===3, r);
   ok('managerns egna mål finns kvar', r.goal===1, r.goal);
@@ -194,7 +206,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   log('\n── kund ──');
   w = await boot('#join='+T.K);
   r = await ev(w,`
-    ${JOIN('Studio Nord AB','kund@b.se','070-888 88 88','kund12345')}
+    ${JOIN('Studio Nord AB','studionord','kund@b.se','kund12345')}
     const view = roleView();
     custDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
     openCustRequest('${D(3)}','A','10:00','23:00');
@@ -217,9 +229,8 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   ok('skickar förfrågningar, markerade betalda', r.n===2 && r.paid===true, r);
   ok('och kan ta tillbaka en', r.after===1, r.after);
 
-  /* ============ v8: NYA KUNDER, ADMIN OCH SMS ============ */
+  /* ============ v8: NYA KUNDER OCH ADMIN — allt på mejlen ============ */
   log('\n── v8: ny kund utan konto ──');
-  const sms = async () => (await fetch(EMU+'/__sms')).json();
   w = await boot();
   r = await ev(w,`
     [...document.querySelectorAll('#gateBody button')].find(b=>/UTAN KONTO/.test(b.textContent)).click();
@@ -227,14 +238,17 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     const page = document.getElementById('gateBody').innerHTML;
     pubDraft.day='${D(6)}'; renderGate(); ${wait(80)}
     [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click(); ${wait(80)}
-    document.getElementById('puN').value='Vera Ny'; document.getElementById('puP').value='073-111 22 33'; document.getElementById('puM').value='vera@x.se';
+    const noPhone = !document.getElementById('puP');
+    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se';
     document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
     document.getElementById('puC').checked=true; await sendPublic();
-    return {page:/LEDIGA TIDER/.test(page), done:document.getElementById('gateBody').textContent, err:gateErr};`);
+    return {page:/LEDIGA TIDER/.test(page), done:document.getElementById('gateBody').textContent, err:gateErr, noPhone};`);
   ok('bokningssidan hämtar lediga tider från servern utan inloggning', r.page===true);
-  ok('förfrågan skickas och tackas', /Tack/.test(r.done), r.err || r.done);
-  let box = await sms();
-  ok('admins och managern får SMS om den nya kunden', box.some(m=>m.kind==='lead' && m.member_id==='az' && /Vera Ny/.test(m.body)), box.map(m=>m.kind+':'+m.member_id));
+  ok('förfrågan skickas utan telefonnummer och tackas', /Tack/.test(r.done) && /vera@x.se/.test(r.done) && r.noPhone, r.err || r.done);
+  let box = await outbox();
+  ok('admins och managern får mejl om den nya kunden', box.some(m=>m.kind==='lead' && m.member_id==='az' && m.email==='az@b.se' && /Vera Ny/.test(m.body)), box.map(m=>m.kind+':'+m.member_id));
+  ok('och kunden får ett kvitto på mejlen', box.some(m=>m.kind==='received' && m.email==='vera@x.se'), box.filter(m=>m.kind==='received'));
+  ok('managerns direktbokning gav en orderbekräftelse', box.some(m=>m.kind==='booked' && m.email==='az@b.se' && /Hemlig mix/.test(m.body)), box.filter(m=>m.kind==='booked'));
 
   w = await boot();
   r = await ev(w,`
@@ -247,54 +261,57 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     /* kundens förfrågan från tidigare: AZ godkänner */
     const kr = S.bookings.find(b=>b.status==='request' && b.who==='Studio Nord AB');
     if(kr) await doApprove(kr.id,'B');
+    /* en synk i bakgrunden kan pågå — vänta in den, så att godkännandet säkert är uppe */
+    for(let i=0; i<30 && syncing; i++) await new Promise(r=>setTimeout(r,100));
     await sync(true);
-    /* admin läggs till av managern — länken går som SMS */
-    openAddPerson('admin'); addDraft.name='Costa'; addDraft.phone='070-777 00 07';
+    /* admin läggs till av managern — inbjudan går som mejl */
+    openAddPerson('admin'); addDraft.name='Costa'; addDraft.email='costa@b.se';
     await saveAddPerson();
     const out = document.getElementById('apOut').textContent;
     return {inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox), bk:bk&&{who:bk.who, studio:bk.studio}, kr:!!kr, out};`);
   ok('managern ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokningen ligger i schemat', r.bk && r.bk.who==='Vera Ny' && r.bk.studio==='A', r.bk);
-  ok('lägg till person: länken skickas som SMS', /får ett SMS/.test(r.out), r.out);
-  box = await sms();
-  const vera = box.find(m=>m.kind==='lead' && /Skapa ditt konto/.test(m.body));
-  const costa = box.find(m=>m.kind==='invite');
-  const ans = box.find(m=>m.kind==='answer' && /Godkänd/.test(m.body));
-  ok('kunden får länken som SMS (högst 160 tecken)', vera && vera.phone==='+46731112233' && /#join=/.test(vera.body) && vera.body.length<=160, vera && vera.body);
-  ok('kunden med konto får svaret på sin förfrågan som SMS', !!ans && /Godkänd/.test(ans.body), ans && ans.body);
-  ok('Costa får sin inbjudan som SMS', costa && costa.phone==='+46707770007', costa && costa.body);
-  const tokV = vera.body.match(/#join=([A-Z0-9-]+)/)[1], tokC = costa.body.match(/#join=([A-Z0-9-]+)/)[1];
+  ok('lägg till person: inbjudan går som mejl', /får ett mejl till costa@b.se/.test(r.out), r.out);
+  box = await outbox();
+  const vera = box.find(m=>m.kind==='lead-ok' && m.email==='vera@x.se');
+  const costa = box.find(m=>m.kind==='invite' && m.email==='costa@b.se');
+  const ans = box.find(m=>m.kind==='booked' && m.email==='kund@b.se');
+  ok('kunden får bokningsbekräftelsen med kontolänken på mejlen', vera && /^Bokningsbekräftelse/.test(vera.subject) && /#join=/.test(vera.link), vera);
+  ok('kunden med konto får en orderbekräftelse när förfrågan godkänns', !!ans && /THE BOOTH/.test(ans.body), box.filter(m=>m.kind==='booked').map(m=>m.email+' '+m.body));
+  ok('Costa får sin inbjudan på mejlen, som admin', costa && /som admin/.test(costa.body) && /#join=/.test(costa.link), costa);
+  const tokV = vera.link.split('#join=')[1], tokC = costa.link.split('#join=')[1];
 
   w = await boot('#join='+tokV);
   r = await ev(w,`
     ${wait(250)}
-    const pre = document.getElementById('jN').value, hidden = document.getElementById('jT').type==='hidden';
-    document.getElementById('jE').value='vera@x.se'; document.getElementById('jP').value='vera12345';
+    const pre = /Vera Ny/.test(document.getElementById('gateTag').textContent) && !document.getElementById('jN');
+    const mail = document.getElementById('jE').value;
+    document.getElementById('jU').value='vera'; document.getElementById('jP').value='vera12345';
     document.getElementById('jC').checked=true; await doJoin();
     const bk = S.bookings.find(b=>!b.busy && b.who==='Vera Ny');
-    return {pre, hidden, view:roleView(), bk:!!bk, phone:me()&&me().phone, err:gateErr};`);
-  ok('kundlänken har namnet ifyllt och numret från förfrågan', r.pre==='Vera Ny' && r.hidden===true, r);
-  ok('kunden går med och ser sin bokning', r.view==='customer' && r.bk===true && r.phone==='+46731112233', r);
+    return {pre, mail, view:roleView(), bk:!!bk, username:me()&&me().username, err:gateErr};`);
+  ok('kundlänken har namnet och e-posten från förfrågan', r.pre && r.mail==='vera@x.se', r);
+  ok('kunden går med och ser sin bokning', r.view==='customer' && r.bk===true && r.username==='vera', r);
 
   log('\n── v8: admin ──');
   w = await boot('#join='+tokC);
   r = await ev(w,`
     ${wait(250)}
-    document.getElementById('jE').value='costa@b.se'; document.getElementById('jP').value='costa1234';
+    document.getElementById('jU').value='costa'; document.getElementById('jP').value='costa1234';
     document.getElementById('jC').checked=true; await doJoin(); ${wait(200)}
     const res = {view:roleView(), role:me()&&me().r, dash:canView('dash'), crew:can('manageCrew'), leads:Array.isArray(S.leads)};
     let mgr = ''; try{ await sbRpc('create_invite',{p_role:'manager',p_circle:null,p_days:14,p_max:1}); }catch(e){ mgr = e.message; }
     let hack = ''; try{ await sb('/members?id=eq.az',{method:'PATCH',body:JSON.stringify({phone:'0700000000'})}); }catch(e){ hack = e.message; }
     const goals = (await sb('/records?select=id&kind=eq.goal')).length;
-    const st = await sbRpc('sms_stats',{});
-    go('team'); const team = document.getElementById('view').innerHTML;
-    return Object.assign(res, {mgr, hack, goals, st, sms:/SMS-KOSTNAD/.test(team)});`);
+    const st = await sbRpc('notify_stats',{});
+    go('team'); ${wait(300)} const team = document.getElementById('view').innerHTML;
+    return Object.assign(res, {mgr, hack, goals, st, sms:/NOTISER/.test(team) && /I KÖ/.test(team) && !/SMS/.test(team)});`);
   ok('Costa går med som admin', r.view==='full' && r.role==='admin', r);
   ok('admin sköter konton men ser inte statistiken', r.crew===true && r.dash===false, r);
   ok('servern nekar admin att skapa en manager', /Bara managern/.test(r.mgr), r.mgr);
   ok('och att ändra managerns konto', /Bara managern/.test(r.hack), r.hack);
   ok('admin ser inte managerns mål', r.goals===0, r.goals);
-  ok('admin ser SMS-statistiken i Crew', r.st && r.st.queued>0 && r.sms===true, r.st);
+  ok('admin ser notisstatistiken i Crew (mejl och push, inget SMS)', r.st && 'mail' in r.st && r.sms===true, r.st);
 
   /* ============ v8.1: PUSH ============ */
   log('\n── v8.1: push-notiser ──');
@@ -319,9 +336,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     const after = document.getElementById('view').innerHTML;
     const subs = (await sb('/push_subs?select=endpoint,member_id')).map(x=>x.endpoint+':'+x.member_id);
     await testPush();
-    setCriticalSms(true); await sync(true);
-    const pol = (await sb('/records?select=data&kind=eq.setting&id=eq.notify'))[0];
-    smsStatsAt = 0; go('team'); ${wait(300)}
+    notifyStatsAt = 0; go('team'); ${wait(300)}
     const team = document.getElementById('view').innerHTML;
     /* andra lägen: iPhone i Safari, nekade notiser */
     localStorage.removeItem('bandohq_push');
@@ -332,7 +347,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     pushEnv = () => ({supported:true, ios:false, standalone:true, perm:'granted'});
     signOut(); ${wait(300)}
     return {before, shown, anonKey, pub:S.pushCfg ? '' : '', ban:/Slå på notiser/i.test(ban) && /SLÅ PÅ/.test(ban), gone:!/Slå på notiser/i.test(after),
-      subs, pol:pol && pol.data, team:/har push påslaget/.test(team) && /PUSH/.test(team), home, homeTxt:/hemskärmen/.test(homeTxt), denied, unsup,
+      subs, team:/har push påslaget/.test(team) && /PUSH/.test(team), home, homeTxt:/hemskärmen/.test(homeTxt), denied, unsup,
       ls:localStorage.getItem('bandohq_push')};`);
   ok('utan nycklar finns ingen servernyckel', r.before===null || r.before==='', r.before);
   ok('managern skapar push-nycklarna, den privata visas en gång', r.shown===true);
@@ -340,13 +355,12 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   ok('påminnelsen "Slå på notiser" syns på första fliken', r.ban===true);
   ok('slå på: prenumerationen sparas på servern för rätt person', r.subs.includes('https://push.example/az-telefon:az'), r.subs);
   ok('och påminnelsen försvinner', r.gone===true);
-  ok('admin kan välja påminnelser och timmar även som SMS', r.pol && r.pol.criticalSms===true, r.pol);
   ok('Crew visar hur många som har push', r.team===true);
   ok('iPhone i Safari: uppmanas lägga appen på hemskärmen', r.home==='home' && r.homeTxt===true, r.home);
   ok('nekade notiser: uppmanas slå på i inställningarna', r.denied==='denied');
-  ok('webbläsare utan push: ingen påminnelse (SMS gäller)', r.unsup==='');
+  ok('webbläsare utan push: ingen påminnelse (mejl gäller)', r.unsup==='');
   ok('utloggning glömmer enheten', r.ls===null);
-  box = await sms();
+  box = await outbox();
   ok('testnotisen läggs i kön för AZ', box.some(m=>m.kind==='test' && m.member_id==='az'), box.filter(m=>m.kind==='test'));
   w = await boot();
   r = await ev(w,`${LOGIN('az@b.se','losen123')} ${wait(200)} return {subs:(await sb('/push_subs?select=endpoint')).length};`);
@@ -386,7 +400,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     const lost = !(await sb('/records?select=id&kind=eq.goal&id=eq.g1')).length;
     await restoreBackup(new File([${JSON.stringify(BK)}], 'b.json'));
     const back = (await sb('/records?select=id&kind=eq.goal&id=eq.g1')).length===1;
-    smsStatsAt = 0; outboxPeekAt = 0; go('team'); ${wait(400)}
+    notifyStatsAt = 0; outboxPeekAt = 0; go('team'); ${wait(400)}
     const team = document.getElementById('view').innerHTML;
     /* radera en person */
     const target = accounts().find(a=>a.n==='Vera Ny');
@@ -407,8 +421,7 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
     return {forgot, hasForm, sent:gateMode, txt:document.getElementById('gateBody').textContent};`);
   ok('"Glömt lösenordet?" öppnar återställningen', r.forgot==='forgot' && r.hasForm, r);
   ok('och bekräftar utan att avslöja om kontot finns', r.sent==='sent' && /Om az@b.se har ett konto/.test(r.txt), r.txt);
-  const mails = await (await fetch(EMU+'/__mail')).json();
-  const rec = mails.filter(m=>m.type==='recovery').pop();
+  const rec = (await mails()).filter(m=>m.type==='recovery').pop();
   ok('mejlet länkar tillbaka till appen', rec && /index\.html/.test(rec.redirect||''), rec && rec.redirect);
   w = await boot(rec.link);
   r = await ev(w,`
@@ -429,32 +442,86 @@ const JOIN = (n,em,ph,pw) => `${wait(150)} document.getElementById('jN').value='
   ok('gamla lösenordet slutar fungera', r.oldFails===true);
   ok('nya fungerar', r.again==='AZ', r.again);
   ok('token tas bort ur adressfältet', r.hash==='', r.hash);
+  w = await boot();
+  r = await ev(w,`
+    document.querySelector('#gateBody .linkbtn').click();
+    document.getElementById('gE').value='AZ'; await doForgot();
+    const okUser = gateMode==='sent';
+    gateMode='forgot'; renderGate(); document.getElementById('gE').value='finnsinte'; await doForgot();
+    return {okUser, same:gateMode==='sent', err:gateErr};`);
+  const recs = (await mails()).filter(m=>m.type==='recovery');
+  ok('glömt lösenordet fungerar med användarnamn — mejlet går till rätt adress', r.okUser && recs.length===2 && recs[1].to==='az@b.se', [r, recs.map(m=>m.to)]);
+  ok('okänt användarnamn ger samma svar och inget mejl', r.same && !r.err && (await mails()).filter(m=>m.type==='recovery').length===2, r);
 
-  /* ============ E-POSTBEKRÄFTELSE PÅ EN ANNAN ENHET ============ */
-  log('\n── bekräftelse på en annan enhet ──');
+  /* ============ FÖRSTA INLOGGNINGEN: KOD FRÅN MEJLET ============ */
+  log('\n── första inloggningen: kod från mejlet ──');
   await fetch(EMU+'/__config',{method:'POST',body:JSON.stringify({confirm:true})});
   w = await boot('#join='+T.P);
   r = await ev(w,`
-    ${JOIN('Nora Lind','nora@b.se','070-666 66 66','nora12345')}
-    return {mode:gateMode, txt:document.getElementById('gateBody').textContent, sess:S.session};`);
-  ok('kräver Supabase bekräftelse visas "kolla din mejl"', r.mode==='confirm' && /Kolla din mejl/.test(r.txt) && !r.sess, r);
-  const conf = (await (await fetch(EMU+'/__mail')).json()).filter(m=>m.type==='signup').pop();
+    ${JOIN('Nora Lind','nora','nora@b.se','nora12345')}
+    return {mode:gateMode, txt:document.getElementById('gateBody').textContent, sess:S.session, field:!!document.getElementById('jK')};`);
+  ok('Supabase kräver bekräftelse → appen ber om koden från mejlet', r.mode==='code' && /mejlat en kod till nora@b.se/.test(r.txt) && r.field && !r.sess, r);
+  let codes = (await mails()).filter(m=>m.type==='signup' && m.to==='nora@b.se');
+  ok('ett mejl med en sexsiffrig kod', codes.length===1 && /^\d{6}$/.test(codes[0].code), codes);
+  r = await ev(w,`document.getElementById('jK').value='000000'; await doCode(); const wrong = gateErr;
+    await resendCode(); return {wrong, mode:gateMode};`);
+  ok('fel kod nekas begripligt', /Koden stämmer inte/.test(r.wrong) && r.mode==='code', r);
+  codes = (await mails()).filter(m=>m.type==='signup' && m.to==='nora@b.se');
+  ok('"skicka en ny" ger en ny kod', codes.length===2 && codes[1].code!==codes[0].code, codes.map(c=>c.code));
+  w = await reload();
+  r = await ev(w,`return {mode:gateMode, txt:document.getElementById('gateBody').textContent};`);
+  ok('appen minns kodsteget om den stängs emellan', r.mode==='code' && /nora@b.se/.test(r.txt), r);
+  /* en annan enhet: inloggning innan koden är inskriven → ny kod, och inbjudan följer med kontot */
+  w = await boot();
+  r = await ev(w,`${LOGIN('nora@b.se','nora12345')} return {mode:gateMode, txt:document.getElementById('gateBody').textContent};`);
+  ok('inloggning innan koden skrivits in leder till kodsteget, med en ny kod', r.mode==='code' && /nora@b.se/.test(r.txt), r);
+  codes = (await mails()).filter(m=>m.type==='signup' && m.to==='nora@b.se');
+  r = await ev(w,`document.getElementById('jK').value='${codes[codes.length-1].code}'; await doCode(); ${wait(250)}
+    return {member:S.session&&S.session.member, view:roleView(), circles:myCirclesAsMember().length, username:me()&&me().username};`);
+  ok('rätt kod: inne, inbjudan inlöst, med användarnamnet', r.member==='Nora Lind' && r.view==='participant' && r.circles===1 && r.username==='nora', r);
   await fetch(EMU+'/__config',{method:'POST',body:JSON.stringify({confirm:false})});
-  w = await boot(conf.link);                 /* ny enhet: inget i localStorage */
-  r = await ev(w,`${wait(300)} return {member:S.session&&S.session.member, view:roleView(), circles:myCirclesAsMember().length};`);
-  ok('länken i mejlet loggar in och löser in inbjudan', r.member==='Nora Lind' && r.view==='participant' && r.circles===1, r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('Nora','nora12345')} return {member:S.session&&S.session.member};`);
+  ok('nästa gång: inloggning med användarnamnet', r.member==='Nora Lind', r);
 
   /* ============ NAMNET UPPTAGET ============ */
   log('\n── upptaget namn vid inlösen ──');
   w = await boot('#join='+T.P);
   r = await ev(w,`
-    ${JOIN('william ek','william2@b.se','070-999 99 91','will99999')}
-    const mode = gateMode, err = gateErr, field = !!document.getElementById('jN');
+    ${JOIN('william ek','william2','william2@b.se','will99999')}
+    const mode = gateMode, err = gateErr, field = !!document.getElementById('jN') && document.getElementById('jU').value==='william2';
     document.getElementById('jN').value='William Eklund'; await doFinish();
     return {mode, err, field, member:S.session&&S.session.member, view:roleView()};`);
   ok('kontot skapas, men namnet nekas med förklaring', r.mode==='finish' && /Namnet finns redan/.test(r.err), r);
   ok('man får välja ett annat namn i stället för att låsas ute', r.field===true);
   ok('och kommer in', r.member==='William Eklund' && r.view==='participant', r);
+
+  /* ============ v9: INBJUDAN TILL NÅGON SOM REDAN FINNS ============ */
+  log('\n── v9: RKAY finns i appen och bjuds in på mejlen ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(200)}
+    invListAt = 0; go('team'); ${wait(300)}
+    const html = document.getElementById('view').innerHTML;
+    const list = /INBJUDNINGAR/.test(html) && /RKAY/.test(html);
+    openAddPerson(null,'rkay'); addDraft.email='RKAY@bando.se'; await saveAddPerson();
+    const out = document.getElementById('apOut').textContent;
+    return {list, out};`);
+  ok('Crew listar RKAY bland dem som inte loggat in', r.list===true);
+  ok('inbjudan skickas till RKAY:s e-post', /rkay@bando.se/.test(r.out), r.out);
+  box = await outbox();
+  const rk = box.filter(m=>m.kind==='invite' && m.email==='rkay@bando.se').pop();
+  ok('mejlet ligger i utkorgen med länken', rk && /#join=/.test(rk.link) && /som producent/.test(rk.body), rk);
+  w = await boot('#join=' + rk.link.split('#join=')[1]);
+  r = await ev(w,`${wait(250)}
+    const tag = document.getElementById('gateTag').textContent, noName = !document.getElementById('jN');
+    const mail = document.getElementById('jE').value, sug = document.getElementById('jU').value;
+    document.getElementById('jP').value='rkay12345'; document.getElementById('jC').checked=true; await doJoin(); ${wait(250)}
+    return {tag, noName, mail, sug, member:S.session&&S.session.member, view:roleView(), id:me()&&me().id};`);
+  ok('länken hälsar på RKAY, med e-post och användarnamn ifyllda', /Hej RKAY/.test(r.tag) && r.noName && r.mail==='rkay@bando.se' && r.sug==='rkay', r);
+  ok('RKAY loggar in på sitt befintliga konto (samma id och namn)', r.member==='RKAY' && r.id==='rkay' && r.view==='full', r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('rkay','rkay12345')} return {member:S.session&&S.session.member, n:(await sb('/members?select=id&name=eq.RKAY')).length};`);
+  ok('nästa gång loggar RKAY in med användarnamnet — och det finns bara en RKAY', r.member==='RKAY' && r.n===1, r);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

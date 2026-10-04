@@ -1,23 +1,31 @@
 /* =====================================================================
    SUPABASE-EMULATOR för tester — riktig Postgres (PGlite) med samma
    schema, RLS och funktioner som i db/, bakom de HTTP-anrop appen gör:
-     /auth/v1/*  signup, token (password/refresh), user, recover, logout
+     /auth/v1/*  signup (med 6-siffrig kod), verify, resend, token (password/refresh), user, recover, logout
      /rest/v1/*  rpc, tabeller (GET med filter, POST upsert, PATCH)
+     /functions/v1/auth-login  den riktiga edge-funktionen (supabase/functions/auth-login)
    Starta:  node emulator.mjs [port]     (standard 8738)
-   Testkrokar: GET /__mail (skickade mejl), GET /__sms (SMS-utkorgen), POST /__sql {sql}, POST /__config {confirm:true}
+   Testkrokar: GET /__mail (inloggningsmejlen, med koden), GET /__outbox (utkorgen),
+               POST /__sql {sql}, POST /__config {confirm:true}
    Detta är ett testverktyg. Det har inga riktiga lösenordshashar och hör
    inte hemma i drift — där är det Supabase som kör.
    ===================================================================== */
 import http from 'http';
 import { boot, as, asAnon } from './harness.mjs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const PORT = +process.argv[2] || 8738;
-const ANON = 'anon-test-key';
+const ANON = 'anon-test-key', SERVICE = 'service-test-key';
+/* auth-login körs som på riktigt och anropar emulatorn med servernyckeln */
+Object.assign(process.env, { SUPABASE_URL: 'http://localhost:' + PORT, SUPABASE_SERVICE_ROLE_KEY: SERVICE, SUPABASE_ANON_KEY: ANON });
+const LOGIN = await import(join(dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/auth-login/index.ts'));
 const db = await boot();
 const q = async (s, p) => (await db.query(s, p)).rows;
 
 /* ---------- konton i minnet (auth.users finns i databasen) ---------- */
-const users = new Map();          // email → {id, email, password, meta, confirmed}
+const users = new Map();          // email → {id, email, password, meta, confirmed, code}
+const newCode = () => String(Math.floor(100000 + Math.random() * 900000));
 const mail = [];                  // skickade mejl
 const cfg = { confirm: false };
 const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -39,13 +47,13 @@ const byId = id => [...users.values()].find(u=>u.id===id);
 
 /* ---------- seed: AZ som manager, så det finns någon att logga in som ---------- */
 const az = await addUser('az@b.se', 'losen123', {name:'AZ'});
-await q(`insert into members(id,user_id,role,name,email,phone,color,glow) values('az',$1,'manager','AZ','az@b.se','070-000 00 01','#cbd5e1','#f1f5f9')`, [az.id]);
+await q(`insert into members(id,user_id,role,name,email,username,color,glow) values('az',$1,'manager','AZ','az@b.se','az','#cbd5e1','#f1f5f9')`, [az.id]);
 await q(`insert into members(id,role,name,email,color,glow) values('rkay','producer','RKAY','rkay@b.se','#7c3aed','#a855f7')`);
 await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"STUDIO A","B":"THE BOOTH"}',1)`);
 
 /* ---------- PostgREST: filter → SQL ---------- */
 const IDENT = /^[a-z_][a-z0-9_]*$/;
-const TABLES = new Set(['members','invites','records','leads','sms_outbox','push_subs']);
+const TABLES = new Set(['members','invites','records','leads','outbox','push_subs']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){
@@ -71,9 +79,10 @@ function send(res, status, body){
 let chain = Promise.resolve();
 const serial = fn => (chain = chain.then(fn, fn));
 
-async function rest(req, res, url, body, uid){
+async function rest(req, res, url, body, uid, service){
   const path = url.pathname.replace('/rest/v1/', '');
-  const run = fn => uid ? as(db, uid, fn) : asAnon(db, fn);
+  /* servernyckeln går förbi RLS, som service_role i Supabase */
+  const run = fn => service ? fn() : uid ? as(db, uid, fn) : asAnon(db, fn);
   if(path.startsWith('rpc/')){
     const fn = path.slice(4); if(!IDENT.test(fn)) return send(res, 404, {message:'okänd funktion'});
     const keys = Object.keys(body||{}), vals = keys.map(k => body[k] !== null && typeof body[k] === 'object' ? JSON.stringify(body[k]) : body[k]);
@@ -127,14 +136,28 @@ async function auth(req, res, url, body, bearer){
     if(users.has(email)) return send(res, 422, {msg:'User already registered'});
     const u = await addUser(email, body.password, body.data);
     if(!u.confirmed){
-      mail.push({to:email, type:'signup', link:'#access_token=' + jwt(u) + '&refresh_token=' + session(u).refresh_token + '&expires_in=3600&type=signup'});
+      u.code = newCode();
+      mail.push({to:email, type:'signup', code:u.code, link:'#access_token=' + jwt(u) + '&refresh_token=' + session(u).refresh_token + '&expires_in=3600&type=signup'});
       return send(res, 200, {id:u.id, email, user_metadata:u.meta});
     }
     return send(res, 200, session(u));
   }
+  /* koden från mejlet (Supabase: verifyOtp type signup) */
+  if(path === '/verify' && req.method === 'POST'){
+    const u = users.get(String(body.email||'').toLowerCase());
+    if(!u || !u.code || String(body.token||'').trim() !== u.code)
+      return send(res, 403, {code:403, error_code:'otp_expired', msg:'Token has expired or is invalid'});
+    u.confirmed = true; u.code = null;
+    return send(res, 200, session(u));
+  }
+  if(path === '/resend' && req.method === 'POST'){
+    const u = users.get(String(body.email||'').toLowerCase());
+    if(u && !u.confirmed){ u.code = newCode(); mail.push({to:u.email, type:'signup', code:u.code}); }
+    return send(res, 200, {});
+  }
   if(path === '/token' && grant === 'password'){
     const u = users.get(String(body.email||'').toLowerCase());
-    if(!u || u.password !== body.password) return send(res, 400, {error:'invalid_grant', error_description:'Invalid login credentials'});
+    if(!u || u.password !== body.password) return send(res, 400, {code:400, error_code:'invalid_credentials', msg:'Invalid login credentials'});
     if(!u.confirmed) return send(res, 400, {error:'invalid_grant', error_description:'Email not confirmed'});
     return send(res, 200, session(u));
   }
@@ -170,21 +193,29 @@ http.createServer((req, res) => {
   }
   let raw = '';
   req.on('data', c => raw += c);
-  req.on('end', () => serial(async () => {
+  req.on('end', async () => {
+    /* edge-funktionen anropar emulatorn själv — därför utanför kön */
+    if(req.url.startsWith('/functions/v1/auth-login')){
+      let b = {}; try{ b = raw ? JSON.parse(raw) : {}; }catch(e){}
+      try{ const r = await LOGIN.handle(b, '127.0.0.1'); return send(res, r.status, r.body); }
+      catch(e){ return send(res, 500, {error_description:e.message}); }
+    }
+    serial(async () => {
     const url = new URL(req.url, 'http://x');
     let body = null; try{ body = raw ? JSON.parse(raw) : null; }catch(e){}
     if(url.pathname === '/__mail') return send(res, 200, mail);
-    if(url.pathname === '/__sms') return send(res, 200, await q(`select id, member_id, phone, body, kind, dedupe_key, n, send_after from sms_outbox order by id`));
+    if(url.pathname === '/__outbox') return send(res, 200, await q(`select id, member_id, email, subject, body, link, kind, dedupe_key, n, send_after from outbox order by id`));
     /* bara för tester: kör SQL som databasens ägare (t.ex. simulera att en post försvunnit) */
     if(url.pathname === '/__sql'){ try{ return send(res, 200, await q(body.sql)); }catch(e){ return send(res, 400, {message:e.message}); } }
     if(url.pathname === '/__config'){ Object.assign(cfg, body||{}); return send(res, 200, cfg); }
-    if(req.headers.apikey !== ANON) return send(res, 401, {message:'Invalid API key'});
+    if(req.headers.apikey !== ANON && req.headers.apikey !== SERVICE) return send(res, 401, {message:'Invalid API key'});
     const bearer = String(req.headers.authorization||'').replace(/^Bearer /, '');
     const uid = bearer && bearer !== ANON ? tokenSub(bearer) : null;
     try{
       if(url.pathname.startsWith('/auth/v1/')) return await auth(req, res, url, body||{}, bearer);
-      if(url.pathname.startsWith('/rest/v1/')) return await rest(req, res, url, body, uid);
+      if(url.pathname.startsWith('/rest/v1/')) return await rest(req, res, url, body, uid, req.headers.apikey === SERVICE);
       send(res, 404, {message:'okänd väg'});
     }catch(e){ send(res, 500, {message:e.message}); }
-  }));
+    });
+  });
 }).listen(PORT, () => console.log('Supabase-emulator på http://localhost:' + PORT + '  (anon key: ' + ANON + ')'));

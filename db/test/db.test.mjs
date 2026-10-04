@@ -90,26 +90,33 @@ ok('producent kan inte läsa inbjudningstabellen', (await as(db,U.rkay,()=>q(`se
 const ny = await user('ny@b.se');
 ok('nytt konto kan inte skapa sin egen roll direkt',
    (await boom(()=>as(db,ny,()=>q(`insert into members(id,user_id,role,name) values('x','${ny}','manager','Hax')`))))!==null);
-const red = await as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo Native',p_phone:'070-777 77 77'}));
-ok('inlösen ger rollen från länken', red.role==='participant' && red.name==='Leo Native', red);
+ok('användarnamn krävs', /Välj ett användarnamn/.test(await boom(()=>as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo Native',p_username:'a'})))||''));
+ok('bara a–z, 0–9 och . _ - i användarnamnet', /Välj ett användarnamn/.test(await boom(()=>as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo Native',p_username:'leo native'})))||''));
+const red = await as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo Native',p_username:'Leo.N'}));
+ok('inlösen ger rollen från länken', red.role==='participant' && red.name==='Leo Native' && red.username==='leo.n', red);
 const leo = await one(`select * from members where user_id=$1`,[ny]);
-ok('kontot får e-posten från inloggningen', leo.email==='ny@b.se' && leo.phone==='+46707777777', leo);
+ok('kontot får e-posten från inloggningen och användarnamnet i gemener, inget telefonkrav', leo.email==='ny@b.se' && leo.username==='leo.n' && leo.phone===null, leo);
 ok('och läggs in i cirkeln automatiskt', (await one(`select data->'members' ? $1 as y from records where id='c1'`,[leo.id])).y===true);
-ok('samma person kan inte lösa in igen', /redan ett konto/.test(await boom(()=>as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo 2',p_phone:'070-111 11 11'})))||''));
+ok('samma person kan inte lösa in igen', /redan ett konto/.test(await boom(()=>as(db,ny,()=>rpc('redeem_invite',{p_token:tok,p_name:'Leo 2',p_username:'leo2'})))||''));
 const ny2 = await user('ny2@b.se'), ny3 = await user('ny3@b.se');
-ok('upptaget namn nekas', /Namnet finns redan/.test(await boom(()=>as(db,ny2,()=>rpc('redeem_invite',{p_token:tok,p_name:'william ek',p_phone:'070-111 11 11'})))||''));
-await as(db,ny2,()=>rpc('redeem_invite',{p_token:tok,p_name:'Maja Sund',p_phone:'070-111 11 11'}));
-ok('länken tar slut efter max antal', /redan använd/.test(await boom(()=>as(db,ny3,()=>rpc('redeem_invite',{p_token:tok,p_name:'Omar Khan',p_phone:'070-111 11 11'})))||''));
+ok('upptaget namn nekas', /Namnet finns redan/.test(await boom(()=>as(db,ny2,()=>rpc('redeem_invite',{p_token:tok,p_name:'william ek',p_username:'maja'})))||''));
+ok('upptaget användarnamn nekas, oavsett stora bokstäver', /upptaget/.test(await boom(()=>as(db,ny2,()=>rpc('redeem_invite',{p_token:tok,p_name:'Maja Sund',p_username:'LEO.N'})))||''));
+ok('ledigt användarnamn syns utan inloggning', (await asAnon(db,()=>rpc('username_free',{p_username:'maja'})))===true
+   && (await asAnon(db,()=>rpc('username_free',{p_username:'Leo.N'})))===false && (await asAnon(db,()=>rpc('username_free',{p_username:'x'})))===false);
+await as(db,ny2,()=>rpc('redeem_invite',{p_token:tok,p_name:'Maja Sund',p_username:'maja'}));
+ok('länken tar slut efter max antal', /redan använd/.test(await boom(()=>as(db,ny3,()=>rpc('redeem_invite',{p_token:tok,p_name:'Omar Khan',p_username:'omar'})))||''));
 const tokL = await as(db,U.az,()=>rpc('create_invite',{p_role:'leader',p_circle:'c2',p_days:14,p_max:null}));
-await as(db,ny3,()=>rpc('redeem_invite',{p_token:tokL,p_name:'Omar Khan',p_phone:'070-111 11 11'}));
+await as(db,ny3,()=>rpc('redeem_invite',{p_token:tokL,p_name:'Omar Khan',p_username:'omar'}));
 ok('ledarinbjudan gör personen till cirkelns ledare', (await one(`select data->>'leader' l from records where id='c2'`)).l==='Omar Khan');
 await q(`update invites set closed=true where token=$1`,[tokL]);
 const ny4 = await user('ny4@b.se');
-ok('stängd länk nekas', /stängd/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:tokL,p_name:'Ida Berg',p_phone:'070-111 11 11'})))||''));
+ok('stängd länk nekas', /stängd/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:tokL,p_name:'Ida Berg',p_username:'ida'})))||''));
 const tokX = await as(db,U.az,()=>rpc('create_invite',{p_role:'customer',p_circle:null,p_days:1,p_max:null}));
 await q(`update invites set expires_at=now()-interval '1 hour' where token=$1`,[tokX]);
-ok('utgången länk nekas', /gått ut/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:tokX,p_name:'Ida Berg',p_phone:'070-111 11 11'})))||''));
-ok('okänd länk nekas', /finns inte/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:'AAAA-BBBBBB',p_name:'Ida Berg',p_phone:'070-111 11 11'})))||''));
+ok('utgången länk nekas', /gått ut/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:tokX,p_name:'Ida Berg',p_username:'ida'})))||''));
+ok('okänd länk nekas', /finns inte/.test(await boom(()=>as(db,ny4,()=>rpc('redeem_invite',{p_token:'AAAA-BBBBBB',p_name:'Ida Berg',p_username:'ida'})))||''));
+await as(db,ny,()=>q(`update members set username='hax' where user_id='${ny}'`));
+ok('man kan inte byta sitt eget användarnamn i efterhand', (await one(`select username from members where user_id=$1`,[ny])).username==='leo.n');
 await q(`update records set data = data || '{"leader":"RKAY"}' where id='c2'`);   // tillbaka
 
 /* ============ MY_VIEW ============ */
@@ -191,44 +198,71 @@ const kp = await K(()=>rpc('push_records',{rows:JSON.stringify([
   {kind:'media',id:'md2',data:{id:'md2',by:'rkay',name:'fejk.jpg'},up:9e12}])}));
 ok('kameran skriver sin agenda och sitt galleri — inget annat', kp===2 && !!(await one(`select 1 from records where id='ka1'`)) && !!(await one(`select 1 from records where id='md1'`)), kp);
 ok('kameran kan inte boka pass', !(await one(`select 1 from records where id='kb1'`)));
-ok('kameran ser inte utkorgen eller nya kunder', (await K(()=>q(`select 1 from sms_outbox`))).length===0 && (await K(()=>q(`select 1 from leads`))).length===0);
+ok('kameran ser inte utkorgen eller nya kunder', (await K(()=>q(`select 1 from outbox`))).length===0 && (await K(()=>q(`select 1 from leads`))).length===0);
 
 /* ============ v8 · INTERNA FUNKTIONER ÄR STÄNGDA ============ */
 head('v8: interna funktioner');
 ok('en deltagare kan inte skriva pass förbi kontrollerna', /permission denied/.test(await boom(()=>as(db,U.will,()=>rpc('bs_put_booking',{d:JSON.stringify({id:'hack',studio:'A',date:'2026-12-24',start:'10:00',end:'11:00'})})))||''));
-ok('inte heller köa egna SMS', /permission denied/.test(await boom(()=>as(db,U.will,()=>q(`select bs_sms('az','0701234567','spam','x','spam1')`)))||''));
-ok('eller plocka ut utkorgen', /permission denied/.test(await boom(()=>C(()=>q(`select * from sms_claim(10)`)))||''));
+ok('inte heller köa egna mejl', /permission denied/.test(await boom(()=>as(db,U.will,()=>q(`select bs_notify('az','a@b.se','spam','spam','x','spam1')`)))||''));
+ok('eller plocka ut utkorgen', /permission denied/.test(await boom(()=>C(()=>q(`select * from outbox_claim(10)`)))||''));
+ok('ingen utanför servern kan slå upp e-post från ett användarnamn', /permission denied/.test(await boom(()=>asAnon(db,()=>q(`select bs_login_lookup('leo.n')`)))||'')
+   && /permission denied/.test(await boom(()=>C(()=>q(`select bs_login_lookup('leo.n')`)))||'') && /permission denied/.test(await boom(()=>asAnon(db,()=>q(`select bs_login_fail('x')`)))||''));
+ok('och ingen kan läsa misslyckade inloggningar', (await C(()=>q(`select 1 from login_fails`))).length===0);
 ok('anonyma kan inte läsa timmar', /permission denied/.test(await boom(()=>asAnon(db,()=>q(`select bs_hours('will')`)))||''));
 
-/* ============ v8 · SMS ============ */
-head('v8: SMS-notiser');
+/* ============ v9 · NOTISER (mejl och push) ============ */
+head('v9: notiser');
 const ph = async p => (await one(`select bs_phone($1) v`,[p])).v;
-ok('070-123 45 67 → +46701234567', await ph('070-123 45 67')==='+46701234567');
-ok('0046… och +46… godtas', await ph('0046701234567')==='+46701234567' && await ph('+46 70 123 45 67')==='+46701234567');
+ok('070-123 45 67 → +46701234567 (telefon är frivillig kontaktuppgift)', await ph('070-123 45 67')==='+46701234567');
 ok('trasigt nummer blir null', await ph('070-7')===null && await ph('abc')===null);
-ok('tankstreck byts så SMS:et ryms i 160 tecken', (await one(`select bs_gsm('tor 9 okt 18:00–21:00 · Studio') v`)).v==='tor 9 okt 18:00-21:00 . Studio');
-const box = async k => q(`select * from sms_outbox where dedupe_key like $1 order by id`,[k]);
-await q(`delete from sms_outbox`);
+ok('SMS-funktionerna finns inte längre', !(await one(`select 1 from pg_proc where proname in ('bs_sms','bs_gsm','sms_claim','sms_done','sms_stats','notify_policy')`)));
+const box = async k => q(`select * from outbox where dedupe_key like $1 order by id`,[k]);
+await q(`delete from outbox`);
 const rq2 = await as(db,U.will,()=>rpc('request_session',{p_circle:'c1',p_date:'2026-12-08',p_start:'18:00',p_end:'21:00'}));
 const rs = await box('req:'+rq2.id+'%');
-ok('förfrågan → SMS till ledaren', rs.length===1 && rs[0].member_id==='sofia' && /William Ek föreslår tis 8 dec 18:00-21:00/.test(rs[0].body), rs.map(r=>r.body));
+ok('förfrågan → mejl till ledaren', rs.length===1 && rs[0].member_id==='sofia' && rs[0].email==='sofia@b.se'
+   && /William Ek föreslår tis 8 dec 18:00-21:00/.test(rs[0].body) && /föreslår en tid för Grupp 1/.test(rs[0].subject), rs.map(r=>[r.subject,r.body]));
 await as(db,U.sofia,()=>rpc('answer_request',{p_booking:rq2.id,p_approve:true,p_studio:'B'}));
-const an = await box('ans:'+rq2.id);
-ok('svaret → SMS till den som frågade', an.length===1 && an[0].member_id==='will' && /Godkänd/.test(an[0].body), an.map(r=>r.body));
-ok('numret sparas i E.164', an[0].phone==='+46709999999', an[0].phone);
+const bkd = await box('booked:%');
+const c1m = (await one(`select data->'members' m from records where id='c1'`)).m;
+ok('godkänd → orderbekräftelse till alla i sessionen (ledaren och hela cirkeln)', bkd.map(r=>r.member_id).sort().join()===['sofia',...c1m].sort().join() && c1m.includes('will') && c1m.length===3, [bkd.map(r=>r.member_id), c1m]);
+ok('bekräftelsen har tid och studio, och ämnet "Bokningsbekräftelse"', /tis 8 dec 18:00-21:00 · THE BOOTH · Grupp 1/.test(bkd[0].body) && /^Bokningsbekräftelse: tis 8 dec/.test(bkd[0].subject), bkd[0]);
+ok('bekräftelsen väntar två minuter så att flera pass hinner samlas', new Date(bkd[0].send_after) > new Date(Date.now()+60000));
+ok('inget separat "godkänd"-mejl', (await box('ans:%')).length===0);
+/* nej på en förfrågan */
+const rq3 = await as(db,U.will,()=>rpc('request_session',{p_circle:'c1',p_date:'2026-12-09',p_start:'18:00',p_end:'21:00'}));
+await as(db,U.sofia,()=>rpc('answer_request',{p_booking:rq3.id,p_approve:false,p_studio:null}));
+const no3 = await box('ans:'+rq3.id);
+ok('nej → mejl till den som frågade', no3.length===1 && no3[0].member_id==='will' && /Tyvärr gick ons 9 dec/.test(no3[0].body), no3);
+/* crewet bokar direkt — tre pass på en gång blir ett mejl per person */
+await q(`delete from outbox`);
+const bkRow = (id, d, o) => ({kind:'booking', id, data:Object.assign({id, studio:'A', date:d, start:'12:00', end:'15:00', who:'RKAY', title:'Nova EP',
+  circleId:'', status:'', hours:null, present:[], paid:false, with:['ADREY'], artistId:''}, o||{}), up:200, del:false});
+await q(`update members set email='adrey@b.se' where id='adrey'`);
+await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([bkRow('w1','2026-12-14'), bkRow('w2','2026-12-21'), bkRow('w3','2026-12-28')])}));
+const wb = await box('booked:%');
+ok('direktbokning → bekräftelse till den som bokat och medproducenten', wb.map(r=>r.member_id).sort().join()==='adrey,rkay', wb.map(r=>r.member_id));
+const wr = wb.find(r=>r.member_id==='rkay');
+ok('tre pass på en gång → ETT mejl med tre rader', wr.n===3 && wr.body.split('\n').filter(l=>/· STUDIO A · Nova EP/.test(l)).length===3, wr.body);
+ok('och ämnet säger hur många', wr.subject==='Bokningsbekräftelse: 3 sessioner', wr.subject);
+ok('ADREY saknar inloggning men har e-post — får bekräftelsen ändå', wb.find(r=>r.member_id==='adrey').email==='adrey@b.se');
+await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([Object.assign(bkRow('w1','2026-12-14',{title:'Ändrad'}),{up:300})])}));
+ok('en ändring av ett bokat pass skickar ingen ny bekräftelse', (await box('booked:rkay:%')).length===1 && (await box('booked:rkay:%'))[0].n===3);
+await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([bkRow('old1','2026-01-10')])}));
+ok('ett pass bakåt i tiden (t.ex. en import) mejlar ingen', (await box('booked:%')).every(r=>!/sön 10 jan/.test(r.body)));
 /* timmar: will har 8 h — lägg ett stort pass så summan passerar 400 */
 await q(`insert into records(kind,id,data,up) values('booking','big',$1,1)`,[JSON.stringify({id:'big',studio:'A',date:'2026-06-01',start:'10:00',end:'11:00',who:'Sofia Marks',circleId:'c1',status:'',present:[]})]);
 await as(db,U.sofia,()=>rpc('complete_session',{p_booking:'big',p_hours:24,p_present:JSON.stringify(['will'])}));
-ok('under 400 h: inget SMS', (await box('hours:will%')).length===0);
+ok('under 400 h: ingen notis', (await box('hours:will%')).length===0);
 const H = async (id, d) => q(`insert into records(kind,id,data,up) values('booking',$1,$2,1)`,[id,JSON.stringify({id,studio:'B',date:d||'2026-05-01',start:'10:00',end:'11:00',who:'Sofia Marks',circleId:'c1',status:'done',hours:24,present:['will']})]);
 for (let i=0;i<16;i++) await H('h'+i);                       // 32 + 384 = 416 h
 let hs = await box('hours:will%');
-ok('passerar 400 h: ett SMS med timmar kvar', hs.length===1 && hs[0].dedupe_key==='hours:will:400' && /Du har 64 h kvar/.test(hs[0].body), hs.map(r=>r.dedupe_key+' '+r.body));
+ok('passerar 400 h: en notis med timmar kvar', hs.length===1 && hs[0].dedupe_key==='hours:will:400' && /Du har 64 h kvar/.test(hs[0].body), hs.map(r=>r.dedupe_key+' '+r.body));
 await as(db,U.sofia,()=>rpc('complete_session',{p_booking:'big',p_hours:20.5,p_present:JSON.stringify(['will'])}));   // 412,5
 ok('samma gräns skickas inte igen', (await box('hours:will%')).length===1);
 await H('h16'); await H('h17');                               // 460,5
 hs = await box('hours:will%');
-ok('nästa gräns (440) ger ett nytt, med decimalkomma', hs.length===2 && hs[1].dedupe_key==='hours:will:440' && /19,5 h kvar/.test(hs[1].body), hs.map(r=>r.body));
+ok('nästa gräns (440) ger en ny, med decimalkomma', hs.length===2 && hs[1].dedupe_key==='hours:will:440' && /19,5 h kvar/.test(hs[1].body), hs.map(r=>r.body));
 await H('h18','2026-05-02');                                  // 484,5
 hs = await box('hours:will:480%');
 ok('vid 480 h: deltagaren OCH ledaren får veta', hs.length===2 && hs.some(r=>r.member_id==='sofia'), hs.map(r=>r.member_id));
@@ -237,8 +271,8 @@ const ag = (id,who,text,done,up) => ({kind:'agenda',id,data:{id,kind:'week',week
 await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([ag('a1','ADREY','Mixa',false,100)])}));
 await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([ag('a2','ADREY','Mastra',false,101)])}));
 let aq = await box('agenda:adrey:%');
-ok('ny uppgift → ett SMS, två uppgifter samlas i samma', aq.length===1 && aq[0].n===2 && /2 nya eller ändrade/.test(aq[0].body), aq.map(r=>r.n+' '+r.body));
-ok('agenda-SMS väntar tio minuter så ändringar hinner samlas', new Date(aq[0].send_after) > new Date(Date.now()+8*60000));
+ok('ny uppgift → en notis, två uppgifter samlas i samma', aq.length===1 && aq[0].n===2 && /2 nya eller ändrade/.test(aq[0].body), aq.map(r=>r.n+' '+r.body));
+ok('agendanotisen väntar tio minuter så ändringar hinner samlas', new Date(aq[0].send_after) > new Date(Date.now()+8*60000));
 await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([ag('a1','ADREY','Mixa',true,102)])}));
 ok('att bocka av skickar inget', (await box('agenda:adrey:%'))[0].n===2);
 await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([ag('a3','RKAY','Egen sak',false,103)])}));
@@ -246,91 +280,138 @@ ok('egen uppgift man skriver själv skickar inget', (await box('agenda:rkay:%'))
 await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([ag('a4','','Städa',false,104)])}));
 const all = (await box('agenda-all:%')).map(r=>r.member_id).sort();
 ok('gemensam uppgift → hela teamet utom den som skrev', all.includes('az') && all.includes('costa') && all.includes('moez') && !all.includes('rkay') && !all.includes('will'), all);
-/* tysta timmar */
+/* tysta timmar gäller påminnelser — inte bekräftelser */
 const quiet = await one(`
   with t as (select ((date_trunc('day', now() at time zone 'Europe/Stockholm') + interval '1 day 23 hours') at time zone 'Europe/Stockholm') as at)
   select (select at from t) - now() as delay`);
-await q(`select bs_sms('will', null, 'nattest', 'test', 'quiet1', $1::interval)`,[quiet.delay]);
+await q(`select bs_notify('will', null, 'Påminnelse', 'nattest', 'reminder', 'quiet1', $1::interval)`,[quiet.delay]);
+await q(`select bs_notify('will', null, 'Bekräftelse', 'nattest', 'booked', 'quiet2', $1::interval)`,[quiet.delay]);
 const qs = await one(`select to_char(send_after at time zone 'Europe/Stockholm','HH24:MI') hm,
-  (send_after at time zone 'Europe/Stockholm')::date - (now() at time zone 'Europe/Stockholm')::date as d from sms_outbox where dedupe_key='quiet1'`);
-ok('SMS klockan 23 flyttas till 08:00 nästa morgon', qs.hm==='08:00' && qs.d===2, qs);
+  (send_after at time zone 'Europe/Stockholm')::date - (now() at time zone 'Europe/Stockholm')::date as d from outbox where dedupe_key='quiet1'`);
+ok('påminnelse klockan 23 flyttas till 08:00 nästa morgon', qs.hm==='08:00' && qs.d===2, qs);
+ok('en bekräftelse klockan 23 går direkt', (await one(`select to_char(send_after at time zone 'Europe/Stockholm','HH24:MI') hm from outbox where dedupe_key='quiet2'`)).hm==='23:00');
+await q(`select bs_notify(null, 'inte-en-adress', 'x', 'x', 'booked', 'bad1')`);
+ok('utan giltig e-post och utan push köas inget', (await box('bad1')).length===0);
 /* påminnelser */
-await q(`select sms_reminders('2026-12-01'::date) n`);
+await q(`select reminders('2026-12-01'::date) n`);
 const rem = (await box('remind:%')).map(r=>r.member_id).sort();
 ok('påminnelser dagen innan: bokaren och cirkelns medlemmar', rem.includes('sofia') && rem.includes('will'), rem);
 ok('förfrågningar får ingen påminnelse', !(await box('remind:rqN%')).length);
-await q(`select sms_reminders('2026-12-01'::date)`);
+await q(`select reminders('2026-12-01'::date)`);
 ok('påminnelser skickas bara en gång', (await box('remind:%')).length===rem.length);
-const tick = (await one(`select sms_reminders_tick() n`)).n;
+const tick = (await one(`select reminders_tick() n`)).n;
 ok('timkörningen gör inget före kl 17', (+(await one(`select extract(hour from now() at time zone 'Europe/Stockholm') h`)).h) >= 17 || tick===0, tick);
 
 /* ============ v8 · NYA KUNDER ============ */
 head('v8: nya kunder utan konto');
-await q(`delete from sms_outbox`);
-const pr = (o,ph) => asAnon(db,()=>rpc('public_request',Object.assign({p_name:'Nova Lind',p_email:'nova@x.se',p_phone:ph||'0731112233',
+await q(`delete from outbox`);
+const pr = (o) => asAnon(db,()=>rpc('public_request',Object.assign({p_name:'Nova Lind',p_email:'nova@x.se',p_phone:'',
   p_date:'2026-12-15',p_start:'12:00',p_end:'16:00',p_studio:'B',p_message:'EP',p_hp:''},o)));
 ok('anonym ser upptagen tid utan namn', (await asAnon(db,()=>rpc('free_slots',{p_from:'2026-11-01',p_to:'2026-12-31'}))).every(x=>!('who' in x) && !('title' in x)));
-ok('och kan skicka en förfrågan', (await pr({})).ok===true && (await q(`select * from leads`)).length===1);
-const ls = (await q(`select member_id from sms_outbox where kind='lead'`)).map(r=>r.member_id).sort();
-ok('admins och managern får SMS om nya kunder', JSON.stringify(ls)==='["az","costa"]', ls);
+ok('och kan skicka en förfrågan utan telefonnummer', (await pr({})).ok===true && (await q(`select * from leads`)).length===1);
+const ls = (await q(`select member_id from outbox where kind='lead'`)).map(r=>r.member_id).sort();
+ok('admins och managern får mejl om nya kunder', JSON.stringify(ls)==='["az","costa"]', ls);
+const lr = (await q(`select * from outbox where kind='received'`))[0];
+ok('och kunden får ett kvitto på mejlen', lr && lr.email==='nova@x.se' && !lr.member_id && /tagit emot din förfrågan om tis 15 dec 12:00-16:00/.test(lr.body), lr);
 await pr({p_hp:'robot'});
 ok('honeypot: robotar får "ok" men inget sparas', (await q(`select * from leads`)).length===1);
-ok('trasigt nummer nekas', /mobilnummer/.test(await boom(()=>pr({},'123'))||''));
+ok('ett ifyllt men trasigt nummer nekas', /Telefonnumret ser fel ut/.test(await boom(()=>pr({p_phone:'123'}))||''));
+ok('trasig e-post nekas', /E-postadressen/.test(await boom(()=>pr({p_email:'nova'}))||''));
 await pr({}); await pr({});
-ok('max tre öppna förfrågningar per person', /redan tre/.test(await boom(()=>pr({}))||''));
+ok('max tre öppna förfrågningar per e-postadress', /redan tre/.test(await boom(()=>pr({}))||''));
 ok('anonyma kan inte läsa förfrågningarna', (await asAnon(db,()=>q(`select * from leads`))).length===0);
 ok('producenter kan inte heller', (await as(db,U.rkay,()=>q(`select * from leads`))).length===0);
 ok('admin kan', (await C(()=>q(`select * from leads`))).length===3);
 const lead = await one(`select id from leads order by created_at limit 1`);
 ok('producent kan inte godkänna', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'B',p_url:'https://x/'})))||''));
-const ap = await C(()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'B',p_url:'https://bando.github.io/bandosesh/'}));
+const ap = await C(()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'B',p_url:'https://bandohq.se/'}));
 const lb = await one(`select data from records where id=$1`,[ap.booking]);
 ok('godkänt: bokningen ligger i schemat', lb.data.who==='Nova Lind' && lb.data.status==='' && lb.data.leadId===lead.id, lb.data);
-const lsms = await one(`select * from sms_outbox where dedupe_key=$1`,['lead-ok:'+lead.id]);
-ok('och kunden får länken som SMS', lsms && lsms.phone==='+46731112233' && lsms.body.includes('#join='+ap.invite), lsms&&lsms.body);
-ok('hela SMS:et ryms i 160 tecken', lsms.body.length<=160, lsms.body.length);
+const lmail = await one(`select * from outbox where dedupe_key=$1`,['lead-ok:'+lead.id]);
+ok('och kunden får bekräftelsen med länken till sitt konto på mejlen', lmail && lmail.email==='nova@x.se' && lmail.link==='https://bandohq.se/#join='+ap.invite
+   && /Din tid är bokad/.test(lmail.body) && /^Bokningsbekräftelse: tis 15 dec/.test(lmail.subject), lmail);
+ok('och ingen dubblett från bokningen', (await box('booked:%')).length===0);
 ok('samma förfrågan kan inte godkännas två gånger', /finns inte längre/.test(await boom(()=>C(()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'A',p_url:'x'})))||''));
 const inf = await asAnon(db,()=>rpc('invite_info',{p_token:ap.invite}));
-ok('länken är en kundinbjudan med namnet ifyllt', inf.ok && inf.role==='customer' && inf.name==='Nova Lind', inf);
-const nm = await as(db,U.ny5,()=>rpc('redeem_invite',{p_token:ap.invite,p_name:'Nova Lind',p_phone:''}));
+ok('länken är en kundinbjudan med namn och e-post ifyllda', inf.ok && inf.role==='customer' && inf.name==='Nova Lind' && inf.email==='nova@x.se', inf);
+const nm = await as(db,U.ny5,()=>rpc('redeem_invite',{p_token:ap.invite,p_name:'Nova Lind',p_username:'nova'}));
 const lb2 = await one(`select data from records where id=$1`,[ap.booking]);
 ok('när kunden gått med är bokningen hens', nm.role==='customer' && lb2.data.reqBy===nm.id, lb2.data);
 ok('och syns i kundens vy', (await as(db,U.ny5,()=>rpc('my_view',{}))).bookings.some(b=>b.id===ap.booking));
 const l2 = await one(`select id from leads where status='new' limit 1`);
 await C(()=>rpc('decline_lead',{p_lead:l2.id,p_reason:''}));
-ok('avböjd → SMS', !!(await one(`select 1 from sms_outbox where dedupe_key=$1`,['lead-no:'+l2.id])));
+const lno = await one(`select * from outbox where dedupe_key=$1`,['lead-no:'+l2.id]);
+ok('avböjd → mejl', lno && lno.email==='nova@x.se' && /Tyvärr kan vi inte ta tiden/.test(lno.body), lno);
 
 /* ============ v8 · KUNDFÖRFRÅGAN ============ */
 head('v8: kund med konto');
 await q(`update members set producer='rkay' where id='kund'`);
-await q(`delete from sms_outbox`);
-const kr = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-10',p_start:'12:00',p_end:'15:00',p_studio:'B',p_note:''}));
-const kto = (await q(`select member_id from sms_outbox where dedupe_key like $1`,['req:'+kr.id+'%'])).map(r=>r.member_id).sort();
+await q(`delete from outbox`);
+const kr = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-10',p_start:'12:00',p_end:'15:00',p_studio:'B',p_note:'Mix av singeln'}));
+const kto = (await q(`select member_id from outbox where dedupe_key like $1`,['req:'+kr.id+'%'])).map(r=>r.member_id).sort();
 ok('förfrågan går till kundens producent och admins', JSON.stringify(kto)==='["az","costa","rkay"]', kto);
+ok('med kundens meddelande', /Meddelande: Mix av singeln/.test((await one(`select body from outbox where dedupe_key=$1`,['req:'+kr.id+':rkay'])).body));
+const krc = await one(`select * from outbox where dedupe_key=$1`,['rcv:'+kr.id]);
+ok('kunden får ett kvitto', krc && krc.member_id==='kund' && krc.email==='kund@b.se' && /Vi har tagit emot/.test(krc.subject), krc);
 ok('kundens vy visar producenten', (await as(db,U.kund,()=>rpc('my_view',{}))).producer==='RKAY');
 ok('och förfrågan', (await as(db,U.kund,()=>rpc('my_view',{}))).bookings.some(b=>b.id===kr.id && b.status==='request'));
 ok('kunden kan inte svara själv', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
 await as(db,U.rkay,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'}));
-ok('producenten godkänner → kunden får SMS', /Godkänd/.test((await one(`select body from sms_outbox where dedupe_key=$1`,['ans:'+kr.id])||{}).body||''));
-const st = await C(()=>rpc('sms_stats',{}));
-ok('admin ser SMS-statistik för månaden', st.queued>0 && 'cost' in st, st);
-const cl = await q(`select * from sms_claim(3)`);
-const cl2 = await q(`select * from sms_claim(100)`);
-ok('servern plockar ut SMS att skicka, och samma rad plockas inte två gånger', cl.length===3 && !cl2.some(r=>cl.some(c=>c.id===r.id)), [cl.length, cl2.length]);
-await q(`select sms_done($1,true,3500,null)`,[cl[0].id]);
-await q(`select sms_done($1,false,null,'401 fel nyckel')`,[cl[1].id]);
-const dn1 = await one(`select sent_at, error from sms_outbox where id=$1`,[cl[0].id]), dn2 = await one(`select sent_at, error from sms_outbox where id=$1`,[cl[1].id]);
-ok('skickat markeras, fel sparas för nytt försök', !!dn1.sent_at && !dn1.error && !dn2.sent_at && /401/.test(dn2.error), [dn1, dn2]);
-ok('producent ser den inte', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('sms_stats',{})))||''));
+const kbk = await q(`select * from outbox where kind='booked' and member_id='kund'`);
+ok('producenten godkänner → kunden får orderbekräftelsen', kbk.length===1 && /tor 10 dec 12:00-15:00 · THE BOOTH/.test(kbk[0].body), kbk);
+const st = await C(()=>rpc('notify_stats',{}));
+ok('admin ser notisstatistik för månaden', st.queued>0 && 'mail' in st && 'push' in st && !('cost' in st), st);
+const cl = await q(`select * from outbox_claim(2)`);
+const cl2 = await q(`select * from outbox_claim(100)`);
+ok('servern plockar ut notiser att skicka, och samma rad plockas inte två gånger', cl.length===2 && !cl2.some(r=>cl.some(c=>c.id===r.id)), [cl.length, cl2.length]);
+await q(`select outbox_done($1,true,null,'mail')`,[cl[0].id]);
+await q(`select outbox_done($1,false,'500 Resend nere',null)`,[cl[1].id]);
+const dn1 = await one(`select sent_at, error, channel from outbox where id=$1`,[cl[0].id]), dn2 = await one(`select sent_at, error from outbox where id=$1`,[cl[1].id]);
+ok('skickat markeras, fel sparas för nytt försök', !!dn1.sent_at && !dn1.error && dn1.channel==='mail' && !dn2.sent_at && /500/.test(dn2.error), [dn1, dn2]);
+ok('producent ser inte statistiken', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('notify_stats',{})))||''));
 
-/* inbjudan med namn och telefon (admin lägger till en person) */
-const tp = await C(()=>rpc('create_invite',{p_role:'camera',p_circle:null,p_days:14,p_max:5,p_team:'D2L',p_name:'D2L Bo',p_phone:'0735556677',p_url:'https://bando.github.io/bandosesh/'}));
+/* ============ v9 · INBJUDAN PER MEJL ============ */
+head('v9: inbjudan per mejl');
+await q(`delete from outbox`);
+const tp = await C(()=>rpc('create_invite',{p_role:'camera',p_circle:null,p_days:14,p_max:5,p_team:'D2L',p_name:'D2L Bo',p_email:'Bo@D2L.se',p_url:'https://bandohq.se/'}));
 const ti = await one(`select * from invites where token=$1`,[tp]);
-ok('personlig inbjudan gäller en person', ti.max_uses===1 && ti.team==='D2L', ti);
-ok('och länken skickas som SMS', /#join=/.test((await one(`select body from sms_outbox where dedupe_key=$1`,['invite:'+tp])||{}).body||''));
-const bo = await as(db,U.ny6,()=>rpc('redeem_invite',{p_token:tp,p_name:'D2L Bo',p_phone:''}));
-const bom = await one(`select role, team, phone from members where id=$1`,[bo.id]);
-ok('personen hamnar i teamet med numret från inbjudan', bom.role==='camera' && bom.team==='D2L' && bom.phone==='+46735556677', bom);
+ok('personlig inbjudan gäller en person', ti.max_uses===1 && ti.team==='D2L' && ti.email==='bo@d2l.se', ti);
+const im = await one(`select * from outbox where dedupe_key=$1`,['invite:'+tp]);
+ok('och länken skickas som mejl', im && im.email==='bo@d2l.se' && im.link==='https://bandohq.se/#join='+tp && im.kind==='invite'
+   && /Du är inbjuden till BANDOHQ som kamerateam/.test(im.body) && /14 dagar/.test(im.body), im);
+ok('trasig e-post nekas', /E-postadressen ser fel ut/.test(await boom(()=>C(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:1,p_email:'bo@',p_url:'x'})))||''));
+const bo = await as(db,U.ny6,()=>rpc('redeem_invite',{p_token:tp,p_name:'D2L Bo',p_username:'d2l.bo'}));
+const bom = await one(`select role, team, email from members where id=$1`,[bo.id]);
+ok('personen hamnar i teamet med e-posten från inloggningen', bom.role==='camera' && bom.team==='D2L' && bom.email==='ny6@b.se', bom);
+
+/* en person som redan finns i appen (ADREY, utan inloggning) */
+await q(`insert into records(kind,id,data,up) values('booking','adb',$1,1)`,[JSON.stringify({id:'adb',studio:'A',date:'2026-12-31',start:'10:00',end:'12:00',who:'ADREY',status:''})]);
+ok('admin kan inte bjuda in någon som redan har ett konto', /RKAY har redan ett konto/.test(await boom(()=>C(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:1,p_member:'rkay',p_url:'https://bandohq.se/'})))||''));
+ok('e-post krävs till en befintlig person utan adress', /Fyll i en e-postadress till Moez Ny/.test(await boom(async()=>{
+  await q(`insert into members(id,role,name) values('moezny','camera','Moez Ny')`);
+  return C(()=>rpc('create_invite',{p_role:'camera',p_circle:null,p_days:14,p_max:1,p_member:'moezny',p_url:'https://bandohq.se/'}));})||''));
+const ta1 = await C(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:9,p_member:'adrey',p_email:'adrey@gmail.com',p_url:'https://bandohq.se/'}));
+ok('inbjudan till ADREY sparar e-posten på personen', (await one(`select email from members where id='adrey'`)).email==='adrey@gmail.com');
+const ta2 = await C(()=>rpc('create_invite',{p_role:'admin',p_circle:null,p_days:7,p_max:1,p_member:'adrey',p_url:'https://bandohq.se/'}));
+ok('"skicka igen" stänger den förra länken', (await one(`select closed from invites where token=$1`,[ta1])).closed===true);
+ok('och det nya mejlet går till samma adress, som admin denna gång', /som admin/.test((await one(`select body, email from outbox where dedupe_key=$1`,['invite:'+ta2])).body)
+   && (await one(`select email from outbox where dedupe_key=$1`,['invite:'+ta2])).email==='adrey@gmail.com');
+const ai = await asAnon(db,()=>rpc('invite_info',{p_token:ta2}));
+ok('länken visar namnet som redan finns och e-posten', ai.ok && ai.member===true && ai.name==='ADREY' && ai.email==='adrey@gmail.com' && ai.role==='admin', ai);
+U.adrey = await user('adrey@gmail.com');
+ok('den gamla länken går inte att använda', /stängd/.test(await boom(()=>as(db,U.adrey,()=>rpc('redeem_invite',{p_token:ta1,p_username:'adrey'})))||''));
+const before = (await one(`select count(*)::int n from members`)).n;
+const ar = await as(db,U.adrey,()=>rpc('redeem_invite',{p_token:ta2,p_name:'Fel Namn',p_username:'Adrey'}));
+const arow = await one(`select * from members where id='adrey'`);
+ok('inloggningen kopplas till ADREYS rad — ingen ny rad', ar.id==='adrey' && (await one(`select count(*)::int n from members`)).n===before && arow.user_id===U.adrey, ar);
+ok('namnet ADREY behålls, rollen kommer från länken', arow.name==='ADREY' && arow.role==='admin' && arow.username==='adrey' && arow.email==='adrey@gmail.com', arow);
+ok('ADREYS pass och färg finns kvar', (await one(`select data->>'who' w from records where id='adb'`)).w==='ADREY');
+ok('ADREY loggar in och ser sig själv', (await as(db,U.adrey,()=>q(`select id from members where user_id=auth.uid()`))).length===1);
+U.hax = await user('hax@b.se');
+const ta3 = await as(db,U.az,()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:7,p_max:1,p_member:'moezny',p_email:'moez@ny.se',p_url:'https://bandohq.se/'}));
+await q(`update members set user_id=$1 where id='moezny'`,[U.hax]);
+ok('en rad som hunnit få en inloggning kan inte kapas', /redan en inloggning/.test(await boom(async()=>{ const u = await user('kapa@b.se');
+  return as(db,u,()=>rpc('redeem_invite',{p_token:ta3,p_username:'kapare'})); })||''));
 
 /* ============ v8.1 · PUSH ============ */
 head('v8.1: push-notiser');
@@ -352,13 +433,13 @@ ok('men sin egen', (await q(`select 1 from push_subs where endpoint='https://pus
 await q(`insert into records(kind,id,data,up) values('setting','push','{"publicKey":"BPUB"}',1) on conflict (kind,id) do update set data=excluded.data`);
 ok('servernyckeln går att läsa utan inloggning', (await asAnon(db,()=>rpc('push_public_key',{})))==='BPUB');
 ok('utskicksfunktionerna är stängda för inloggade', /permission denied/.test(await boom(()=>as(db,U.nora,()=>q(`select * from push_targets('nora')`)))||'') &&
-   /permission denied/.test(await boom(()=>C(()=>q(`select notify_policy()`)))||''));
-/* person utan nummer men med push får ändå notisen */
-await q(`update members set phone=null where id='nora'`);
-await q(`delete from sms_outbox`);
+   /permission denied/.test(await boom(()=>C(()=>q(`select outbox_done(1,true,null,null)`)))||''));
+/* person utan e-post men med push får ändå notisen */
+await q(`update members set email=null where id='nora'`);
+await q(`delete from outbox`);
 await as(db,U.nora,()=>rpc('notify_test',{}));
-const nt = await q(`select * from sms_outbox where kind='test'`);
-ok('testnotis köas, även utan telefonnummer när push finns', nt.length===1 && nt[0].phone==='' && nt[0].member_id==='nora', nt);
+const nt = await q(`select * from outbox where kind='test'`);
+ok('testnotis köas, även utan e-post när push finns', nt.length===1 && nt[0].email===null && nt[0].member_id==='nora', nt);
 const tg = await q(`select * from push_targets('nora')`);
 ok('servern hittar personens enheter', tg.length===1 && tg[0].endpoint==='https://push.example/will1');
 await q(`select push_result($1,false,false)`,[tg[0].id]); await q(`select push_result($1,false,false)`,[tg[0].id]);
@@ -367,11 +448,9 @@ await q(`select push_result($1,true,false)`,[tg[0].id]);
 ok('lyckad push nollställer', (await one(`select fails, last_ok from push_subs where id=$1`,[tg[0].id])).fails===0);
 await q(`select push_result($1,false,true)`,[tg[0].id]);
 ok('enhet som inte finns längre (410) tas bort', (await q(`select 1 from push_subs where id=$1`,[tg[0].id])).length===0);
-await q(`select sms_done($1,true,null,null,'push')`,[nt[0].id]);
-const st2 = await C(()=>rpc('sms_stats',{}));
-ok('statistiken skiljer push från SMS och visar vem som saknar push', st2.push===1 && Array.isArray(st2.noPush) && st2.noPush.includes('William Ek'), st2);
-await q(`insert into records(kind,id,data,up) values('setting','notify','{"criticalSms":true}',1)`);
-ok('policyn för viktiga SMS läses av servern', (await one(`select notify_policy() p`)).p.criticalSms===true);
+await q(`select outbox_done($1,true,null,'push')`,[nt[0].id]);
+const st2 = await C(()=>rpc('notify_stats',{}));
+ok('statistiken skiljer push från mejl och visar vem som får mejl i stället', st2.push===1 && Array.isArray(st2.noPush) && st2.noPush.includes('William Ek'), st2);
 
 
 /* ============ LANSERING · RADERA PERSON, STUDIOINFO ============ */

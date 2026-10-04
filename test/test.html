@@ -713,23 +713,28 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await new Promise(r=>setTimeout(r,120));
     const gate = document.getElementById('gate').classList.contains('on');
     const tag = document.getElementById('gateTag').textContent;
-    const form = !!document.getElementById('jN') && !!document.getElementById('jT');
+    const form = !!document.getElementById('jN') && !!document.getElementById('jU') && !document.getElementById('jT');
     document.getElementById('jN').value = 'Leo Berg';
+    document.getElementById('jU').value = 'Leo.Berg';
     document.getElementById('jE').value = 'leo@b.se';
-    document.getElementById('jT').value = '070-777 77 77';
     document.getElementById('jC').checked=true; await doJoin();
     const a = byName('Leo Berg');
-    const res = {gate, tag, form, role:a&&a.r, phone:a&&a.phone, inCircle:circleById('c1').members.includes(a&&a.id),
+    const res = {gate, tag, form, role:a&&a.r, username:a&&a.username, inCircle:circleById('c1').members.includes(a&&a.id),
       session:S.session&&S.session.member, view:roleView(), hash:location.hash,
       uses:S.invites.find(i=>i.token==='${TOK}').uses};
     /* samma namn igen */
     signOut(); joinToken='${TOK}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
-    document.getElementById('jN').value = 'leo berg'; document.getElementById('jE').value='x@b.se'; document.getElementById('jT').value='070-111 11 11';
+    document.getElementById('jN').value = 'leo berg'; document.getElementById('jU').value = 'leob2'; document.getElementById('jE').value='x@b.se';
     document.getElementById('jC').checked=true; await doJoin();
     res.dupe = gateErr;
+    document.getElementById('jN').value = 'Leo Ny'; document.getElementById('jU').value = 'leo.berg'; document.getElementById('jE').value='x@b.se';
+    document.getElementById('jC').checked=true; await doJoin();
+    res.dupeUser = gateErr;
+    document.getElementById('jN').value = 'Leo Ny'; document.getElementById('jU').value = 'Leo Ny'; document.getElementById('jC').checked=true; await doJoin();
+    res.badUser = gateErr;
     /* engångslänk: andra gången nekas */
     leaveJoin(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
-    document.getElementById('jN').value = 'Moez'; document.getElementById('jE').value='moez@b.se'; document.getElementById('jT').value='070-222 22 22';
+    document.getElementById('jN').value = 'Moez'; document.getElementById('jU').value = 'moez'; document.getElementById('jE').value='moez@b.se';
     document.getElementById('jC').checked=true; await doJoin();
     res.moez = (byName('Moez')||{}).r;
     signOut(); joinToken='${ONE}'; joinInfo=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
@@ -742,11 +747,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('där det står vad man är inbjuden som', /Deltagare/.test(r.tag) && /Grupp 1/.test(r.tag), r.tag);
   ok('kontot får rollen från länken', r.role==='participant', r.role);
   ok('och läggs i cirkeln från länken', r.inCircle===true);
-  ok('telefonnumret sparas som +46…', r.phone==='+46707777777', r.phone);
+  ok('formuläret frågar efter användarnamn, inte telefon', r.form===true);
+  ok('användarnamnet sparas i gemener', r.username==='leo.berg', r.username);
   ok('man är inloggad direkt i sin vy', r.session==='Leo Berg' && r.view==='participant', r);
   ok('länken tas bort ur adressfältet', r.hash==='', r.hash);
   ok('länken räknar hur många som gått med', r.uses===1, r.uses);
   ok('upptaget namn nekas', /Namnet finns redan/.test(r.dupe), r.dupe);
+  ok('upptaget användarnamn nekas', /Användarnamnet är upptaget/.test(r.dupeUser), r.dupeUser);
+  ok('mellanslag i användarnamnet nekas', /Välj ett användarnamn/.test(r.badUser), r.badUser);
   ok('producentlänk ger producentroll', r.moez==='producer', r.moez);
   ok('engångslänk går inte att använda två gånger', /redan använd/.test(r.used), r.used);
   ok('stängd länk nekas', /stängd/.test(r.closed), r.closed);
@@ -877,16 +885,29 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const team = document.getElementById('view').innerHTML;
     const res = {view:roleView(), crew:can('manageCrew'), circles:can('manageCircles'), artists:can('manageArtists'),
       dash:can('dashboard'), dashView:canView('dash'), goals:can('viewGoals','rkay'), grant:can('grantManager'),
-      roles:inviteRoles().map(x=>x[0]).join(','), addBtn:/LÄGG TILL PERSON/.test(team), sms:/SMS-NOTISER/.test(team),
+      roles:inviteRoles().map(x=>x[0]).join(','), addBtn:/LÄGG TILL PERSON/.test(team), sms:/NOTISER/.test(team) && !/SMS/.test(team),
+      invCard:/INBJUDNINGAR/.test(team) && /ADREY/.test(team),
       cam:/KAMERATEAM/.test(team) && /Moez/.test(team)};
     closeSheet(); openAccount('az'); res.blocked = !document.getElementById('sheet').classList.contains('on');
     closeSheet();
-    openAddPerson('camera'); addDraft.name='Bo Lind'; addDraft.phone='073-555 66 77'; addDraft.team='D2L';
+    openAddPerson('camera'); addDraft.name='Bo Lind'; addDraft.email='Bo@D2L.se'; addDraft.team='D2L';
     await saveAddPerson();
-    const bo = byName('Bo Lind'); res.bo = bo && {r:bo.r, team:bo.team, phone:bo.phone};
-    openAddPerson('producer'); addDraft.name='Ny Utan'; addDraft.phone='12';
-    await saveAddPerson(); res.badPhone = !byName('Ny Utan');
-    closeSheet();
+    const bo = byName('Bo Lind'), boInv = bo && S.invites.find(i=>i.member_id===bo.id);
+    res.bo = bo && {r:bo.r, team:bo.team, email:bo.email, inv:boInv && {email:boInv.email, max:boInv.max_uses, role:boInv.role}};
+    res.boOut = /mejl|länken/i.test(document.getElementById('apOut').textContent);
+    openAddPerson('producer'); addDraft.name='Ny Utan'; addDraft.email='ny@';
+    await saveAddPerson(); res.badMail = !byName('Ny Utan');
+    /* ADREY finns redan men har aldrig loggat in */
+    openAddPerson(null, 'adrey'); res.exSheet = /Bjud in ADREY/.test(document.getElementById('sheetBody').textContent) && !document.getElementById('apN');
+    addDraft.email='adrey@gmail.com'; await saveAddPerson();
+    const i1 = S.invites.filter(i=>i.member_id==='adrey');
+    openAddPerson(null, 'adrey'); addDraft.role='admin'; await saveAddPerson();
+    const i2 = S.invites.filter(i=>i.member_id==='adrey');
+    res.adrey = {n:accounts().filter(a=>a.n==='ADREY').length, email:byId('adrey').email, first:i1.length===1 && i1[0].role==='producer',
+      second:i2.length===2 && i2[0].closed===true && !i2[1].closed && i2[1].role==='admin' && i2[1].name==='ADREY'};
+    res.adreyTok = i2[1].token;
+    closeSheet(); invListAt = 0; go('team'); await new Promise(r=>setTimeout(r,40));
+    res.status = /inbjuden/.test(document.getElementById('view').innerHTML);
     go('goals'); res.goalsLeak = /RKAYS MÅL/.test(document.getElementById('view').innerHTML);
     S.session.member='AZ';
     return res;`);
@@ -896,10 +917,31 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('och inte andras mål', r.goals===false && r.goalsLeak===false, r);
   ok('admin kan inte bjuda in eller skapa en manager', r.grant===false && !/manager/.test(r.roles), r.roles);
   ok('admin kan inte öppna managerns konto', r.blocked===true);
-  ok('Crew har Lägg till person, SMS-kort och kamerateamet', r.addBtn && r.sms && r.cam, r);
-  ok('lägg till person: kamera i team D2L, numret som +46', r.bo && r.bo.r==='camera' && r.bo.team==='D2L' && r.bo.phone==='+46735556677', r.bo);
-  ok('utan riktigt mobilnummer läggs ingen till', r.badPhone===true);
+  ok('Crew har Lägg till person, notiskortet (inget SMS) och kamerateamet', r.addBtn && r.sms && r.cam, r);
+  ok('och en lista över dem som inte loggat in', r.invCard===true);
+  ok('lägg till person: kamera i team D2L, med e-post i gemener', r.bo && r.bo.r==='camera' && r.bo.team==='D2L' && r.bo.email==='bo@d2l.se', r.bo);
+  ok('och en personlig inbjudan till den e-posten', r.bo && r.bo.inv && r.bo.inv.email==='bo@d2l.se' && r.bo.inv.max===1 && r.bo.inv.role==='camera' && r.boOut, r.bo);
+  ok('trasig e-post nekas', r.badMail===true);
+  ok('bjud in någon som redan finns: arket visar namnet, inget namnfält', r.exSheet===true);
+  ok('inbjudan kopplas till personen och e-posten sparas — ingen ny person', r.adrey.n===1 && r.adrey.email==='adrey@gmail.com' && r.adrey.first, r.adrey);
+  ok('"igen" med annan roll stänger den förra länken', r.adrey.second===true, r.adrey);
+  ok('status syns i listan', r.status===true);
+  const ADREY_TOK = r.adreyTok;
 
+  boot.hash = '#join=' + ADREY_TOK;
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session=null; return S;`))));
+  r = await ev(w,`
+    await new Promise(r=>setTimeout(r,150));
+    const tag = document.getElementById('gateTag').textContent, noName = !document.getElementById('jN');
+    const sug = document.getElementById('jU').value, mail = document.getElementById('jE').value;
+    const before = accounts().length;
+    document.getElementById('jU').value = 'adrey'; document.getElementById('jC').checked=true; await doJoin();
+    const a = byId('adrey');
+    return {tag, noName, sug, mail, same: accounts().length===before, r:a.r, username:a.username, login:a.login, who:S.session&&S.session.member};`);
+  ok('ADREYS länk hälsar med namnet och frågar inte efter det', /Hej ADREY/.test(r.tag) && r.noName, r);
+  ok('användarnamnet föreslås och e-posten är ifylld', r.sug==='adrey' && r.mail==='adrey@gmail.com', r);
+  ok('inloggningen kopplas till ADREYS konto — samma person, rollen från länken', r.same && r.r==='admin' && r.username==='adrey' && r.login===true && r.who==='ADREY', r);
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session={member:'AZ',name:'AZ',email:'',via:'preview',ts:1}; return S;`))));
   r = await ev(w,`
     S.session.member='Moez'; showApp();
     const res = {tabs:tabs().join(','), view, more:moreViews().length, book:can('book'),
@@ -1013,14 +1055,15 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
     [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click();
     await new Promise(r=>setTimeout(r,30));
-    document.getElementById('puN').value='Vera Ny'; document.getElementById('puP').value='0731112233'; document.getElementById('puM').value='vera@x.se';
+    const noPhone = !document.getElementById('puP');
+    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se';
     document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
     document.getElementById('puC').checked=true; await sendPublic();
     const done = document.getElementById('gateBody').textContent;
     const lead = (S.leads||[]).find(l=>l.name==='Vera Ny');
     pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
     [...document.querySelectorAll('#gateBody .chip')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
-    document.getElementById('puN').value='Bot'; document.getElementById('puP').value='0731112299'; document.getElementById('puM').value='b@x.se'; document.getElementById('puH').value='spam';
+    document.getElementById('puN').value='Bot'; document.getElementById('puM').value='b@x.se'; document.getElementById('puH').value='spam';
     document.getElementById('puC').checked=true; await sendPublic();
     const bot = (S.leads||[]).some(l=>l.name==='Bot');
     leavePublic();
@@ -1028,11 +1071,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const inbox = document.getElementById('view').innerHTML;
     openLead(lead.id); await approveLead(lead.id,'A');
     const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
-    return {page:/LEDIGA TIDER/.test(page), done:/Tack/.test(done),
-      lead:lead && {phone:lead.phone, start:lead.start_t, end:lead.end_t, studio:lead.studio}, bot, inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
+    return {page:/LEDIGA TIDER/.test(page), done:/Tack/.test(done) && /vera@x.se/.test(done), noPhone,
+      lead:lead && {email:lead.email, start:lead.start_t, end:lead.end_t, studio:lead.studio}, bot, inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
       bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status};`);
   ok('bokningssidan visar lediga tider utan inloggning', r.page===true);
-  ok('ny kund skickar förfrågan och får ett tack', r.done && r.lead && r.lead.phone==='+46731112233' && r.lead.start==='10:00', r);
+  ok('ny kund skickar förfrågan utan telefon och får ett tack med sin e-post', r.done && r.noPhone && r.lead && r.lead.email==='vera@x.se' && r.lead.start==='10:00', r);
   ok('robotar (honeypot) sparas inte', r.bot===false);
   ok('admin ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
@@ -1040,12 +1083,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session=null; return S;`))));
   r = await ev(w,`
     await new Promise(r=>setTimeout(r,150));
-    const pre = document.getElementById('jN').value, phoneField = document.getElementById('jT').type;
-    document.getElementById('jE').value='vera@x.se';
+    const pre = /Vera Ny/.test(document.getElementById('gateTag').textContent), mail = document.getElementById('jE').value;
+    document.getElementById('jU').value = 'vera';
     document.getElementById('jC').checked=true; await doJoin();
     const bk = S.bookings.find(b=>b.leadId);
-    return {pre, phoneField, view:roleView(), who:bk&&bk.who, mine:bk&&bk.reqBy===me().id, phone:me().phone};`);
-  ok('länken har namnet ifyllt och numret från förfrågan', r.pre==='Vera Ny' && r.phoneField==='hidden' && r.phone==='+46731112233', r);
+    return {pre, mail, view:roleView(), who:bk&&bk.who, mine:bk&&bk.reqBy===me().id, username:me().username};`);
+  ok('länken har namnet och e-posten från förfrågan ifyllda', r.pre && r.mail==='vera@x.se' && r.username==='vera', r);
   ok('kunden landar i kundvyn och bokningen är hens', r.view==='customer' && r.who==='Vera Ny' && r.mine===true, r);
 
   /* ============ v8 · GALLERI ============ */
@@ -1170,7 +1213,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const tok = await (async()=>{ signIn(byId('az')); const t = await createInvite('producer', null, 7, 1); signOut(); return t; })();
     joinToken = tok; joinInfo = null; await renderGate(); await new Promise(r=>setTimeout(r,80));
     const box = !!document.getElementById('jC');
-    document.getElementById('jN').value='Utan Kryss'; document.getElementById('jE').value='u@b.se'; document.getElementById('jT').value='070-123 45 99';
+    document.getElementById('jN').value='Utan Kryss'; document.getElementById('jU').value='utan'; document.getElementById('jE').value='u@b.se';
     await doJoin(); const noConsent = gateErr, created = !!byName('Utan Kryss');
     return {foot:/Integritet/.test(foot), txt, box, noConsent, created, onTop};`);
   ok('integritetstexten nås utan inloggning: vad, var, vem och radering', /personnummer/i.test(r.txt) && /Supabase/.test(r.txt) && /Stockholm/.test(r.txt) && /radera/i.test(r.txt), r.txt.slice(0,80));

@@ -1,13 +1,25 @@
 -- =====================================================================
---  BANDOHQ — SMS-notiser (köas här, skickas av 05-sms-utskick.sql)
+--  BANDOHQ — notiser (köas här, skickas av 05-utskick.sql)
 --
 --  Notiserna går inte att stänga av. De köas av triggers när något händer:
---    · förfrågningar (cirkel, kund, ny kund) och svaren på dem
+--    · ett pass bokas (orderbekräftelse till alla i sessionen)
+--    · förfrågningar (cirkel, kund, ny kund), kvitton och svaren på dem
 --    · timmar som närmar sig 480 (vid 400, 440, 470 och 480)
---    · ändringar i agendan (samlade — högst ett SMS per halvtimme)
+--    · ändringar i agendan (samlade — högst en notis per halvtimme)
 --    · påminnelse dagen innan ett pass (körs kl 17)
---  Tysta timmar 21–08 sköts av bs_sms() i 03-funktioner.sql.
+--  Utskicket väljer kanal: bekräftelser, förfrågningar, svar och inbjudningar
+--  går alltid som mejl (och push till den som har det); påminnelser, timmar
+--  och agenda går som push och bara som mejl om personen saknar push.
 -- =====================================================================
+
+/* v9: SMS-versionerna av funktionerna tas bort. */
+drop function if exists sms_claim(int);
+drop function if exists sms_done(bigint, boolean, int, text);
+drop function if exists sms_done(bigint, boolean, int, text, text);
+drop function if exists sms_stats();
+drop function if exists sms_reminders_tick();
+drop function if exists sms_reminders(date);
+drop function if exists notify_policy();
 
 /* Timmar i cirklarna, samma regel som appens hoursFor() och my_view. */
 create or replace function bs_hours(p_member text) returns numeric
@@ -28,6 +40,10 @@ create or replace function bs_when(d jsonb) returns text
 language sql immutable as $$
   select bs_day((d->>'date')::date) || ' ' || (d->>'start') || '-' || (d->>'end')
 $$;
+create or replace function bs_first(p_member text) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(split_part((select name from members where id = p_member), ' ', 1), '')
+$$;
 
 -- ---------------------------------------------------------------------
 --  Händelser i posterna
@@ -39,34 +55,70 @@ declare
   o jsonb := case when tg_op = 'UPDATE' then old.data else null end;
   actor text := bs_my_id();
   who text; rq text; rqname text; circ text; pid text; h numeric; th int; m record; win bigint;
+  ids text[]; mid text; line text;
 begin
   if new.del then return new; end if;
 
   if new.kind = 'booking' then
+    if coalesce(d->>'date','') !~ '^\d{4}-\d\d-\d\d$' then return new; end if;
     rq := d->>'reqBy';
     rqname := coalesce((select name from members where id = rq), d->>'who', 'Någon');
+
+    /* orderbekräftelse: ett nytt bokat pass, eller en förfrågan som godkänns — till
+       alla i sessionen. Bara pass från idag och framåt (en import av gamla pass
+       ska inte mejla någon). Flera pass på en gång blir ett mejl per person. */
+    if coalesce(d->>'status','') = '' and (o is null or o->>'status' = 'request')
+       and (d->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date then
+      line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_studio(d->>'studio') else 'studio ej vald' end
+              || coalesce(' · ' || nullif(d->>'title',''), '');
+      ids := array[bs_member_by_name(d->>'who'), rq]
+          || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x);
+      if coalesce(d->>'circleId','') <> '' then
+        ids := ids || array(select jsonb_array_elements_text(coalesce(data->'members','[]'))
+                              from records where kind='circle' and id = d->>'circleId');
+      end if;
+      win := floor(extract(epoch from now()) / 120);
+      for mid in select distinct x from unnest(ids) x where x is not null loop
+        perform bs_notify_append(mid, null, 'Bokningsbekräftelse: ' || bs_when(d), 'Bokningsbekräftelse: %s sessioner',
+          'Hej ' || bs_first(mid) || '! Det här är bokat i BANDOHQ:', line,
+          'booked', 'booked:' || mid || ':' || win, interval '2 minutes');
+      end loop;
+    end if;
+
     /* ny förfrågan */
     if d->>'status' = 'request' and (o is null or coalesce(o->>'status','') <> 'request') then
       if coalesce(d->>'circleId','') <> '' then
         circ := (select data->>'n' from records where kind='circle' and id = d->>'circleId');
         who := bs_member_by_name(d->>'who');
-        perform bs_sms(who, null, rqname || ' föreslår ' || bs_when(d) || ' för ' || coalesce(circ,'cirkeln')
-          || '. Svara i BANDOHQ.', 'request', 'req:' || new.id || ':' || coalesce(who,''));
+        perform bs_notify(who, null, rqname || ' föreslår en tid för ' || coalesce(circ,'cirkeln'),
+          rqname || ' föreslår ' || bs_when(d) || ' för ' || coalesce(circ,'cirkeln') || '. Svara i BANDOHQ.',
+          'request', 'req:' || new.id || ':' || coalesce(who,''));
       else
         for m in select id from members where active and (role::text in ('manager','admin')
                    or id = (select producer from members where id = rq)) loop
-          perform bs_sms(m.id, null, 'Ny bokningsförfrågan från ' || rqname || ': ' || bs_when(d) || ', '
-            || bs_studio(d->>'studio') || '. Svara i BANDOHQ.', 'request', 'req:' || new.id || ':' || m.id);
+          perform bs_notify(m.id, null, 'Ny bokningsförfrågan från ' || rqname,
+            'Ny bokningsförfrågan från ' || rqname || ': ' || bs_when(d) || ', ' || bs_studio(d->>'studio')
+            || case when coalesce(d->>'note','') <> '' then '.' || E'\n\n' || 'Meddelande: ' || (d->>'note') else '' end
+            || E'\n\n' || 'Svara i BANDOHQ.',
+            'request', 'req:' || new.id || ':' || m.id);
         end loop;
+        /* kvitto till kunden */
+        if rq is not null then
+          perform bs_notify(rq, null, 'Vi har tagit emot din förfrågan',
+            'Hej ' || bs_first(rq) || '! Vi har tagit emot din förfrågan om ' || bs_when(d) || ', ' || bs_studio(d->>'studio')
+            || '. Du får ett mejl när den är besvarad.',
+            'received', 'rcv:' || new.id);
+        end if;
       end if;
     end if;
-    /* svar på en förfrågan */
-    if o is not null and o->>'status' = 'request' and coalesce(d->>'status','') in ('','declined') and rq is not null then
-      perform bs_sms(rq, null, case when d->>'status' = 'declined'
-          then 'Tyvärr gick ' || bs_when(d) || ' inte. Föreslå gärna en annan tid i BANDOHQ.'
-          else 'Godkänd: ' || bs_when(d) || ' i ' || bs_studio(d->>'studio') || '. Vi ses!' end,
+
+    /* nej på en förfrågan (ett ja är en orderbekräftelse, ovan) */
+    if o is not null and o->>'status' = 'request' and d->>'status' = 'declined' and rq is not null then
+      perform bs_notify(rq, null, 'Tiden gick tyvärr inte',
+        'Hej ' || bs_first(rq) || '! Tyvärr gick ' || bs_when(d) || ' inte. Föreslå gärna en annan tid i BANDOHQ.',
         'answer', 'ans:' || new.id);
     end if;
+
     /* timmar som närmar sig ramen — bara den högsta gränsen man passerat */
     if d->>'status' = 'done' and (o is null or o->>'status' is distinct from 'done'
         or o->'present' is distinct from d->'present' or o->>'hours' is distinct from d->>'hours') then
@@ -74,12 +126,12 @@ begin
         h := bs_hours(pid);
         th := case when h >= 480 then 480 when h >= 470 then 470 when h >= 440 then 440 when h >= 400 then 400 else null end;
         if th is not null then
-          perform bs_sms(pid, null, case when th = 480
+          perform bs_notify(pid, null, 'Dina timmar i studiecirkeln', case when th = 480
               then 'Du har nått 480 timmar i studiecirkeln. Prata med din cirkelledare om vad som gäller nu.'
               else 'Du har ' || replace(regexp_replace(to_char(480 - h, 'FM9990.9'), '\.0?$', ''), '.', ',') || ' h kvar av dina 480 timmar i studiecirkeln.' end,
             'hours', 'hours:' || pid || ':' || th);
           if th = 480 then
-            perform bs_sms(bs_member_by_name(d->>'who'), null,
+            perform bs_notify(bs_member_by_name(d->>'who'), null, 'En deltagare har nått 480 timmar',
               coalesce((select name from members where id = pid), 'En deltagare') || ' har nått 480 timmar.',
               'hours', 'hours:' || pid || ':480:leader');
           end if;
@@ -96,13 +148,15 @@ begin
     if coalesce(d->>'who','') <> '' then
       who := bs_member_by_name(d->>'who');
       if who is not null and who is distinct from actor then
-        perform bs_sms_digest(who, 'Agendan har uppdaterats: %s nya eller ändrade uppgifter för dig. Se BANDOHQ.',
+        perform bs_notify_digest(who, 'Agendan har uppdaterats',
+          'Agendan har uppdaterats: %s nya eller ändrade uppgifter för dig. Se BANDOHQ.',
           'agenda', 'agenda:' || who || ':' || win, interval '10 minutes');
       end if;
     else
       for m in select id from members where active and role::text in ('manager','admin','producer','camera')
                  and id is distinct from actor loop
-        perform bs_sms_digest(m.id, 'Gemensamma agendan har uppdaterats: %s ändringar. Se BANDOHQ.',
+        perform bs_notify_digest(m.id, 'Gemensamma agendan har uppdaterats',
+          'Gemensamma agendan har uppdaterats: %s ändringar. Se BANDOHQ.',
           'agenda', 'agenda-all:' || m.id || ':' || floor(extract(epoch from now()) / 7200), interval '10 minutes');
       end loop;
     end if;
@@ -112,15 +166,22 @@ end $$;
 drop trigger if exists records_notify on records;
 create trigger records_notify after insert or update on records for each row execute function bs_notify_record();
 
-/* Ny kund via bokningssidan → admins och managern. */
+/* Ny kund via bokningssidan → admins och managern, och ett kvitto till kunden. */
 create or replace function bs_notify_lead() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare m record;
+declare m record; tid text := bs_day(new.date) || ' ' || new.start_t || '-' || new.end_t;
 begin
   for m in select id from members where active and role::text in ('manager','admin') loop
-    perform bs_sms(m.id, null, 'Ny kund vill boka: ' || new.name || ', ' || bs_day(new.date) || ' ' || new.start_t || '-'
-      || new.end_t || '. Svara i BANDOHQ.', 'lead', 'lead:' || new.id || ':' || m.id);
+    perform bs_notify(m.id, null, 'Ny kund vill boka: ' || new.name,
+      'Ny kund vill boka: ' || new.name || ' (' || coalesce(new.email,'') || '), ' || tid
+      || case when coalesce(new.message,'') <> '' then '.' || E'\n\n' || 'Meddelande: ' || new.message else '' end
+      || E'\n\n' || 'Svara i BANDOHQ.',
+      'lead', 'lead:' || new.id || ':' || m.id);
   end loop;
+  perform bs_notify(null, new.email, 'Vi har tagit emot din förfrågan',
+    'Hej ' || split_part(new.name,' ',1) || '! Tack — vi har tagit emot din förfrågan om ' || tid
+    || '. Du får svar på mejlen så snart vi har tittat på den.',
+    'received', 'lead-rcv:' || new.id);
   return new;
 end $$;
 drop trigger if exists leads_notify on leads;
@@ -132,7 +193,7 @@ create trigger leads_notify after insert on leads for each row execute function 
 /* Alla som har ett pass dagen p_day: den som bokat, de som är med, cirkelns
    ledare och medlemmar, och kunden. Nyckeln innehåller datum och tid — flyttas
    passet kommer en ny påminnelse. */
-create or replace function sms_reminders(p_day date default null) returns int
+create or replace function reminders(p_day date default null) returns int
 language plpgsql security definer set search_path = public as $$
 declare day date := coalesce(p_day, (now() at time zone 'Europe/Stockholm')::date + 1);
         b record; mid text; n int := 0; title text; ids text[];
@@ -148,7 +209,8 @@ begin
                             from records where kind='circle' and id = b.data->>'circleId');
     end if;
     for mid in select distinct x from unnest(ids) x where x is not null loop
-      perform bs_sms(mid, null, 'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end') || ' i '
+      perform bs_notify(mid, null, 'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end'),
+        'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end') || ' i '
         || bs_studio(b.data->>'studio') || ' - ' || title || '.', 'reminder',
         'remind:' || b.id || ':' || day || ':' || (b.data->>'start') || ':' || mid);
       n := n + 1;
@@ -158,39 +220,38 @@ begin
 end $$;
 /* Körs varje timme av pg_cron; gör något först från kl 17 svensk tid.
    Dubbletter stoppas av dedupe-nyckeln, så det gör inget att den körs flera gånger. */
-create or replace function sms_reminders_tick() returns int
+create or replace function reminders_tick() returns int
 language plpgsql security definer set search_path = public as $$
 begin
   if extract(hour from now() at time zone 'Europe/Stockholm') < 17 then return 0; end if;
-  return sms_reminders();
+  return reminders();
 end $$;
 
 -- ---------------------------------------------------------------------
---  För utskicket (edge-funktionen sms-send, med service_role)
+--  För utskicket (edge-funktionen notify-send, med service_role)
 -- ---------------------------------------------------------------------
 /* Plockar ut det som ska skickas nu och låser det, så två körningar aldrig
-   skickar samma SMS. */
-create or replace function sms_claim(p_limit int default 50) returns setof sms_outbox
+   skickar samma notis. */
+create or replace function outbox_claim(p_limit int default 50) returns setof outbox
 language sql security definer set search_path = public as $$
-  update sms_outbox set attempts = attempts + 1, error = 'skickas', claimed_at = now()
-   where id in (select id from sms_outbox
+  update outbox set attempts = attempts + 1, error = 'skickas', claimed_at = now()
+   where id in (select id from outbox
                  where sent_at is null and send_after <= now() and attempts < 5
                    and (claimed_at is null or claimed_at < now() - interval '10 minutes')
                  order by id limit p_limit for update skip locked)
   returning *
 $$;
-drop function if exists sms_done(bigint, boolean, int, text);
-create or replace function sms_done(p_id bigint, p_ok boolean, p_cost int, p_error text, p_channel text default null)
+create or replace function outbox_done(p_id bigint, p_ok boolean, p_error text, p_channel text default null)
 returns void language sql security definer set search_path = public as $$
-  update sms_outbox set sent_at = case when p_ok then now() end, cost = p_cost, claimed_at = null, channel = p_channel,
+  update outbox set sent_at = case when p_ok then now() end, claimed_at = null, channel = p_channel,
          error = case when p_ok then null else left(p_error, 300) end
    where id = p_id
 $$;
 
 -- ---------------------------------------------------------------------
 --  PUSH
---  Notisen skickas först som push till personens enheter. Bara om ingen
---  enhet tar emot den (eller personen inte har push) går den som SMS.
+--  Påminnelser, timmar och agenda går först som push till personens enheter,
+--  och som mejl bara om ingen enhet tar emot dem. Allt annat går som mejl.
 -- ---------------------------------------------------------------------
 /* Enheten sparar sin prenumeration. Samma enhet med ett annat konto tar över raden. */
 create or replace function save_push_sub(p_endpoint text, p_p256dh text, p_auth text, p_ua text default '')
@@ -212,13 +273,13 @@ create or replace function push_public_key() returns text
 language sql stable security definer set search_path = public as $$
   select data->>'publicKey' from records where kind = 'setting' and id = 'push' and not del
 $$;
-/* "Skicka en testnotis" i profilen. */
+/* "Skicka en testnotis" i profilen — push om det är påslaget, annars mejl. */
 create or replace function notify_test() returns void
 language plpgsql security definer set search_path = public as $$
 declare mid text := bs_my_id();
 begin
   if mid is null then raise exception 'Logga in först'; end if;
-  perform bs_sms(mid, null, 'Testnotis från BANDOHQ — det fungerar!', 'test', 'test:' || mid || ':' || now_ms());
+  perform bs_notify(mid, null, 'Testnotis från BANDOHQ', 'Testnotis från BANDOHQ — det fungerar!', 'test', 'test:' || mid || ':' || now_ms());
 end $$;
 
 /* För utskicket (service_role): enheterna att skicka till, och resultatet. */
@@ -233,28 +294,22 @@ language sql security definer set search_path = public as $$
          fails = case when p_ok then 0 else fails + 1 end
    where id = p_id and not p_gone;
 $$;
-/* Inställningen admins styr i Crew: viktiga notiser (påminnelser, timmar) även som SMS. */
-create or replace function notify_policy() returns jsonb
-language sql stable security definer set search_path = public as $$
-  select coalesce((select data from records where kind = 'setting' and id = 'notify' and not del), '{}'::jsonb)
-$$;
 
-/* Antal och kostnad den här månaden, och vilka som saknar push, för Crew-vyn. */
-create or replace function sms_stats() returns jsonb
+/* Antal den här månaden, och vilka som får mejl i stället för push, för Crew-vyn. */
+create or replace function notify_stats() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 begin
   if not bs_is_admin() then raise exception 'Bara admin och manager'; end if;
   return (select jsonb_build_object(
-      'sent', count(*) filter (where sent_at is not null and coalesce(channel,'sms') like '%sms%'),
+      'mail', count(*) filter (where sent_at is not null and channel like '%mail%'),
       'push', count(*) filter (where sent_at is not null and channel like 'push%'),
       'queued', count(*) filter (where sent_at is null and attempts < 5),
       'failed', count(*) filter (where sent_at is null and attempts >= 5),
-      'cost', coalesce(sum(cost),0) / 10000.0,
       'withPush', (select count(distinct member_id) from push_subs where fails < 5),
       'members', (select count(*) from members where active and user_id is not null),
       'noPush', (select coalesce(jsonb_agg(name order by name), '[]') from members m where active and user_id is not null
                    and not exists (select 1 from push_subs p where p.member_id = m.id and p.fails < 5)))
-    from sms_outbox where created_at >= date_trunc('month', now()));
+    from outbox where created_at >= date_trunc('month', now()));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -265,28 +320,28 @@ end $$;
 -- ---------------------------------------------------------------------
 revoke all on function bs_put_booking(jsonb) from public, anon, authenticated;
 revoke all on function bs_clash(text, tsrange, text) from public, anon, authenticated;
-revoke all on function bs_sms(text,text,text,text,text,interval) from public, anon, authenticated;
-revoke all on function bs_sms_digest(text,text,text,text,interval) from public, anon, authenticated;
+revoke all on function bs_notify(text,text,text,text,text,text,interval,text) from public, anon, authenticated;
+revoke all on function bs_notify_digest(text,text,text,text,text,interval) from public, anon, authenticated;
+revoke all on function bs_notify_append(text,text,text,text,text,text,text,text,interval) from public, anon, authenticated;
 revoke all on function bs_hours(text) from public, anon, authenticated;
 revoke all on function bs_member_by_name(text) from public, anon, authenticated;
-revoke all on function sms_claim(int) from public, anon, authenticated;
-revoke all on function sms_done(bigint, boolean, int, text, text) from public, anon, authenticated;
+revoke all on function bs_first(text) from public, anon, authenticated;
+revoke all on function outbox_claim(int) from public, anon, authenticated;
+revoke all on function outbox_done(bigint, boolean, text, text) from public, anon, authenticated;
 revoke all on function push_targets(text) from public, anon, authenticated;
 revoke all on function push_result(bigint, boolean, boolean) from public, anon, authenticated;
-revoke all on function notify_policy() from public, anon, authenticated;
 revoke all on function push_public_key() from public;
 grant execute on function push_public_key() to anon, authenticated;
-revoke all on function sms_reminders(date) from public, anon, authenticated;
-revoke all on function sms_reminders_tick() from public, anon, authenticated;
+revoke all on function reminders(date) from public, anon, authenticated;
+revoke all on function reminders_tick() from public, anon, authenticated;
 revoke all on function bs_notify_record() from public, anon, authenticated;
 revoke all on function bs_notify_lead() from public, anon, authenticated;
 do $$ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    grant execute on function sms_claim(int) to service_role;
-    grant execute on function sms_done(bigint, boolean, int, text, text) to service_role;
+    grant execute on function outbox_claim(int) to service_role;
+    grant execute on function outbox_done(bigint, boolean, text, text) to service_role;
     grant execute on function push_targets(text) to service_role;
     grant execute on function push_result(bigint, boolean, boolean) to service_role;
-    grant execute on function notify_policy() to service_role;
-    grant select, update on sms_outbox to service_role;
+    grant select, update on outbox to service_role;
   end if;
 end $$;

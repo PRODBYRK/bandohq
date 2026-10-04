@@ -12,8 +12,9 @@ alter table members enable row level security;
 alter table invites enable row level security;
 alter table records enable row level security;
 alter table leads enable row level security;
-alter table sms_outbox enable row level security;
+alter table outbox enable row level security;
 alter table push_subs enable row level security;
+alter table login_fails enable row level security;
 
 -- ---------- hjälpare (security definer: går förbi RLS internt) ----------
 create or replace function bs_me() returns members
@@ -94,7 +95,9 @@ create policy members_self on members for update to authenticated
 
 /* WITH CHECK kan inte jämföra mot gamla raden — därför en trigger:
    admin ändrar roll, namn och status, men aldrig något som rör managerrollen;
-   alla andra ändrar bara sin egen telefon, färg och Instagram. */
+   alla andra ändrar bara sin egen telefon, färg och Instagram.
+   Undantag: redeem_invite kopplar en ny inloggning till ett konto som redan
+   finns (bs.link sätts bara där, inom transaktionen). */
 create or replace function bs_guard_member() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -102,6 +105,7 @@ begin
    (Anonyma via API:t når inte tabellen alls — RLS.) Obs: current_user duger
    inte här, i en security definer-funktion är det alltid ägaren. */
   if auth.uid() is null then return new; end if;
+  if current_setting('bs.link', true) = '1' then return new; end if;
   if bs_is_manager() then return new; end if;
   if bs_is_admin() then
     if old.role::text = 'manager' or new.role::text = 'manager' then
@@ -112,7 +116,7 @@ begin
   end if;
   new.id := old.id; new.role := old.role; new.name := old.name;
   new.active := old.active; new.user_id := old.user_id; new.email := old.email;
-  new.team := old.team; new.producer := old.producer;
+  new.team := old.team; new.producer := old.producer; new.username := old.username;
   return new;
 end $$;
 drop trigger if exists members_guard on members;
@@ -129,9 +133,11 @@ drop policy if exists leads_admin on leads;
 create policy leads_admin on leads for select to authenticated using (bs_is_admin());
 -- (nya förfrågningar skapas bara via public_request, svar bara via approve_lead/decline_lead)
 
--- ---------- SMS-utkorgen: bara läsning, för manager och admin ----------
-drop policy if exists sms_admin on sms_outbox;
-create policy sms_admin on sms_outbox for select to authenticated using (bs_is_admin());
+-- ---------- utkorgen: bara läsning, för manager och admin ----------
+drop policy if exists sms_admin on outbox;
+drop policy if exists outbox_admin on outbox;
+create policy outbox_admin on outbox for select to authenticated using (bs_is_admin());
+-- (login_fails har ingen policy alls: bara servern når den)
 
 -- ---------- push: var och en ser sina enheter, admins ser alla ----------
 drop policy if exists push_read on push_subs;

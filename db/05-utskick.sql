@@ -1,5 +1,5 @@
 -- =====================================================================
---  BANDOHQ — utskick av notiserna: push först, SMS via 46elks som reserv
+--  BANDOHQ — utskick av notiserna: mejl via Resend, push till den som har det
 --  Kör EFTER att du:
 --    1. slagit på pg_cron och pg_net (Database → Extensions)
 --    2. lagt in edge-funktionen notify-send med sina secrets (se SETUP.md, steg 5)
@@ -19,7 +19,7 @@ exception when others then null; end $$;
 -- Skrev du fel? Rätta så här:
 --   select vault.update_secret(id, 'rätt värde') from vault.secrets where name = 'bandohq_url';
 
--- Varje minut: skicka det som ligger i utkorgen (push, annars SMS).
+-- Varje minut: skicka det som ligger i utkorgen (mejl och push).
 select cron.schedule('bandohq-notiser', '* * * * *', $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'bandohq_url') || '/functions/v1/notify-send',
@@ -29,4 +29,4 @@ select cron.schedule('bandohq-notiser', '* * * * *', $$
 $$);
 
 -- Varje timme: påminnelser för morgondagens pass (gör något först från kl 17).
-select cron.schedule('bandohq-paminnelser', '5 * * * *', $$ select sms_reminders_tick() $$);
+select cron.schedule('bandohq-paminnelser', '5 * * * *', $$ select reminders_tick() $$);

@@ -430,6 +430,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .linkbtn:hover{text-decoration:underline}
 .gate-form{margin-top:4px}
 .gate-foot{margin-top:var(--s5);text-align:center;color:var(--mut);font-size:13px;line-height:1.55}
+.hint{font-size:12px;line-height:1.45;margin-top:6px;color:var(--mut)}
+.hint.good{color:var(--ok2)} .hint.bad{color:var(--warn)}
+.codein{letter-spacing:.32em;font-size:24px;text-align:center;font-variant-numeric:tabular-nums}
+.invrow .grow{min-width:0} .invrow .mrole{overflow-wrap:anywhere}
 .gate-foot b{color:var(--txt)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--pur3)}
 .chev{color:var(--mut2);font-size:18px;flex:none}
@@ -752,7 +756,6 @@ function blank(){
     dropbox:{appKey:'', sharedId:'', setupAt:0, up:0},   /* delas via synken; token per enhet */
     pushCfg:{publicKey:'', up:0},                          /* push-nyckelns publika del (den privata bor på servern) */
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
-    notify:{criticalSms:false, up:0},                      /* admins val: viktiga notiser även som SMS */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
     invites:[],                                         /* bara förhandsvisningen — annars i databasen */
     rates:{currency:'SEK', default:0, per:{}}};
@@ -790,7 +793,6 @@ function heal(s){
   s.dropbox = Object.assign(blank().dropbox, s.dropbox||{});
   s.pushCfg = Object.assign(blank().pushCfg, s.pushCfg||{});
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
-  s.notify = Object.assign(blank().notify, s.notify||{});
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
   if(!Array.isArray(s.invites)) s.invites = [];
   delete s.drive;                                   /* Google Drive är borttaget */
@@ -1155,24 +1157,31 @@ function renderGate(){
             någon minut. Kolla skräpposten om det dröjer.</div>
            <button class="btn ghost" style="margin-top:14px" onclick="gateMode='login';renderGate()">TILLBAKA TILL INLOGGNINGEN</button>`
         : `<form class="gate-form" onsubmit="event.preventDefault();doForgot()">
-            <label class="lbl" for="gE">E-POST</label>
-            <input id="gE" type="email" inputmode="email" autocomplete="username" value="${esc(gateEmail)}" required>
+            <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
+            <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
             <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKICKAR…':'SKICKA LÄNK'}</button>
             ${gateErrBox()}</form>
            <button class="linkbtn" onclick="gateMode='login';gateErr='';renderGate()">Tillbaka</button>`;
       return;
     }
-    if(gateMode==='confirm'){
-      tag.textContent = 'Nästan klart.';
-      b.innerHTML = `<div class="okbox"><b>Kolla din mejl.</b> Vi har skickat en länk till <b>${esc(gateEmail)}</b>.
-          Tryck på den så är du inne — rollen från inbjudan följer med.</div>
-        <button class="btn ghost" style="margin-top:14px" onclick="gateMode='login';renderGate()">JAG HAR BEKRÄFTAT — LOGGA IN</button>`;
+    if(gateMode==='code'){
+      tag.textContent = 'Kolla din mejl.';
+      b.innerHTML = `<div class="okbox">Vi har mejlat en kod till <b>${esc(gateEmail)}</b>. Skriv in den här, så är du
+          inne — rollen från inbjudan följer med.</div>
+        <form class="gate-form" onsubmit="event.preventDefault();doCode()">
+          <label class="lbl" for="jK">KOD FRÅN MEJLET</label>
+          <input id="jK" class="codein" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" required>
+          <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'KOLLAR…':'VERIFIERA OCH LOGGA IN'}</button>
+          ${gateErrBox()}</form>
+        <button class="linkbtn" onclick="resendCode()">Kom ingen kod? Skicka en ny</button>
+        <div class="gate-foot">Kolla skräpposten om det dröjer. Har du redan ett konto med den adressen,
+          <a href="#" onclick="event.preventDefault();cancelCode()">logga in</a> i stället.</div>`;
       return;
     }
     tag.textContent = 'Logga in för att fortsätta.';
     b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
-        <label class="lbl" for="gE">E-POST</label>
-        <input id="gE" type="email" inputmode="email" autocomplete="username" value="${esc(gateEmail)}" required>
+        <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
+        <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
         <label class="lbl" for="gP">LÖSENORD</label>
         <input id="gP" type="password" autocomplete="current-password" required>
         <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'LOGGAR IN…':'LOGGA IN'}</button>
@@ -1201,7 +1210,7 @@ function renderGate(){
     ${gateErrBox()}
     <button class="btn ghost" style="margin-top:18px" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID UTAN KONTO</button>
     <div class="note">Servern är inte inkopplad än, så man loggar in genom att välja konto.
-      När Supabase är inkopplat gäller <b>e-post och lösenord</b> och inbjudningslänkar — se SETUP.md.</div>`;
+      När Supabase är inkopplat gäller <b>användarnamn och lösenord</b> och inbjudningar per mejl — se SETUP.md.</div>`;
 }
 async function gateRun(fn){
   if(gateBusy) return;
@@ -1221,6 +1230,11 @@ function doLogin(){
          var upptaget) — be om ett annat namn i stället för att låsa ute. */
       if(AUTH && !S.session && pendingInvite()){ gateMode = 'finish'; throw e; }
       if(!S.session) saveAuth(null);
+      /* kontot finns men koden skrevs aldrig in — skicka en ny och visa kodsteget */
+      if(/Bekräfta din e-post/.test(e.message) && em.includes('@')){
+        await sbAuth('/resend', {type:'signup', email:em.toLowerCase()}).catch(()=>{});
+        gateMode = 'code'; return;
+      }
       throw e;
     }
     showApp();
@@ -1230,7 +1244,9 @@ function doForgot(){
   const em = document.getElementById('gE').value.trim();
   gateEmail = em;
   return gateRun(async ()=>{
-    await sbAuth('/recover?redirect_to=' + encodeURIComponent(location.origin + location.pathname), {email:em.toLowerCase()});
+    /* med användarnamn går det via edge-funktionen — den avslöjar aldrig mejladressen */
+    if(em.includes('@')) await sbAuth('/recover?redirect_to=' + encodeURIComponent(appUrl()), {email:em.toLowerCase()});
+    else await sbFn('auth-login', {action:'recover', username:em.toLowerCase(), redirect_to:appUrl()});
     gateMode = 'sent';
   });
 }
@@ -1249,18 +1265,21 @@ function renderFinish(tag, b){
   tag.textContent = 'Ett steg kvar.';
   b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doFinish()">
       <label class="lbl" for="jN">DITT NAMN</label>
-      <input id="jN" value="${esc(p.name||'')}" autocomplete="name" maxlength="40" required>
-      <label class="lbl" for="jT">TELEFON</label>
-      <input id="jT" type="tel" value="${esc(p.phone||'')}" autocomplete="tel">
+      <input id="jN" value="${esc(p.name||'')}" autocomplete="name" maxlength="40">
+      <div class="hint">Bjöds du in med ett namn som redan finns i appen behåller du det.</div>
+      <label class="lbl" for="jU">ANVÄNDARNAMN</label>
+      <input id="jU" value="${esc(p.username||'')}" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24"
+        oninput="checkUser(this.value)" required>
+      <div id="jUok" class="hint"></div>
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'GÅR MED…':'GÅ MED'}</button>
       ${gateErrBox()}</form>
     <button class="linkbtn" onclick="signOut()">Logga ut</button>`;
 }
 function doFinish(){
-  const name = document.getElementById('jN').value.trim(), phone = document.getElementById('jT').value.trim();
+  const name = document.getElementById('jN').value.trim(), username = document.getElementById('jU').value.trim().toLowerCase();
   const p = pendingInvite();
   return gateRun(async ()=>{
-    localStorage.setItem('bandosesh_invite', JSON.stringify({token:p.token, name, phone}));
+    localStorage.setItem('bandosesh_invite', JSON.stringify(Object.assign({}, p, {name, username})));
     await cloudEnter(); gateMode = 'login'; showApp();
   });
 }
@@ -1280,19 +1299,19 @@ async function renderJoin(tag, b){
       <button class="btn ghost" style="margin-top:14px" onclick="leaveJoin()">TILL INLOGGNINGEN</button>`;
     return;
   }
-  const role = INVITE_ROLES[joinInfo.role] || joinInfo.role;
-  /* SMS-notiserna går inte att stänga av — alla behöver ett nummer. En personlig
-     länk har redan numret (admin skrev in det), då räcker namnet. */
-  const needPhone = !joinInfo.name;
-  tag.innerHTML = `Du är inbjuden som <b>${esc(role)}</b>${joinInfo.circle?` i <b>${esc(joinInfo.circle)}</b>`:''}${
-    joinInfo.team?` i <b>${esc(joinInfo.team)}</b>`:''}.`;
+  const role = INVITE_ROLES[joinInfo.role] || joinInfo.role, known = !!joinInfo.name, jd = joinDraft || {};
+  tag.innerHTML = `${known ? `Hej <b>${esc(joinInfo.name)}</b>! ` : ''}Du är inbjuden som <b>${esc(role)}</b>${
+    joinInfo.circle?` i <b>${esc(joinInfo.circle)}</b>`:''}${joinInfo.team?` i <b>${esc(joinInfo.team)}</b>`:''}.`;
+  const un = jd.username !== undefined ? jd.username : suggestUsername(joinInfo.name||'');
   b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doJoin()" autocomplete="on">
-      <label class="lbl" for="jN">DITT NAMN</label>
-      <input id="jN" autocomplete="name" maxlength="40" placeholder="Förnamn Efternamn" value="${esc(joinInfo.name||'')}" required>
+      ${known ? '' : `<label class="lbl" for="jN">DITT NAMN</label>
+      <input id="jN" autocomplete="name" maxlength="40" placeholder="Förnamn Efternamn" value="${esc(jd.name||'')}" required>`}
+      <label class="lbl" for="jU">VÄLJ ANVÄNDARNAMN</label>
+      <input id="jU" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="24"
+        placeholder="t.ex. rkay" value="${esc(un)}" oninput="checkUser(this.value)" required>
+      <div id="jUok" class="hint">Det här loggar du in med. E-posten går också.</div>
       <label class="lbl" for="jE">E-POST</label>
-      <input id="jE" type="email" inputmode="email" autocomplete="username" ${PREVIEW_LOGIN?'':'required'}>
-      ${needPhone ? `<label class="lbl" for="jT">MOBILNUMMER</label>
-      <input id="jT" type="tel" autocomplete="tel" placeholder="070-123 45 67" required>` : `<input id="jT" type="hidden" value="">`}
+      <input id="jE" type="email" inputmode="email" autocomplete="email" value="${esc(jd.email!==undefined ? jd.email : joinInfo.email||'')}" ${PREVIEW_LOGIN?'':'required'}>
       ${PREVIEW_LOGIN ? '' : `<label class="lbl" for="jP">VÄLJ LÖSENORD</label>
       <input id="jP" type="password" autocomplete="new-password" minlength="8" placeholder="Minst 8 tecken" required>`}
       <label class="consent"><input type="checkbox" id="jC" required>
@@ -1300,18 +1319,22 @@ async function renderJoin(tag, b){
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKAPAR KONTOT…':'SKAPA KONTO'}</button>
       ${gateErrBox()}
     </form>
-    <div class="gate-foot">Påminnelser och svar kommer som <b>SMS</b> — de går inte att stänga av.${
-      joinInfo.role==='participant' ? ' Telefon och e-post syns bara för din cirkelledare och admins.' : ''}</div>
+    <div class="gate-foot">${PREVIEW_LOGIN ? '' : 'Vi mejlar en kod till din e-post — skriv in den, så är du inne. '}Bokningsbekräftelser och svar kommer på mejlen.${
+      joinInfo.role==='participant' ? ' Din e-post syns bara för din cirkelledare och admins.' : ''}</div>
     <button class="linkbtn" onclick="leaveJoin()">Har du redan ett konto? Logga in</button>`;
+  if(un) checkUser(un);
 }
 function leaveJoin(){
   joinToken = null; joinInfo = null; gateErr = '';
   history.replaceState(null, '', location.pathname + location.search);
   renderGate();
 }
+let joinDraft = null;
 function doJoin(){
-  const f = {token:joinToken, name:document.getElementById('jN').value, email:document.getElementById('jE').value,
-    phone:document.getElementById('jT').value, password:(document.getElementById('jP')||{}).value||''};
+  const val = id => (document.getElementById(id)||{}).value || '';
+  const f = {token:joinToken, name: val('jN') || (joinInfo && joinInfo.name) || '', username: val('jU'),
+    email: val('jE'), password: val('jP')};
+  joinDraft = {name:val('jN'), username:f.username, email:f.email};      /* behålls om något går fel */
   gateEmail = f.email.trim();
   const agreed = (document.getElementById('jC')||{}).checked;
   return gateRun(async ()=>{
@@ -1323,11 +1346,57 @@ function doJoin(){
       if(!PREVIEW_LOGIN && AUTH && !S.session && pendingInvite()){ joinToken = null; joinInfo = null; gateMode = 'finish'; }
       throw e;
     }
-    joinToken = null; joinInfo = null;
+    joinToken = null; joinInfo = null; joinDraft = null;
     history.replaceState(null, '', location.pathname + location.search);
-    if(r==='confirm') gateMode = 'confirm';
+    if(r==='code') gateMode = 'code';
     else toast('Välkommen in, ' + f.name.trim().split(' ')[0]);
   });
+}
+
+/* ---------- koden från mejlet (första inloggningen) ---------- */
+function doCode(){
+  const code = (document.getElementById('jK').value||'').replace(/\D/g,'');
+  return gateRun(async ()=>{
+    if(code.length < 6) throw new Error('Skriv in koden från mejlet — sex siffror');
+    takeSession(await sbAuth('/verify', {type:'signup', email:gateEmail.trim().toLowerCase(), token:code}));
+    try{ await cloudEnter(); }
+    catch(e){ if(AUTH && !S.session && pendingInvite()) gateMode = 'finish'; throw e; }
+    gateMode = 'login'; showApp(); toast('Välkommen in, ' + String(S.session.name||'').split(' ')[0]);
+  });
+}
+function resendCode(){
+  return gateRun(async ()=>{
+    await sbAuth('/resend', {type:'signup', email:gateEmail.trim().toLowerCase()});
+    toast('En ny kod är på väg');
+  });
+}
+function cancelCode(){
+  try{ localStorage.removeItem('bandosesh_invite'); }catch(e){}
+  gateMode = 'login'; gateErr = ''; renderGate();
+}
+
+/* ---------- användarnamn ---------- */
+const USERNAME_RE = /^[a-z0-9._-]{2,24}$/, EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+/* "Sofia Marks" → sofia.marks, "RKAY" → rkay */
+const suggestUsername = n => String(n||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+  .replace(/[^a-z0-9._-]+/g,'.').replace(/^[._-]+|[._-]+$/g,'').slice(0,24);
+async function usernameFree(u){
+  if(PREVIEW_LOGIN) return !S.accounts.some(a=>(a.username||'')===u);
+  const r = await fetch(CLOUD.url + '/rest/v1/rpc/username_free', {method:'POST',
+    headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:JSON.stringify({p_username:u})});
+  if(!r.ok) throw new Error(await sbErr(r));
+  return r.json();
+}
+let userChk = 0;
+async function checkUser(v){
+  const el = document.getElementById('jUok'); if(!el) return;
+  const u = String(v||'').trim().toLowerCase(), my = ++userChk;
+  if(!u){ el.className = 'hint'; el.textContent = ''; return; }
+  if(!USERNAME_RE.test(u)){ el.className = 'hint bad'; el.textContent = '2–24 tecken: a–z, 0–9, punkt, bindestreck eller understreck'; return; }
+  let free = null; try{ free = await usernameFree(u); }catch(e){}
+  if(my !== userChk) return;                       /* ett nyare tangenttryck hann före */
+  el.className = 'hint ' + (free===false ? 'bad' : free ? 'good' : '');
+  el.textContent = free===false ? 'Upptaget — välj ett annat' : free ? 'Ledigt' : '';
 }
 
 /* =====================================================================
@@ -1343,10 +1412,12 @@ const jwtSub = t => { try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g,'
 const cloudOn = () => !PREVIEW_LOGIN && !!AUTH && !!S.session;
 
 const AUTH_SV = [
-  [/invalid login credentials/i, 'Fel e-post eller lösenord'],
+  [/invalid login credentials/i, 'Fel användarnamn, e-post eller lösenord'],
+  [/token has expired or is invalid|otp_expired/i, 'Koden stämmer inte eller har gått ut — be om en ny'],
+  [/for security purposes|only request this after/i, 'Vänta en minut innan du ber om en ny kod'],
   [/already registered|already been registered/i, 'Det finns redan ett konto med den e-posten — logga in i stället'],
   [/at least (\d+) characters/i, 'Lösenordet måste vara minst 6 tecken'],
-  [/email not confirmed/i, 'Bekräfta din e-post först — kolla inkorgen'],
+  [/email not confirmed/i, 'Bekräfta din e-post först — skriv in koden från mejlet'],
   [/rate limit|too many/i, 'För många försök — vänta en stund'],
   [/invalid email|unable to validate email/i, 'E-postadressen ser fel ut']];
 async function sbErr(r){
@@ -1390,6 +1461,13 @@ async function sb(path, opts){
   return t ? JSON.parse(t) : null;
 }
 const sbRpc = (fn, args) => sb('/rpc/' + fn, {method:'POST', body: JSON.stringify(args||{})});
+/* Edge-funktion utan inloggning (inloggning med användarnamn) */
+async function sbFn(name, body){
+  const r = await fetch(CLOUD.url + '/functions/v1/' + name, {method:'POST',
+    headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+  if(!r.ok) throw new Error(await sbErr(r));
+  return r.json();
+}
 
 /* Kontot i databasen → kontot i appen. Crewets färger följer med; nya får en ur paletten. */
 const PALETTE = [['#7c3aed','#a855f7'],['#0284c7','#38bdf8'],['#d97706','#fbbf24'],['#db2777','#f472b6'],['#047857','#34d399']];
@@ -1399,6 +1477,7 @@ function memberToAcc(m){
   const crewish = isTeamRole(m.role);
   return {id:m.id, n:m.name, r:m.role, email:m.email||'', phone:m.phone||'',
     team:m.team||'', ig:m.ig||'', producer:m.producer||'',
+    login: !!m.user_id, username: m.username||'',          /* har personen loggat in? (inbjudningarna) */
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
     active: m.active!==false, del:false, up:+m.up||0};
@@ -1416,14 +1495,14 @@ function cloudBlank(){ const s = blank(); s.accounts = []; return s; }
 function pendingInvite(){
   try{ const l = JSON.parse(localStorage.getItem('bandosesh_invite')||'null'); if(l && l.token) return l; }catch(e){}
   const m = (AUTH && AUTH.meta) || {};
-  return m.invite ? {token:m.invite, name:m.name||'', phone:m.phone||''} : null;
+  return m.invite ? {token:m.invite, name:m.name||'', username:m.username||''} : null;
 }
 /* Inloggad hos Supabase → hitta (eller skapa via väntande inbjudan) sitt konto. */
 async function cloudEnter(){
   let rows = await sb('/members?select=*&user_id=eq.' + AUTH.uid);
   const pend = pendingInvite();
   if(!rows.length && pend){
-    await sbRpc('redeem_invite', {p_token:pend.token, p_name:pend.name, p_phone:pend.phone||''});
+    await sbRpc('redeem_invite', {p_token:pend.token, p_name:pend.name||null, p_username:pend.username||''});
     localStorage.removeItem('bandosesh_invite');
     if(AUTH.meta) AUTH.meta.invite = '';
     rows = await sb('/members?select=*&user_id=eq.' + AUTH.uid);
@@ -1438,8 +1517,12 @@ async function cloudEnter(){
   await sync(true);
   return m;
 }
-async function cloudLogin(email, password){
-  takeSession(await sbAuth('/token?grant_type=password', {email:email.trim().toLowerCase(), password}));
+/* Användarnamn eller e-post. Användarnamnet slås upp på servern (edge-funktionen
+   auth-login), så att ingen mejladress lämnas ut till webbläsaren. */
+async function cloudLogin(login, password){
+  const l = String(login||'').trim().toLowerCase();
+  takeSession(l.includes('@') ? await sbAuth('/token?grant_type=password', {email:l, password})
+                              : await sbFn('auth-login', {username:l, password}));
   return cloudEnter();
 }
 
@@ -1457,19 +1540,23 @@ async function cloudPush(){
   setting('dropbox', {appKey:S.dropbox.appKey||'', sharedId:S.dropbox.sharedId||'', setupAt:S.dropbox.setupAt||0}, S.dropbox.up);
   setting('push', {publicKey:S.pushCfg.publicKey||''}, S.pushCfg.up);
   setting('backup', {at:S.backupCfg.at||0, by:S.backupCfg.by||''}, S.backupCfg.up);
-  setting('notify', {criticalSms:!!S.notify.criticalSms}, S.notify.up);
   for(let i=0; i<rows.length; i+=200) await sbRpc('push_records', {rows: rows.slice(i, i+200)});
   if(can('manageCrew')){
-    const acc = S.accounts.filter(a=>(a.up||0) > since).map(a=>({id:a.id, role:a.r, name:a.n,
-      email:a.email||null, phone:a.phone||null, color:a.c||null, glow:a.g||null,
-      team:a.team||null, ig:a.ig||null, producer:a.producer||null,
-      active:a.active!==false && !a.del, up:a.up||0}))
+    const acc = S.accounts.filter(a=>(a.up||0) > since).map(memberRow)
       /* admin rör aldrig managerns rad — databasen skulle neka hela omgången */
       .filter(a=>can('grantManager') || (byId(a.id)||{}).r!=='manager');
     if(acc.length) await sb('/members?on_conflict=id', {method:'POST',
       headers:{Prefer:'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify(acc)});
   }
   S.cloud.pushedAt = now; save();
+}
+/* Kontot i appen → raden i databasen. user_id och användarnamnet skickas aldrig härifrån. */
+const memberRow = a => ({id:a.id, role:a.r, name:a.n, email:a.email||null, phone:a.phone||null, color:a.c||null,
+  glow:a.g||null, team:a.team||null, ig:a.ig||null, producer:a.producer||null, active:a.active!==false && !a.del, up:a.up||0});
+/* En person sparas direkt — en inbjudan kopplas till raden och den måste finnas först. */
+async function pushMember(a){
+  await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
+    body: JSON.stringify([memberRow(a)])});
 }
 function applyRecord(r){
   const up = +r.up || 0;
@@ -1479,7 +1566,6 @@ function applyRecord(r){
     if(r.id==='dropbox' && up > (S.dropbox.up||0)) S.dropbox = Object.assign({}, S.dropbox, r.data, {up});
     if(r.id==='push'    && up > (S.pushCfg.up||0)) S.pushCfg = Object.assign({}, S.pushCfg, r.data, {up});
     if(r.id==='backup'  && up > (S.backupCfg.up||0)) S.backupCfg = Object.assign({}, S.backupCfg, r.data, {up});
-    if(r.id==='notify'  && up > (S.notify.up||0))  S.notify  = Object.assign({}, S.notify, r.data, {up});
     return;
   }
   const coll = KINDS[r.kind]; if(!coll) return;
@@ -1578,22 +1664,26 @@ function localToken(){
   const h = [...crypto.getRandomValues(new Uint8Array(5))].map(x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();
   return h.slice(0,4) + '-' + h.slice(4,10);
 }
-/* x = {team, name, phone}: med namn och telefon blir länken personlig och
-   skickas som SMS (det gör databasen, se create_invite). */
+/* x = {team, name, email, member}: med e-post skickas länken som mejl (det gör
+   databasen, se create_invite). Med member gäller den en person som redan finns i
+   appen — inloggningen kopplas då till den raden. */
 async function createInvite(role, circleId, days, max, x){
   x = x || {};
   if(role==='manager' && !can('grantManager')) throw new Error('Bara managern kan bjuda in en manager');
-  if(x.phone && !normPhone(x.phone)) throw new Error('Telefonnumret ser fel ut');
+  const em = String(x.email||'').trim().toLowerCase();
+  if(em && !EMAIL_RE.test(em)) throw new Error('E-postadressen ser fel ut');
   if(PREVIEW_LOGIN){
     if((role==='leader'||role==='participant') && !circleId) throw new Error('Välj vilken cirkel inbjudan gäller');
-    const tok = localToken();
+    const m = x.member ? byId(x.member) : null, tok = localToken();
+    if(m) S.invites.forEach(i=>{ if(i.member_id===m.id) i.closed = true; });       /* "skicka igen" */
     S.invites.push({token:tok, role, circle_id:circleId||null, expires_at:Date.now()+days*864e5,
-      max_uses:x.name ? 1 : (max||null), uses:0, closed:false, created:Date.now(),
-      team:x.team||null, name:x.name||null, phone:normPhone(x.phone)||null});
+      max_uses:(x.name||m) ? 1 : (max||null), uses:0, closed:false, created:Date.now(), created_at:new Date().toISOString(),
+      team:x.team||(m&&m.team)||null, name:(m&&m.n)||x.name||null, email:em||null, member_id:m?m.id:null});
+    if(m && em) bump(Object.assign(m, {email:em}));
     save(); return tok;
   }
   return sbRpc('create_invite', {p_role:role, p_circle:circleId||null, p_days:days, p_max:max||null,
-    p_team:x.team||null, p_name:x.name||null, p_phone:x.phone||null, p_url:x.phone ? appUrl() : null});
+    p_team:x.team||null, p_name:x.name||null, p_email:em||null, p_url: em ? appUrl() : null, p_member:x.member||null});
 }
 /* Samma regel som bs_phone i databasen: svenskt nummer → +46… */
 function normPhone(p){
@@ -1623,39 +1713,46 @@ async function inviteInfo(tok){
   if(PREVIEW_LOGIN){
     const i = S.invites.find(x=>x.token===String(tok).toUpperCase());
     const c = i && i.circle_id ? circleById(i.circle_id) : null;
-    return Object.assign(inviteState(i), {role:i&&i.role, circle:c?c.n:null, team:i&&i.team, name:i&&i.name});
+    return Object.assign(inviteState(i), {role:i&&i.role, circle:c?c.n:null, team:i&&i.team, name:i&&i.name,
+      email:i&&i.email, member:!!(i&&i.member_id)});
   }
   return sbRpc('invite_info', {p_token:tok});
 }
-/* Skapa konto från en länk. Returnerar 'ok', eller 'confirm' om Supabase
-   kräver att e-posten bekräftas först (då löses länken in vid första inloggningen). */
+/* Skapa konto från en länk. Returnerar 'ok', eller 'code' om Supabase mejlat en
+   kod som ska skrivas in (då löses länken in när koden är verifierad). */
 async function joinWithInvite(f){
-  const name = f.name.trim();
+  const name = String(f.name||'').trim(), username = String(f.username||'').trim().toLowerCase();
   if(name.length < 2) throw new Error('Fyll i ditt namn');
+  if(!USERNAME_RE.test(username)) throw new Error('Välj ett användarnamn: 2–24 tecken, a–z, 0–9, punkt, bindestreck eller understreck');
   if(PREVIEW_LOGIN){
     const i = S.invites.find(x=>x.token===String(f.token).toUpperCase());
     const st = inviteState(i); if(!st.ok) throw new Error(st.why);
-    if(accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) throw new Error('Namnet finns redan — lägg till efternamnet');
-    if(!normPhone(f.phone || i.phone)) throw new Error('Fyll i ett mobilnummer — notiserna kommer som SMS');
-    const crewish = isTeamRole(i.role);
-    const pal = PALETTE[S.accounts.length % PALETTE.length];
-    const acc = bump({id:uid(), n:name, r:i.role, email:f.email.trim(), phone:normPhone(f.phone || i.phone),
-      team:i.team||'',
-      c: crewish ? pal[0] : '#6633b8', g: crewish ? pal[1] : '#9d5cf5', active:true, del:false});
-    S.accounts.push(acc);
+    if(S.accounts.some(a=>(a.username||'')===username)) throw new Error('Användarnamnet är upptaget');
+    let acc = i.member_id ? byId(i.member_id) : null;
+    if(acc){
+      /* personen fanns redan i appen: samma konto, nu med inloggning och rollen från länken */
+      bump(Object.assign(acc, {r:i.role, username, email:f.email.trim() || acc.email, team:i.team || acc.team, login:true}));
+    } else {
+      if(accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) throw new Error('Namnet finns redan — lägg till efternamnet');
+      const crewish = isTeamRole(i.role), pal = PALETTE[S.accounts.length % PALETTE.length];
+      acc = bump({id:uid(), n:name, r:i.role, email:f.email.trim(), phone:'', username, team:i.team||'', login:true,
+        c: crewish ? pal[0] : '#6633b8', g: crewish ? pal[1] : '#9d5cf5', active:true, del:false});
+      S.accounts.push(acc);
+    }
     const c = i.circle_id ? circleById(i.circle_id) : null;
-    if(c && i.role==='participant'){ c.members = (c.members||[]).concat(acc.id); bump(c); }
+    if(c && i.role==='participant' && !(c.members||[]).includes(acc.id)){ c.members = (c.members||[]).concat(acc.id); bump(c); }
     if(c && i.role==='leader'){ c.leader = acc.n; bump(c); }
     if(i.lead_id) S.bookings.filter(b=>b.leadId===i.lead_id).forEach(b=>bump(Object.assign(b, {who:acc.n, reqBy:acc.id})));
     i.uses++; save(); signIn(acc); return 'ok';
   }
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) throw new Error('E-postadressen ser fel ut');
-  if(!normPhone(f.phone) && !(joinInfo && joinInfo.name)) throw new Error('Fyll i ett mobilnummer — notiserna kommer som SMS');
+  const email = f.email.trim().toLowerCase();
+  if(!EMAIL_RE.test(email)) throw new Error('E-postadressen ser fel ut');
   if((f.password||'').length < 8) throw new Error('Lösenordet måste vara minst 8 tecken');
-  localStorage.setItem('bandosesh_invite', JSON.stringify({token:f.token, name, phone:f.phone||''}));
-  const j = await sbAuth('/signup', {email:f.email.trim().toLowerCase(), password:f.password,
-    data:{name, phone:f.phone||'', invite:String(f.token).toUpperCase()}});
-  if(!takeSession(j)) return 'confirm';
+  if(await usernameFree(username).catch(()=>null) === false) throw new Error('Användarnamnet är upptaget — välj ett annat');
+  localStorage.setItem('bandosesh_invite', JSON.stringify({token:f.token, name, username, email}));
+  const j = await sbAuth('/signup', {email, password:f.password,
+    data:{name, username, invite:String(f.token).toUpperCase()}});
+  if(!takeSession(j)) return 'code';
   await cloudEnter(); showApp(); return 'ok';
 }
 
@@ -3651,7 +3748,8 @@ function vTeam(){
       · ${nt(cameras().length,'i kamerateamet','i kamerateamet')} · ${booked().filter(b=>endAt(b)>now).length} kommande pass</div>
     ${adm ? `<div class="row" style="gap:9px;margin-bottom:var(--s4)">
       <button class="btn" style="flex:1" onclick="openAddPerson()">+ LÄGG TILL PERSON</button>
-      <button class="btn ghost" style="flex:1" onclick="openInvites()">BJUD IN MED LÄNK</button></div>` : ''}
+      <button class="btn ghost" style="flex:1" onclick="openInvites()">BJUD IN MED LÄNK</button></div>
+      ${invitesSection()}` : ''}
     <div class="stagger">${rows}</div>
     ${cameras().length ? `<div class="eyebrow">KAMERATEAM<span class="ln"></span></div>
       ${[...new Set(cameras().map(creditOf))].map(t=>{ const ms = cameras().filter(a=>creditOf(a)===t);
@@ -3673,8 +3771,8 @@ function vTeam(){
       ${statusCard()}
       <div class="eyebrow">SÄKERHETSKOPIA<span class="ln"></span></div>
       ${backupCard()}
-      <div class="eyebrow">SMS-NOTISER<span class="ln"></span></div>
-      ${smsCard()}
+      <div class="eyebrow">NOTISER<span class="ln"></span></div>
+      ${notisCard()}
       <div class="eyebrow">ADMIN<span class="ln"></span></div>
       <button class="btn ghost" onclick="openCrewAdmin()">HANTERA KONTON</button>
       <button class="btn ghost" style="margin-top:9px" onclick="openStudios()">STUDIOS OCH ÖPPETTIDER</button>
@@ -3683,33 +3781,25 @@ function vTeam(){
   `;
 }
 
-/* SMS kostar pengar — admins ser vad som gått iväg den här månaden. */
-let smsStats = null, smsStatsAt = 0;
-function smsCard(){
-  const crit = `<label class="row" style="gap:12px;margin-top:14px;cursor:pointer">
-      <input type="checkbox" ${S.notify.criticalSms?'checked':''} onchange="setCriticalSms(this.checked)">
-      <span class="grow tiny" style="line-height:1.5"><b style="color:var(--txt)">Påminnelser och timmar även som SMS</b><br>
-      Säkrast — men kostar ett SMS per påminnelse även för dem som har push.</span></label>`;
-  if(PREVIEW_LOGIN) return `<div class="note" style="margin-top:0">Notiserna går som <b>push</b> (gratis) till alla som slagit på det
-    i appen, och som <b>SMS</b> via 46elks till dem som inte har det — när servern är inkopplad (se SETUP.md).</div>${crit}`;
-  if(Date.now() - smsStatsAt > 60000){ smsStatsAt = Date.now();
-    sbRpc('sms_stats', {}).then(r=>{ smsStats = r; if(view==='team') render(); }).catch(()=>{}); }
-  const st = smsStats;
+/* Vad som gått iväg den här månaden, och vilka som får påminnelser som mejl i stället för push. */
+let notifyStats = null, notifyStatsAt = 0;
+function notisCard(){
+  if(PREVIEW_LOGIN) return `<div class="note" style="margin-top:0">När servern är inkopplad går bokningsbekräftelser,
+    förfrågningar, svar och inbjudningar som <b>mejl</b>. Påminnelser och agendan går som <b>push</b> (gratis) till den som
+    slagit på det, annars som mejl. Se SETUP.md.</div>`;
+  if(Date.now() - notifyStatsAt > 60000){ notifyStatsAt = Date.now();
+    sbRpc('notify_stats', {}).then(r=>{ notifyStats = r; if(view==='team') render(); }).catch(()=>{}); }
+  const st = notifyStats;
   return `<div class="card"><div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div><div class="tiny muted">MEJL</div><b class="nums" style="font-size:20px">${st?st.mail:'–'}</b></div>
       <div><div class="tiny muted">PUSH</div><b class="nums" style="font-size:20px">${st?st.push:'–'}</b></div>
-      <div><div class="tiny muted">SMS</div><b class="nums" style="font-size:20px">${st?st.sent:'–'}</b></div>
-      <div><div class="tiny muted">SMS-KOSTNAD</div><b class="nums" style="font-size:20px">${st?Math.round(st.cost)+' kr':'–'}</b></div></div>
+      <div><div class="tiny muted">I KÖ</div><b class="nums" style="font-size:20px">${st?st.queued:'–'}</b></div></div>
     ${st ? `<div class="tiny" style="margin-top:12px;line-height:1.55"><b>${st.withPush} av ${st.members}</b> har push påslaget.${
-      st.noPush && st.noPush.length ? ` <span class="muted">Får SMS: ${st.noPush.slice(0,12).map(esc).join(', ')}${st.noPush.length>12?' …':''}</span>` : ''}</div>` : ''}
-    ${st && st.failed ? `<div class="warn">${st.failed} notiser gick inte att skicka. Kolla nycklarna (push) och 46elks-saldot (SMS).</div>` : ''}
-    ${crit}
-    <div class="tiny muted" style="margin-top:10px">Den här månaden. Notiserna går inte att stänga av — utan push kommer de som SMS.</div></div>
+      st.noPush && st.noPush.length ? ` <span class="muted">Får påminnelser som mejl: ${st.noPush.slice(0,12).map(esc).join(', ')}${st.noPush.length>12?' …':''}</span>` : ''}</div>` : ''}
+    ${st && st.failed ? `<div class="warn">${st.failed} notiser gick inte att skicka. Kolla Resend-nyckeln och push-nycklarna (SETUP.md, steg 5).</div>` : ''}
+    <div class="tiny muted" style="margin-top:10px">Den här månaden. Bekräftelser och förfrågningar går alltid som mejl;
+      påminnelser och agenda som push, och som mejl till den som saknar push.</div></div>
     ${can('grantManager') ? vapidCard() : ''}`;
-}
-function setCriticalSms(on){
-  if(!can('manageCrew')) return;
-  S.notify = Object.assign({}, S.notify, {criticalSms:!!on, up:Date.now()}); save(); sync(true);
-  toast(on ? 'Påminnelser och timmar går nu även som SMS' : 'Bara SMS till dem som saknar push');
 }
 
 /* =====================================================================
@@ -3748,21 +3838,21 @@ let pushBusy = false;
 function pushBanner(){
   const a = pushAdvice(); if(!a || a==='unsupported') return '';
   const txt = {
-    home: `<b>Gratis notiser:</b> lägg BANDOHQ på hemskärmen — tryck på dela-knappen i Safari och <b>Lägg till på hemskärmen</b>, öppna appen därifrån och slå på notiser. Tills dess kommer de som SMS.`,
-    denied: `<b>Notiserna är avstängda</b> för BANDOHQ i telefonens inställningar. Slå på dem där — tills dess kommer påminnelser och förfrågningar som SMS.`,
-    ask: `<b>Slå på notiser</b> — gratis och direkt i telefonen. Utan dem kommer påminnelser och förfrågningar som SMS.`}[a];
+    home: `<b>Notiser i telefonen:</b> lägg BANDOHQ på hemskärmen — tryck på dela-knappen i Safari och <b>Lägg till på hemskärmen</b>, öppna appen därifrån och slå på notiser. Tills dess kommer påminnelser som mejl.`,
+    denied: `<b>Notiserna är avstängda</b> för BANDOHQ i telefonens inställningar. Slå på dem där — tills dess kommer påminnelser som mejl.`,
+    ask: `<b>Slå på notiser</b> — gratis och direkt i telefonen. Utan dem kommer påminnelser och agendan som mejl.`}[a];
   return `<div class="pushban ${a}" role="status"><div class="grow">${txt}</div>
     ${a==='ask' ? `<button class="btn slim" style="width:auto;flex:none;padding:10px 14px" ${pushBusy?'disabled':''} onclick="enablePush()">${pushBusy?'…':'SLÅ PÅ'}</button>` : ''}</div>`;
 }
 function pushCard(){
-  if(PREVIEW_LOGIN) return `<div class="note" style="margin-top:8px">Notiserna kommer som <b>push</b> (gratis) när servern är inkopplad —
-    eller som SMS för den som inte slagit på push. De går inte att stänga av.</div>`;
+  if(PREVIEW_LOGIN) return `<div class="note" style="margin-top:8px">Påminnelser kommer som <b>push</b> (gratis) när servern är inkopplad —
+    eller som mejl för den som inte slagit på push. Bekräftelser kommer alltid på mejlen.</div>`;
   const st = pushState(), a = pushAdvice();
   return `<div class="note" style="margin-top:8px">${st.on
       ? `Påslaget på den här enheten. Påminnelser, förfrågningar och svar kommer som notiser — gratis.`
       : {home:'På iPhone kommer push bara när appen ligger på <b>hemskärmen</b> (Dela → Lägg till på hemskärmen).',
          denied:'Notiserna är avstängda i telefonens inställningar för BANDOHQ.',
-         unsupported:'Den här webbläsaren klarar inte push.', ask:'Inte påslaget på den här enheten än.'}[a] + ' Tills dess kommer notiserna som SMS.'}</div>
+         unsupported:'Den här webbläsaren klarar inte push.', ask:'Inte påslaget på den här enheten än.'}[a] + ' Tills dess kommer påminnelserna som mejl.'}</div>
     ${a==='ask' ? `<button class="btn" style="margin-top:10px" onclick="enablePush()">SLÅ PÅ NOTISER</button>` : ''}
     ${st.on ? `<button class="btn ghost slim" style="margin-top:9px" onclick="testPush()">SKICKA EN TESTNOTIS</button>` : ''}`;
 }
@@ -3852,19 +3942,19 @@ function openPrivacy(){
     <div class="sub">${esc(ORG.name)} ansvarar för uppgifterna. Frågor och radering: ${contact}.</div>
     <div class="privacy">
       <h3>Vad vi sparar</h3>
-      <p>Namn, e-post, mobilnummer och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
+      <p>Namn, e-post, användarnamn, telefon om du lämnat det, och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
         uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Nya kunder: det som fylls i på
         bokningssidan. <b>Vi sparar inte personnummer.</b></p>
       <h3>Varför</h3>
       <p>För att boka studion, driva studiecirklarna (timmarna rapporteras till studieförbundet), svara på
-        bokningsförfrågningar och skicka påminnelser. Påminnelserna är en del av tjänsten och går därför inte att stänga av.</p>
+        bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.</p>
       <h3>Vem ser vad</h3>
       <p>Crewet och admins ser schemat och kontona. En cirkelledare ser sina deltagares namn, telefon och e-post.
         Deltagare ser bara sin ledares namn. Kunder ser bara sina egna bokningar och lediga tider.
         Mål och personliga planer ser bara du och managern.</p>
       <h3>Var det ligger</h3>
       <p>Konton och data hos Supabase (servrar i Stockholm). Filer i Bando Collectives Dropbox.
-        SMS skickas via 46elks och mejl via Resend. Notiser via Apple och Google — innehållet är krypterat
+        Mejl skickas via Resend. Notiser via Apple och Google — innehållet är krypterat
         hela vägen till din telefon.</p>
       <h3>Hur länge</h3>
       <p>Så länge du är med. När du slutar, eller ber om det, raderas ditt konto. Timmar i studiecirklar kan behöva
@@ -3954,10 +4044,10 @@ function statusCard(){
   const R = (st, label, txt) => rows.push(`<div class="srow-s"><i class="sdot-${st}"></i><b>${label}</b><span>${txt}</span></div>`);
   if(PREVIEW_LOGIN) R('warn', 'Servern', 'Förhandsläge — Supabase är inte inkopplat');
   else R(syncState==='err' ? 'err' : 'ok', 'Servern', syncState==='err' ? esc(syncMsg) : 'Ansluten' + (syncMsg ? ' · ' + esc(syncMsg) : ''));
-  R(S.pushCfg.publicKey ? 'ok' : 'warn', 'Push-nycklar', S.pushCfg.publicKey ? 'Uppsatta' : 'Saknas — skapa dem under SMS-notiser');
+  R(S.pushCfg.publicKey ? 'ok' : 'warn', 'Push-nycklar', S.pushCfg.publicKey ? 'Uppsatta' : 'Saknas — skapa dem under Notiser');
   if(!PREVIEW_LOGIN){
     if(Date.now() - outboxPeekAt > 60000){ outboxPeekAt = Date.now();
-      sb('/sms_outbox?select=id,sent_at,channel,error,send_after&order=id.desc&limit=40').then(r=>{ outboxPeek = r||[]; if(view==='team') render(); }).catch(()=>{}); }
+      sb('/outbox?select=id,sent_at,channel,error,send_after&order=id.desc&limit=40').then(r=>{ outboxPeek = r||[]; if(view==='team') render(); }).catch(()=>{}); }
     const o = outboxPeek;
     if(!o) R('warn', 'Notisutskick', 'Läser…');
     else {
@@ -3966,7 +4056,7 @@ function statusCard(){
       const err = o.find(x=>x.error && x.error!=='skickas');
       R(stuck.length ? 'err' : 'ok', 'Notisutskick', stuck.length
         ? `${stuck.length} fastnar i kön${err ? ' — ' + esc(String(err.error).slice(0,80)) : ' — kolla edge-funktionen och db/05'}`
-        : sent ? 'Senast ' + new Date(sent.sent_at).toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) + ' (' + esc(sent.channel||'sms') + ')'
+        : sent ? 'Senast ' + new Date(sent.sent_at).toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) + ' (' + esc(sent.channel||'mejl') + ')'
         : 'Inget skickat än');
     }
   }
@@ -4005,27 +4095,34 @@ function deleteLocally(a){
   save();
 }
 
-/* ---------- LÄGG TILL PERSON ----------
-   Admin skriver namn, telefon och roll. I drift skickas en personlig länk som SMS;
-   personen väljer själv e-post och lösenord. I förhandsläget läggs kontot in direkt. */
+/* ---------- LÄGG TILL PERSON / BJUD IN ----------
+   Admin skriver namn, e-post och roll. Personen läggs in i appen direkt och får en
+   inbjudan som mejl; hen väljer själv användarnamn och lösenord och skriver in en
+   kod från mejlet. Med ett id gäller det någon som redan finns men inte loggat in —
+   då kopplas inloggningen till den raden, och passen och färgen följer med. */
 let addDraft = null;
-function openAddPerson(role){
+function openAddPerson(role, existingId){
   if(!can('manageCrew')) return;
-  addDraft = {role: role || 'producer', circle:(lcircle()[0]||{}).id||'', team:'', producer:''};
+  const ex = existingId ? byId(existingId) : null;
+  addDraft = ex
+    ? {id:ex.id, name:ex.n, email:ex.email||'', role: INVITE_ROLES[ex.r] ? ex.r : 'producer',
+       circle: inviteCircleFor(ex) || (lcircle()[0]||{}).id || '', team:ex.team||'', producer:ex.producer||''}
+    : {role: role || 'producer', circle:(lcircle()[0]||{}).id||'', team:'', producer:''};
   paintAddPerson();
 }
 function paintAddPerson(){
-  const d = addDraft, roles = inviteRoles();
+  const d = addDraft, roles = inviteRoles(), ex = d.id ? byId(d.id) : null;
   const needC = d.role==='leader' || d.role==='participant';
   openSheet(`${X}
-    <h2>Lägg till person</h2>
-    <div class="sub">${PREVIEW_LOGIN ? 'Kontot läggs in direkt i förhandsvisningen.'
-      : 'Personen får en länk som SMS och väljer själv e-post och lösenord.'}</div>
-    <label class="lbl" for="apN">NAMN</label>
-    <input id="apN" value="${esc(d.name||'')}" placeholder="För- och efternamn" maxlength="40" oninput="addDraft.name=this.value">
-    <label class="lbl" for="apP">MOBILNUMMER</label>
-    <input id="apP" type="tel" value="${esc(d.phone||'')}" placeholder="070-123 45 67" oninput="addDraft.phone=this.value">
-    <label class="lbl">ROLL</label>
+    <h2>${ex ? 'Bjud in ' + esc(ex.n) : 'Lägg till person'}</h2>
+    <div class="sub">${ex ? esc(ex.n) + ' finns redan i appen. Inbjudan går till e-posten — inloggningen kopplas till kontot, och passen följer med.'
+      : PREVIEW_LOGIN ? 'Kontot läggs in direkt i förhandsvisningen.'
+      : 'Personen får en inbjudan på mejlen och väljer själv användarnamn och lösenord.'}</div>
+    ${ex ? '' : `<label class="lbl" for="apN">NAMN</label>
+    <input id="apN" value="${esc(d.name||'')}" placeholder="För- och efternamn" maxlength="40" oninput="addDraft.name=this.value">`}
+    <label class="lbl" for="apE">E-POST</label>
+    <input id="apE" type="email" inputmode="email" value="${esc(d.email||'')}" placeholder="namn@exempel.se" oninput="addDraft.email=this.value">
+    <label class="lbl">${ex ? 'INBJUDEN SOM' : 'ROLL'}</label>
     <div class="chips wrap">${roles.map(([r,n])=>`<button class="chip ${d.role===r?'on':''}"
       onclick="addDraft.role='${r}';paintAddPerson()">${n}</button>`).join('')}</div>
     <div class="note" style="margin-top:10px">${esc(ROLE_HELP[d.role]||'')}</div>
@@ -4038,8 +4135,15 @@ function paintAddPerson(){
     ${d.role==='customer' ? `<label class="lbl" for="apK">KUNDENS PRODUCENT</label>
       <select id="apK" onchange="addDraft.producer=this.value"><option value="">Ingen särskild</option>
         ${producers().map(c=>`<option value="${c.id}" ${d.producer===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>` : ''}
-    <button class="btn" style="margin-top:22px" onclick="saveAddPerson()">${PREVIEW_LOGIN?'LÄGG TILL':'LÄGG TILL OCH SKICKA SMS'}</button>
+    <button class="btn" style="margin-top:22px" onclick="saveAddPerson()">${ex ? 'SKICKA INBJUDAN' : PREVIEW_LOGIN ? 'LÄGG TILL' : 'LÄGG TILL OCH SKICKA INBJUDAN'}</button>
     <div id="apOut"></div>`);
+}
+/* Cirkeln en deltagare är med i, eller som en ledare leder — för inbjudan. */
+function inviteCircleFor(a){
+  if(!a) return null;
+  const c = a.r==='participant' ? lcircle().find(c=>(c.members||[]).includes(a.id))
+          : a.r==='leader' ? lcircle().find(c=>c.leader===a.n) : null;
+  return c ? c.id : null;
 }
 const ROLE_HELP = {
   manager:'Ser och styr allt, även allas mål och statistik.',
@@ -4050,30 +4154,94 @@ const ROLE_HELP = {
   participant:'Ser sin läroplan och föreslår tider med sin cirkelledare.',
   customer:'Ser lediga studiotider och skickar bokningsförfrågningar.'};
 async function saveAddPerson(){
-  const d = addDraft, name = (d.name||'').trim(), ph = normPhone(d.phone);
+  const d = addDraft, ex = d.id ? byId(d.id) : null;
+  const name = ex ? ex.n : (d.name||'').trim(), em = String(d.email||'').trim().toLowerCase();
   if(name.length < 2) return toast('Fyll i namn');
-  if(!ph) return toast('Fyll i ett mobilnummer — notiserna kommer som SMS');
-  if(accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) return toast('Namnet finns redan');
+  if(!PREVIEW_LOGIN && !EMAIL_RE.test(em)) return toast('Fyll i en e-postadress — inbjudan kommer som mejl');
+  if(em && !EMAIL_RE.test(em)) return toast('E-postadressen ser fel ut');
+  if(!ex && accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) return toast('Namnet finns redan');
   const circle = (d.role==='leader'||d.role==='participant') ? (d.circle || (document.getElementById('apC')||{}).value) : null;
   if((d.role==='leader'||d.role==='participant') && !circle) return toast('Skapa en cirkel först');
-  if(PREVIEW_LOGIN){
-    const pal = PALETTE[S.accounts.length % PALETTE.length], team = isTeamRole(d.role);
-    const acc = bump({id:uid(), n:name, r:d.role, email:'', phone:ph, team:d.role==='camera'?(d.team||''):'',
-      producer:d.role==='customer'?(d.producer||''):'', c: team?pal[0]:'#6633b8', g: team?pal[1]:'#9d5cf5', active:true, del:false});
+  const team = d.role==='camera' ? (d.team||'') : '', producer = d.role==='customer' ? (d.producer||'') : '';
+  /* personen läggs in (eller uppdateras) först — inbjudan kopplas sedan till raden */
+  let acc = ex;
+  if(!acc){
+    const pal = PALETTE[S.accounts.length % PALETTE.length], tm = isTeamRole(d.role);
+    acc = bump({id:'m_'+uid(), n:name, r:d.role, email:em, phone:'', team, producer,
+      c: tm?pal[0]:'#6633b8', g: tm?pal[1]:'#9d5cf5', active:true, del:false, login:false});
     S.accounts.push(acc);
     const c = circle ? circleById(circle) : null;
     if(c && d.role==='participant'){ c.members = (c.members||[]).concat(acc.id); bump(c); }
     if(c && d.role==='leader'){ c.leader = acc.n; bump(c); }
-    save(); closeSheet(); buildNav(); render(); toast(name + ' är tillagd'); sync(true);
-    return;
+  } else {
+    bump(Object.assign(acc, {email:em || acc.email}, d.role==='camera' ? {team} : {}, d.role==='customer' ? {producer} : {}));
   }
+  save();
   try{
-    const tok = await createInvite(d.role, circle, 14, 1, {name, phone:ph, team:d.role==='camera'?(d.team||''):''});
-    document.getElementById('apOut').innerHTML = `<div class="okbox"><b>Klart.</b> ${esc(name)} får ett SMS med länken
-      inom någon minut. Länken gäller i 14 dagar.</div>
-      <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`;
-    addDraft.name = ''; addDraft.phone = '';
+    if(!PREVIEW_LOGIN) await pushMember(acc);
+    const tok = await createInvite(d.role, circle, 14, 1, {member:acc.id, email:em, team});
+    invListAt = 0; refreshInvites(true);
+    document.getElementById('apOut').innerHTML = PREVIEW_LOGIN
+      ? `<div class="okbox"><b>${esc(name)} är tillagd.</b> I drift går inbjudan som mejl — här kan du prova länken direkt.</div>
+         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN</button>`
+      : `<div class="okbox"><b>Klart.</b> ${esc(name)} får ett mejl till <b>${esc(em)}</b> inom någon minut.
+          Länken gäller i 14 dagar.</div>
+         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`;
+    if(!ex){ addDraft.name = ''; addDraft.email = ''; }
+    buildNav(); render(); sync(true);
   }catch(e){ toast(e.message); }
+}
+
+/* ---------- INBJUDNINGAR I CREW ----------
+   Alla som finns i appen men inte har loggat in, med e-post och status. */
+let invList = null, invListAt = 0, invAll = false;
+function refreshInvites(force){
+  if(!can('manageCrew')) return;
+  if(!force && Date.now() - invListAt < 60000) return;
+  invListAt = Date.now();
+  listInvites().then(r=>{ invList = r || []; if(view==='team') render(); }).catch(()=>{});
+}
+const invCreated = i => +new Date(i.created_at || i.created || 0);
+function inviteStatus(a){
+  const i = (invList||[]).filter(x=>x.member_id===a.id).sort((x,y)=>invCreated(y)-invCreated(x))[0];
+  if(!i) return {txt:'inte inbjuden', open:false};
+  const st = inviteState(i);
+  if(st.ok) return {txt:'inbjuden ' + new Date(invCreated(i)).toLocaleDateString('sv-SE',{day:'numeric',month:'short'})
+    + (i.role && i.role!==a.r ? ' som ' + (ROLE_NAME[i.role]||i.role).toLowerCase() : ''), open:true};
+  return {txt: st.why.replace(/^Länken /, 'länken ').toLowerCase(), open:false};
+}
+const waitingAccounts = () => S.accounts.filter(a=>a.active!==false && !a.del && !a.login && a.r!=='manager')
+  .sort((x,y)=>ROLES.indexOf(x.r)-ROLES.indexOf(y.r) || x.n.localeCompare(y.n,'sv'));
+const inviteReady = a => a.email && !inviteStatus(a).open && INVITE_ROLES[a.r]
+  && (!['leader','participant'].includes(a.r) || inviteCircleFor(a));
+function invitesSection(){
+  const w = waitingAccounts(); if(!w.length) return '';
+  refreshInvites();
+  const ready = w.filter(inviteReady);
+  return `<div class="eyebrow">INBJUDNINGAR<span class="ln"></span><span style="color:var(--warn)">${w.length}</span></div>
+    <div class="card">
+      <div class="tiny muted" style="line-height:1.55;margin-bottom:6px">De här finns i appen men har inte loggat in.
+        Skicka en inbjudan — de väljer användarnamn och lösenord och skriver in en kod från mejlet.</div>
+      ${(invAll ? w : w.slice(0,5)).map(a=>{ const st = inviteStatus(a); return `<div class="member invrow" style="cursor:default">${avatar(a)}
+        <div class="grow"><div class="mname">${esc(a.n)}</div>
+          <div class="mrole">${ROLE_NAME[a.r]} · ${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'} · ${esc(st.txt)}</div></div>
+        <button class="btn slim ${st.open?'ghost':''}" style="width:auto;flex:none;padding:9px 12px" onclick="openAddPerson(null,'${a.id}')">${st.open?'IGEN':'BJUD IN'}</button>
+      </div>`; }).join('')}
+      ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}
+      ${ready.length ? `<button class="btn" style="margin-top:12px" onclick="inviteAll()">SKICKA TILL ALLA MED E-POST (${ready.length})</button>` : ''}
+    </div>`;
+}
+async function inviteAll(){
+  const ready = waitingAccounts().filter(inviteReady);
+  if(!ready.length || !confirm(`Skicka inbjudan till ${ready.length} ${ready.length===1?'person':'personer'}?`)) return;
+  let n = 0; const errs = [];
+  for(const a of ready){
+    try{ await createInvite(a.r, inviteCircleFor(a), 14, 1, {member:a.id, email:a.email, team:a.team||''}); n++; }
+    catch(e){ errs.push(a.n + ': ' + e.message); }
+  }
+  invListAt = 0; refreshInvites(true); render();
+  toast(n + ' ' + (n===1?'inbjudan skickad':'inbjudningar skickade') + (errs.length ? ' · ' + errs.length + ' gick inte' : ''));
+  if(errs.length) setTimeout(()=>toast(errs[0]), 2600);
 }
 
 /* =====================================================================
@@ -4805,7 +4973,7 @@ function vCustomer(){
       return `<div class="card" style="margin-bottom:var(--s2)"><div class="studio-name">${esc(S.studios[st])}</div>
         ${fb.length ? `<div class="chips wrap" style="margin-top:10px">${fb.map(f=>`<button class="chip slot" onclick="openCustRequest('${custDay}','${st}','${f.start}','${f.end}')">${f.start}–${f.end}</button>`).join('')}</div>`
           : `<div class="tiny muted" style="margin-top:8px">Fullbokat den här dagen.</div>`}</div>`; }).join('')}
-    <div class="note">Tryck på en ledig tid och skicka en förfrågan. Du får svar som SMS — tiden är din först när den är bekräftad.</div>
+    <div class="note">Tryck på en ledig tid och skicka en förfrågan. Du får svar på mejlen — tiden är din först när den är bekräftad.</div>
 
     ${waiting.length?`<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${waiting.length}</span></div>
       ${waiting.map(b=>row(b, sm('Ta tillbaka',`cancelRequest('${b.id}')`))).join('')}`:''}
@@ -4836,7 +5004,7 @@ async function sendCustRequest(date, studio, s0, e0){
       status:'request', reqBy:m.id, hours:null, present:[], with:[], artistId:'', paid:true, del:false}));
     save(); });
   if(!ok) return;
-  closeSheet(); render(); toast('Förfrågan skickad — du får svar som SMS'); sync(true);
+  closeSheet(); render(); toast('Förfrågan skickad — du får svar på mejlen'); sync(true);
 }
 
 /* ---------- FÖRFRÅGNINGAR TILL CREWET (IDAG) ----------
@@ -4865,14 +5033,14 @@ function openLead(id){
   openSheet(`${X}<h2>${esc(l.name)}</h2>
     <div class="sub">Ny kund · vill boka ${esc(longDate(l.date))} ${l.start_t}–${l.end_t}</div>
     <div style="margin-top:12px">
-      <div class="kv"><span>TELEFON</span><b><a href="tel:${esc(l.phone)}" style="color:var(--txt)">${esc(l.phone)}</a></b></div>
+      ${l.phone?`<div class="kv"><span>TELEFON</span><b><a href="tel:${esc(l.phone)}" style="color:var(--txt)">${esc(l.phone)}</a></b></div>`:''}
       <div class="kv"><span>E-POST</span><b><a href="mailto:${esc(l.email)}" style="color:var(--txt)">${esc(l.email)}</a></b></div>
       ${l.message?`<div class="kv" style="border:0"><span>MEDDELANDE</span><b style="font-weight:500">${esc(l.message)}</b></div>`:''}</div>
     <label class="lbl">GODKÄNN I</label>
     <div class="studiopick">${['A','B'].map(st=>{ const ok = free.includes(st);
       return `<button class="spick ${l.studio===st&&ok?'on':''}" ${ok?`onclick="approveLead('${l.id}','${st}')"`:'disabled'} style="${ok?'':'opacity:.4'}">
         <b>${esc(S.studios[st])}</b><span>${ok?(l.studio===st?'Önskad · ledig':'Ledig'):'Upptagen'}</span></button>`; }).join('')}</div>
-    <div class="note">Godkänn = tiden bokas och kunden får ett SMS med en länk för att skapa sitt konto.</div>
+    <div class="note">Godkänn = tiden bokas och kunden får en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.</div>
     <button class="btn ghost" style="margin-top:14px" onclick="declineLead('${l.id}')">AVBÖJ</button>`);
 }
 async function approveLead(id, studio){
@@ -4884,20 +5052,20 @@ async function approveLead(id, studio){
         note:l.message||'', circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, leadId:l.id, del:false}));
       const tok = localToken();
       S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0,
-        closed:false, created:Date.now(), name:l.name, phone:l.phone, lead_id:l.id});
+        closed:false, created:Date.now(), name:l.name, email:l.email||null, lead_id:l.id});
       Object.assign(l, {status:'approved', invite:tok}); save();
-      toast('Bokad · i drift får kunden ett SMS med länken');
+      toast('Bokad · i drift får kunden ett mejl med länken');
     } else {
       await sbRpc('approve_lead', {p_lead:id, p_studio:studio, p_url:appUrl()});
       l.status = 'approved'; await sync(true);
-      toast('Bokad · kunden får ett SMS med länken');
+      toast('Bokad · kunden får en bekräftelse med länken på mejlen');
     }
     closeSheet(); render();
   }catch(e){ toast(e.message); }
 }
 async function declineLead(id){
   const l = (S.leads||[]).find(x=>x.id===id); if(!l) return;
-  if(!confirm(`Avböj ${l.name}? Kunden får ett SMS.`)) return;
+  if(!confirm(`Avböj ${l.name}? Kunden får ett mejl.`)) return;
   try{
     if(!PREVIEW_LOGIN) await sbRpc('decline_lead', {p_lead:id, p_reason:''});
     l.status = 'declined'; save(); closeSheet(); render(); toast('Avböjd');
@@ -4905,15 +5073,15 @@ async function declineLead(id){
 }
 
 /* ---------- BOKNINGSSIDAN FÖR NYA KUNDER (#boka) ----------
-   Ingen inloggning. Lediga tider utan namn, en förfrågan, svar som SMS. */
+   Ingen inloggning. Lediga tider utan namn, en förfrågan, kvitto och svar på mejlen. */
 let pubDraft = null, pubBusy = null;
 async function renderPublic(tag, b){
-  tag.innerHTML = `Boka studiotid. Vi svarar med SMS — sedan får du ett eget konto.`;
+  tag.innerHTML = `Boka studiotid. Vi svarar på mejlen — sedan får du ett eget konto.`;
   if(!pubDraft) pubDraft = {day:null, studio:'', start:'', end:'', done:false};
   const d = pubDraft;
   if(d.done){
     b.innerHTML = `<div class="okbox"><b>Tack!</b> Vi har fått din förfrågan för ${esc(longDate(d.day))} ${d.start}–${d.end}.
-      Du får svar som SMS till <b>${esc(d.phone)}</b>.</div>
+      Ett kvitto och svaret kommer på mejlen till <b>${esc(d.email)}</b>.</div>
       <button class="btn ghost" style="margin-top:14px" onclick="pubDraft=null;renderGate()">SKICKA EN TILL</button>
       <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
     return;
@@ -4949,7 +5117,6 @@ async function renderPublic(tag, b){
       <label class="lbl">TID</label>
       <div class="two"><input type="time" id="puS" value="${d.start}" step="1800"><input type="time" id="puE" value="${d.end}" step="1800"></div>
       <label class="lbl" for="puN">NAMN</label><input id="puN" autocomplete="name" maxlength="60" required>
-      <label class="lbl" for="puP">MOBILNUMMER</label><input id="puP" type="tel" autocomplete="tel" placeholder="070-123 45 67" required>
       <label class="lbl" for="puM">E-POST</label><input id="puM" type="email" autocomplete="email" required>
       <label class="lbl" for="puX">VAD SKA DU GÖRA? <span class="muted">(valfritt)</span></label>
       <textarea id="puX" maxlength="300" placeholder="Inspelning, mix, hur många ni är…"></textarea>
@@ -4962,27 +5129,27 @@ async function renderPublic(tag, b){
 }
 function sendPublic(){
   const d = pubDraft, v = id => document.getElementById(id).value.trim();
-  const f = {name:v('puN'), phone:v('puP'), email:v('puM'), msg:v('puX'), hp:v('puH'), start:v('puS'), end:v('puE')};
+  const f = {name:v('puN'), email:v('puM'), msg:v('puX'), hp:v('puH'), start:v('puS'), end:v('puE')};
   const agreed = (document.getElementById('puC')||{}).checked;
   return gateRun(async ()=>{
     if(!agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
     if(!f.start || !f.end || toMin(f.end) <= toMin(f.start)) throw new Error('Sluttiden måste vara efter starttiden');
     if(toMin(f.start) < toMin(d.block) || toMin(f.end) > toMin(d.bEnd)) throw new Error(`Välj en tid mellan ${d.block} och ${d.bEnd}`);
-    if(!normPhone(f.phone)) throw new Error('Fyll i ett mobilnummer — svaret kommer som SMS');
+    if(!EMAIL_RE.test(f.email)) throw new Error('Fyll i din e-post — svaret kommer på mejlen');
     if(PREVIEW_LOGIN){
       if(f.hp) return;
       if(f.name.length < 2) throw new Error('Fyll i ditt namn');
-      S.leads = (S.leads||[]).concat({id:'l_'+uid(), name:f.name, email:f.email, phone:normPhone(f.phone), date:d.day,
+      S.leads = (S.leads||[]).concat({id:'l_'+uid(), name:f.name, email:f.email, phone:'', date:d.day,
         start_t:f.start, end_t:f.end, studio:d.studio, message:f.msg, status:'new', created_at:new Date().toISOString()});
       save();
     } else {
       const r = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST',
         headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
-        body:JSON.stringify({p_name:f.name, p_email:f.email, p_phone:f.phone, p_date:d.day, p_start:f.start, p_end:f.end,
+        body:JSON.stringify({p_name:f.name, p_email:f.email, p_phone:'', p_date:d.day, p_start:f.start, p_end:f.end,
           p_studio:d.studio, p_message:f.msg, p_hp:f.hp})});
       if(!r.ok) throw new Error(await sbErr(r));
     }
-    Object.assign(d, {done:true, phone:normPhone(f.phone), start:f.start, end:f.end});
+    Object.assign(d, {done:true, email:f.email, start:f.start, end:f.end});
   });
 }
 function leavePublic(){
@@ -5165,20 +5332,22 @@ function openMe(){
     ${accountCard()}`);
 }
 /* Kontodelen av profilen — samma för alla roller. */
-function smsNote(){
-  const m = me(), ph = normPhone(m && m.phone), st = pushState();
-  return `<div class="kv"><span>NOTISER</span><b>${st.on ? 'Push på den här enheten' : ph ? 'SMS till ' + esc(ph) : '<span style="color:var(--warn)">Varken push eller nummer</span>'}</b></div>
+function notisNote(){
+  const m = me() || {}, st = pushState();
+  return `<div class="kv"><span>NOTISER</span><b>${st.on ? 'Push här · mejl till ' + esc(m.email||'') : m.email ? 'Mejl till ' + esc(m.email)
+    : '<span style="color:var(--warn)">Varken push eller e-post</span>'}</b></div>
     ${pushCard()}`;
 }
 const privacyLink = () => `<button class="linkbtn" style="margin-top:14px" onclick="openPrivacy()">Hur BANDOHQ hanterar dina uppgifter</button>`;
 function accountCard(){
-  if(PREVIEW_LOGIN) return `${smsNote()}<button class="btn ghost" onclick="signOut()">BYT KONTO</button>
+  if(PREVIEW_LOGIN) return `${notisNote()}<button class="btn ghost" onclick="signOut()">BYT KONTO</button>
     <div class="note" style="margin-top:10px"><b>Förhandsvisning.</b> Servern är inte inkopplad än, så man
       loggar in genom att välja konto och allt sparas bara här. När Supabase är inkopplat
-      gäller e-post och lösenord — se SETUP.md.</div>`;
-  return `${smsNote()}<button class="btn ghost" onclick="sync(false)">SYNKA NU</button>
+      gäller användarnamn och lösenord — se SETUP.md.</div>`;
+  return `${notisNote()}<button class="btn ghost" onclick="sync(false)">SYNKA NU</button>
     <button class="btn ghost" style="margin-top:9px" onclick="signOut()">LOGGA UT</button>
-    <div class="note" style="margin-top:10px">Du är inloggad med <b>${esc(S.session.email||'')}</b>.
+    <div class="note" style="margin-top:10px">Du är inloggad som <b>${esc((me()||{}).username || S.session.email || '')}</b>${
+      (me()||{}).username ? ` (${esc(S.session.email||'')})` : ''}.
       Vad du ser styrs av din roll, och gränsen hålls av servern — inte av appen.</div>${privacyLink()}`;
 }
 function dropboxCard(){
@@ -5266,10 +5435,10 @@ function openCrewAdmin(){
         <div class="av" style="background:linear-gradient(150deg,${a.g||a.c},${a.c})">${esc(initials(a.n))}</div>
         <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(a.n)}${
           a.active===false?' <span class="pill" style="background:rgba(255,255,255,.06);color:var(--mut2)">AVSTÄNGD</span>':''}</div>
-          <div class="mrole">${a.email?esc(a.email):'ingen e-post än'}</div></div>
+          <div class="mrole">${a.email?esc(a.email):'ingen e-post än'}${PREVIEW_LOGIN ? '' : a.login ? ' · inloggad' : ' · inte inloggad'}</div></div>
         <span style="color:var(--mut2);font-size:18px">›</span></button>`).join('')}`).join('')}
-    <div class="note">Nya personer kommer in via <b>inbjudningslänkar</b>: de skriver själva in namn,
-      e-post och lösenord, och rollen följer med länken. Här ändrar du roll eller stänger av ett konto.</div>`);
+    <div class="note">Nya personer kommer in via <b>inbjudningar</b>: de väljer själva användarnamn och lösenord
+      och skriver in en kod från mejlet, och rollen följer med länken. Här ändrar du roll eller stänger av ett konto.</div>`);
 }
 
 function openAccount(id){
@@ -5284,7 +5453,7 @@ function openAccount(id){
     <input id="acN" value="${a?esc(a.n):''}" placeholder="För- och efternamn" maxlength="40">
     <label class="lbl">E-POST</label>
     <input id="acE" type="email" value="${a?esc(a.email||''):''}" placeholder="namn@exempel.se"
-      ${PREVIEW_LOGIN?'':'disabled title="E-posten är personens inloggning"'}>
+      ${PREVIEW_LOGIN || !(a && a.login) ? '' : 'disabled title="E-posten är personens inloggning"'}>
     <label class="lbl">TELEFON</label>
     <input id="acP" value="${a?esc(a.phone||''):''}" placeholder="070-123 45 67" inputmode="tel">
 
@@ -6188,6 +6357,10 @@ async function readLanding(){
 (async function init(){
   wireDrop();
   await readLanding();
+  /* kontot skapat men koden inte inskriven än (appen stängdes emellan) */
+  if(!PREVIEW_LOGIN && !AUTH && !joinToken && !recoverToken && gateMode==='login'){
+    const p = pendingInvite(); if(p && p.email){ gateEmail = p.email; gateMode = 'code'; }
+  }
   /* v8: Costa och Nabbe (admins) och Moez (kamerateam) läggs in i förhandsläget
      en gång. I drift går de med via länk. */
   if(PREVIEW_LOGIN && !S.seed8){

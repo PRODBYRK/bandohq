@@ -21,7 +21,7 @@ export async function boot(){
     alter default privileges in schema public grant all on tables to anon, authenticated;
     alter default privileges in schema public grant all on sequences to anon, authenticated;
     alter default privileges in schema public grant all on functions to anon, authenticated;`);
-  for (const f of ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-sms.sql'])
+  for (const f of ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql'])
     await db.exec(readFileSync(join(DIR, f), 'utf8'));
   return db;
 }

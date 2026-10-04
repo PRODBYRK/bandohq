@@ -1,21 +1,23 @@
 /* =====================================================================
    BANDOHQ · notify-send — skickar notiserna i utkorgen.
-   Först som PUSH till personens enheter (gratis). Har personen ingen
-   enhet med push påslaget, eller tar ingen emot den, går notisen som
-   SMS via 46elks. Anropas varje minut av pg_cron (db/05-sms-utskick.sql).
+   Bokningsbekräftelser, förfrågningar, svar och inbjudningar går alltid som
+   MEJL via Resend (och som push till den som har det påslaget). Påminnelser,
+   timmar och agenda går först som PUSH och bara som mejl om ingen enhet tar
+   emot dem. Anropas varje minut av pg_cron (db/05-utskick.sql).
 
    Skyddas av CRON_SECRET (samma värde som vault-hemligheten bandohq_cron i
    db/05) — funktionen deployas utan JWT-kontroll, eftersom Supabases nya
    API-nycklar inte är JWT.
 
-   Secrets (Edge Functions → notify-send → Secrets):
-     CRON_SECRET            lång slumpsträng, samma som i db/05-sms-utskick.sql
+   Secrets (Edge Functions → Secrets):
+     CRON_SECRET            lång slumpsträng, samma som i db/05-utskick.sql
+     RESEND_KEY             Resend-nyckel som får skicka från domänen (sending access)
+     MAIL_FROM              avsändare, t.ex. BANDOHQ <noreply@bandohq.se>
+     MAIL_REPLY_TO          dit svar på mejlen går (valfritt)
+     APP_URL                appens adress för knappen i mejlen (standard https://bandohq.se/)
      VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY  push-nycklarna (skapas i appen: Crew → Notiser)
      VAPID_SUBJECT          mailto:din@epost.se — kontaktadress till push-tjänsterna
-     ELKS_USER, ELKS_PASS   46elks (valfritt: utan dem går bara push)
-     ELKS_FROM              SMS-avsändare, högst 11 tecken (standard BANDOHQ)
-     ELKS_DRYRUN            "yes" = 46elks låtsas skicka
-   SUPABASE_URL och SUPABASE_SERVICE_ROLE_KEY finns automatiskt.
+   SUPABASE_URL och servernyckeln finns automatiskt.
 
    Webb-push är skrivet direkt mot standarderna (RFC 8291 kryptering,
    RFC 8292 VAPID) med WebCrypto — inga bibliotek. Testas mot RFC:ns
@@ -92,9 +94,12 @@ export async function sendPush(target, payload, vapid, urgency) {
 
 /* ---------- utskicket ---------- */
 const env = (k) => (globalThis.Deno ? Deno.env.get(k) : process.env[k]) || '';
-const TITLE = { request: 'Ny förfrågan', answer: 'Svar på din förfrågan', reminder: 'Påminnelse', hours: 'Dina timmar',
-  agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
-const URGENT = ['request', 'answer', 'reminder', 'lead'];
+const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfrågan mottagen', answer: 'Svar på din förfrågan',
+  reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
+const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked'];
+/* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
+export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no'];
+const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto' };
 
 /* Servernyckeln: den gamla service_role-JWT:n om den finns, annars en ny
    sb_secret_… ur SUPABASE_SECRET_KEYS. Nya nycklar får bara skickas som apikey. */
@@ -114,29 +119,52 @@ async function rpc(fn, args) {
   return t ? JSON.parse(t) : null;
 }
 
-async function sendSms(row) {
-  const body = new URLSearchParams({ from: (env('ELKS_FROM') || 'BANDOHQ').slice(0, 11), to: row.phone, message: row.body });
-  if (env('ELKS_DRYRUN') === 'yes') body.set('dryrun', 'yes');
-  const res = await fetch('https://api.46elks.com/a1/sms', { method: 'POST', body,
-    headers: { Authorization: 'Basic ' + btoa(`${env('ELKS_USER')}:${env('ELKS_PASS')}`), 'Content-Type': 'application/x-www-form-urlencoded' } });
+/* ---------- mejlet ---------- */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* Bara riktiga webbadresser i knappen — aldrig javascript: eller liknande. */
+export const safeLink = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; } catch (_) { return ''; } };
+export function mailHtml(row, link) {
+  const paras = String(row.body || '').split(/\n\s*\n/).map((p) =>
+    `<p style="color:#d6cfe8;line-height:1.6;margin:0 0 14px">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+  const btn = BUTTON[row.kind] || 'Öppna BANDOHQ';
+  return `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;background:#07050c;padding:32px 16px">
+<div style="max-width:460px;margin:0 auto;background:#150f24;border:1px solid #2a2140;border-radius:16px;padding:28px;color:#f6f2ff">
+<div style="font-weight:700;letter-spacing:.18em;font-size:18px">BANDO<span style="color:#c084fc">HQ</span></div>
+<h2 style="font-size:19px;margin:22px 0 12px;color:#f6f2ff">${esc(row.subject || TITLE[row.kind] || 'BANDOHQ')}</h2>
+${paras}
+<a href="${esc(link)}" style="display:inline-block;margin-top:8px;background:#7c3aed;color:#fff;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700">${esc(btn)}</a>
+<p style="color:#665e80;font-size:12px;margin:22px 0 0">Mejlet skickades automatiskt från BANDOHQ. Svara på det om du har frågor.</p>
+</div></div>`;
+}
+export const mailText = (row, link) => `${row.body}\n\n${BUTTON[row.kind] || 'Öppna BANDOHQ'}: ${link}\n`;
+
+export async function sendMail(row) {
+  const link = safeLink(row.link) || safeLink(env('APP_URL')) || 'https://bandohq.se/';
+  const msg = { from: env('MAIL_FROM') || 'BANDOHQ <noreply@bandohq.se>', to: [row.email],
+    subject: row.subject || TITLE[row.kind] || 'BANDOHQ', html: mailHtml(row, link), text: mailText(row, link) };
+  if (env('MAIL_REPLY_TO')) msg.reply_to = env('MAIL_REPLY_TO');
+  const res = await fetch('https://api.resend.com/emails', { method: 'POST', body: JSON.stringify(msg), headers: {
+    Authorization: `Bearer ${env('RESEND_KEY')}`, 'Content-Type': 'application/json',
+    /* samma notis skickas aldrig två gånger, även om ett försök görs om */
+    'Idempotency-Key': String(row.dedupe_key).slice(0, 256) } });
   const text = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${text}`);
-  const j = JSON.parse(text);
-  return j.estimated_cost ?? j.cost ?? null;
+  return JSON.parse(text).id;
 }
 
 export async function handle() {
   const vapid = env('VAPID_PUBLIC_KEY') && env('VAPID_PRIVATE_KEY')
-    ? { publicKey: env('VAPID_PUBLIC_KEY'), privateKey: env('VAPID_PRIVATE_KEY'), subject: env('VAPID_SUBJECT') || 'mailto:noreply@bandocollective.com' }
+    ? { publicKey: env('VAPID_PUBLIC_KEY'), privateKey: env('VAPID_PRIVATE_KEY'), subject: env('VAPID_SUBJECT') || 'mailto:noreply@bandohq.se' }
     : null;
-  const smsOn = !!env('ELKS_USER');
-  const policy = (await rpc('notify_policy', {})) || {};
-  const rows = (await rpc('sms_claim', { p_limit: 50 })) || [];
-  const out = { claimed: rows.length, push: 0, sms: 0, failed: 0 };
+  const mailOn = !!env('RESEND_KEY');
+  const rows = (await rpc('outbox_claim', { p_limit: 50 })) || [];
+  const out = { claimed: rows.length, push: 0, mail: 0, failed: 0 };
   for (const r of rows) {
+    const always = ALWAYS_MAIL.includes(r.kind);
     let pushed = 0;
-    /* 1. push till alla personens enheter */
-    if (r.member_id && vapid) {
+    /* 1. push till alla personens enheter (för mejl-notiser bara första försöket,
+          så att ett nytt mejlförsök inte ger en push till) */
+    if (r.member_id && vapid && (!always || r.attempts <= 1)) {
       for (const t of (await rpc('push_targets', { p_member: r.member_id })) || []) {
         let status = 0;
         try { status = (await sendPush(t, { title: TITLE[r.kind] || 'BANDOHQ', body: r.body, kind: r.kind, url: './' }, vapid,
@@ -146,27 +174,28 @@ export async function handle() {
         if (ok) pushed++;
       }
     }
-    /* 2. SMS som reserv — eller också, för påminnelser och timmar om admin valt det */
-    const critical = !!policy.criticalSms && ['reminder', 'hours'].includes(r.kind);
-    if (pushed && !critical) {
-      await rpc('sms_done', { p_id: r.id, p_ok: true, p_cost: null, p_error: null, p_channel: 'push' });
-      out.push++; continue;
+    if (pushed) out.push++;
+    /* 2. påminnelser, timmar och agenda: klart om pushen kom fram */
+    if (pushed && !always) {
+      await rpc('outbox_done', { p_id: r.id, p_ok: true, p_error: null, p_channel: 'push' });
+      continue;
     }
-    if (smsOn && r.phone) {
+    /* 3. mejl */
+    if (mailOn && r.email) {
       try {
-        const cost = await sendSms(r);
-        await rpc('sms_done', { p_id: r.id, p_ok: true, p_cost: cost, p_error: null, p_channel: pushed ? 'push+sms' : 'sms' });
-        out.sms++; if (pushed) out.push++;
+        await sendMail(r);
+        await rpc('outbox_done', { p_id: r.id, p_ok: true, p_error: null, p_channel: pushed ? 'push+mail' : 'mail' });
+        out.mail++;
       } catch (e) {
-        await rpc('sms_done', { p_id: r.id, p_ok: !!pushed, p_cost: null, p_error: pushed ? null : String(e), p_channel: pushed ? 'push' : null });
-        if (pushed) out.push++; else out.failed++;
+        /* mejlet görs om nästa minut (högst fem försök) */
+        await rpc('outbox_done', { p_id: r.id, p_ok: false, p_error: String(e), p_channel: pushed ? 'push' : null });
+        out.failed++;
       }
     } else if (pushed) {
-      await rpc('sms_done', { p_id: r.id, p_ok: true, p_cost: null, p_error: null, p_channel: 'push' });
-      out.push++;
+      await rpc('outbox_done', { p_id: r.id, p_ok: true, p_error: null, p_channel: 'push' });
     } else {
-      await rpc('sms_done', { p_id: r.id, p_ok: false, p_cost: null, p_channel: null,
-        p_error: !r.phone ? 'Ingen enhet med push och inget mobilnummer' : 'Ingen push och SMS är inte inkopplat (ELKS_USER saknas)' });
+      await rpc('outbox_done', { p_id: r.id, p_ok: false, p_channel: null,
+        p_error: !r.email ? 'Ingen enhet med push och ingen e-postadress' : 'Mejl är inte inkopplat (RESEND_KEY saknas)' });
       out.failed++;
     }
   }

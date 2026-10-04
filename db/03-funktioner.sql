@@ -15,43 +15,65 @@ language sql immutable as $$
     else null end
   from (select regexp_replace(coalesce(p,''), '[\s\-().]', '', 'g') as n) x
 $$;
-/* SMS i GSM-teckenuppsättningen ryms 160 tecken; ett enda tankstreck gör det till
-   UTF-16 och 70 tecken. Byt ut det vanligaste, kapa vid 160. */
-create or replace function bs_gsm(p text) returns text
-language sql immutable as $$
-  select left(translate(coalesce(p,''), '–—·’‘“”…•', '--.''''""..'), 160)
-$$;
+/* v9: SMS är borta — notiserna går som push och mejl. De gamla funktionerna tas bort. */
+drop function if exists bs_sms(text,text,text,text,text,interval);
+drop function if exists bs_sms_digest(text,text,text,text,interval);
+drop function if exists bs_gsm(text);
 
-/* Köa ett SMS. Telefonen tas från kontot om den inte anges. Samma dedupe_key
-   köas bara en gång. Tysta timmar 21–08 (svensk tid): flyttas till 08:00. */
-create or replace function bs_sms(p_member text, p_phone text, p_body text, p_kind text, p_key text,
-                                  p_delay interval default '0') returns void
+/* Köa en notis. Mejladressen tas från kontot om den inte anges; utan både mejl
+   och push hoppas den över. Samma dedupe_key köas bara en gång. Påminnelser,
+   timmar och agenda håller tysta timmar 21–08 (svensk tid) — de går som push. */
+create or replace function bs_notify(p_member text, p_email text, p_subject text, p_body text, p_kind text,
+                                     p_key text, p_delay interval default '0', p_link text default null) returns void
 language plpgsql security definer set search_path = public as $$
-declare ph text; t timestamptz := now() + p_delay; loc timestamp;
+declare em text; t timestamptz := now() + p_delay; loc timestamp;
 begin
-  ph := bs_phone(coalesce(p_phone, (select phone from members where id = p_member and active)));
-  /* utan nummer går det fortfarande som push, om personen har det */
-  if ph is null and not exists (select 1 from push_subs where member_id = p_member and fails < 5) then return; end if;
-  loc := t at time zone 'Europe/Stockholm';
-  if extract(hour from loc) >= 21 then
-    t := (date_trunc('day', loc) + interval '1 day 8 hours') at time zone 'Europe/Stockholm';
-  elsif extract(hour from loc) < 8 then
-    t := (date_trunc('day', loc) + interval '8 hours') at time zone 'Europe/Stockholm';
+  em := lower(nullif(trim(coalesce(p_email, (select email from members where id = p_member and active), '')), ''));
+  if em is not null and em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then em := null; end if;
+  if em is null and not exists (select 1 from push_subs where member_id = p_member and fails < 5) then return; end if;
+  if p_kind in ('reminder','hours','agenda') then
+    loc := t at time zone 'Europe/Stockholm';
+    if extract(hour from loc) >= 21 then
+      t := (date_trunc('day', loc) + interval '1 day 8 hours') at time zone 'Europe/Stockholm';
+    elsif extract(hour from loc) < 8 then
+      t := (date_trunc('day', loc) + interval '8 hours') at time zone 'Europe/Stockholm';
+    end if;
   end if;
-  insert into sms_outbox(member_id, phone, body, kind, dedupe_key, send_after)
-  values (p_member, coalesce(ph,''), bs_gsm(p_body), p_kind, p_key, t)
+  insert into outbox(member_id, email, subject, body, kind, dedupe_key, send_after, link)
+  values (p_member, em, p_subject, p_body, p_kind, p_key, t, p_link)
   on conflict (dedupe_key) do nothing;
 end $$;
 
-/* Samlat SMS: inom samma nyckel räknas n upp och texten skrivs om, i stället för
-   ett SMS per ändring. p_fmt har %s där antalet ska stå. */
-create or replace function bs_sms_digest(p_member text, p_fmt text, p_kind text, p_key text, p_delay interval)
+/* Samlad notis: inom samma nyckel räknas n upp och texten skrivs om, i stället för
+   en notis per ändring. p_fmt har %s där antalet ska stå. */
+create or replace function bs_notify_digest(p_member text, p_subject text, p_fmt text, p_kind text, p_key text, p_delay interval)
 returns void language plpgsql security definer set search_path = public as $$
 begin
-  update sms_outbox set n = n + 1, body = bs_gsm(format(p_fmt, n + 1))
-   where dedupe_key = p_key and sent_at is null;
-  if not found then perform bs_sms(p_member, null, format(p_fmt, 1), p_kind, p_key, p_delay); end if;
+  update outbox set n = n + 1, body = format(p_fmt, n + 1)
+   where dedupe_key = p_key and sent_at is null and claimed_at is null;
+  if not found then perform bs_notify(p_member, null, p_subject, format(p_fmt, 1), p_kind, p_key, p_delay); end if;
 end $$;
+
+/* Samlad lista: varje händelse blir en rad i samma mejl (t.ex. tolv bokade pass på
+   en gång blir ett mejl, inte tolv). p_many har %s där antalet ska stå. */
+create or replace function bs_notify_append(p_member text, p_email text, p_subject text, p_many text, p_head text,
+                                            p_line text, p_kind text, p_key text, p_delay interval) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update outbox set n = n + 1, body = body || E'\n' || p_line, subject = format(p_many, n + 1)
+   where dedupe_key = p_key and sent_at is null and claimed_at is null;
+  if not found then
+    perform bs_notify(p_member, p_email, p_subject, p_head || E'\n\n' || p_line, p_kind, p_key, p_delay);
+  end if;
+end $$;
+
+/* Rollen i klartext — för mejlen. */
+create or replace function bs_role_sv(r text) returns text
+language sql immutable as $$
+  select case r when 'manager' then 'manager' when 'admin' then 'admin' when 'producer' then 'producent'
+    when 'leader' then 'cirkelledare' when 'participant' then 'deltagare' when 'customer' then 'kund'
+    when 'camera' then 'kamerateam' else coalesce(r,'') end
+$$;
 
 /* "tor 9 okt" — samma form som appen. */
 create or replace function bs_day(d date) returns text
@@ -115,27 +137,52 @@ end $$;
 --  INBJUDNINGAR
 -- =====================================================================
 drop function if exists create_invite(bs_role, text, int, int);
-/* Admin och manager bjuder in. En inbjudan med namn och telefon är personlig
-   (admin "lägger till en person") — då skickas länken som SMS om p_url anges. */
+drop function if exists create_invite(bs_role, text, int, int, text, text, text, text);
+/* Admin och manager bjuder in. Med p_email skickas länken som mejl. Med p_member
+   gäller inbjudan en person som redan finns i appen men inte har loggat in —
+   inloggningen kopplas då till den raden (redeem_invite), och rollen sätts från
+   inbjudan. En ny inbjudan till samma person stänger den förra. */
 create or replace function create_invite(p_role bs_role, p_circle text, p_days int, p_max int,
-  p_team text default null, p_name text default null, p_phone text default null, p_url text default null)
+  p_team text default null, p_name text default null, p_email text default null, p_url text default null,
+  p_member text default null)
 returns text language plpgsql security definer set search_path = public as $$
-declare tok text; nm text := nullif(trim(coalesce(p_name,'')),'');
+declare tok text; nm text := nullif(trim(coalesce(p_name,'')),''); em text := lower(nullif(trim(coalesce(p_email,'')),''));
+        m members; days int := greatest(1, coalesce(p_days,14)); circ text;
 begin
   if not bs_is_admin() then raise exception 'Bara admin och manager kan bjuda in'; end if;
   if p_role::text = 'manager' and not bs_is_manager() then raise exception 'Bara managern kan bjuda in en manager'; end if;
   if p_role::text in ('leader','participant') and p_circle is null then
     raise exception 'Välj vilken cirkel inbjudan gäller';
   end if;
-  if p_phone is not null and bs_phone(p_phone) is null then raise exception 'Telefonnumret ser fel ut'; end if;
+  if em is not null and em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'E-postadressen ser fel ut'; end if;
+  if p_member is not null then
+    select * into m from members where id = p_member for update;
+    if m.id is null then raise exception 'Personen finns inte'; end if;
+    if m.user_id is not null then raise exception '% har redan ett konto', m.name; end if;
+    if m.role::text = 'manager' and not bs_is_manager() then raise exception 'Bara managern kan bjuda in en manager'; end if;
+    em := coalesce(em, lower(nullif(trim(coalesce(m.email,'')),'')));
+    if em is null then raise exception 'Fyll i en e-postadress till %', m.name; end if;
+    if exists (select 1 from members where lower(email) = em and id <> m.id and user_id is not null) then
+      raise exception 'Den e-postadressen används redan av ett annat konto';
+    end if;
+    nm := m.name;
+    update members set email = em, up = now_ms() where id = m.id;
+    update invites set closed = true where member_id = m.id and not closed;
+  end if;
   tok := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 4) || '-' ||
                substr(md5(clock_timestamp()::text || random()::text), 1, 6));
-  insert into invites(token, role, circle_id, created_by, expires_at, max_uses, team, name, phone)
-  values (tok, p_role, p_circle, bs_my_id(), now() + make_interval(days => greatest(1, coalesce(p_days,14))),
-          case when nm is not null then 1 else p_max end, nullif(trim(coalesce(p_team,'')),''), nm, bs_phone(p_phone));
-  if p_phone is not null and p_url is not null then
-    perform bs_sms(null, p_phone, 'Hej ' || split_part(coalesce(nm,''),' ',1) || '! Du är inbjuden till BANDOHQ. Skapa ditt konto här: '
-      || p_url || '#join=' || tok, 'invite', 'invite:' || tok);
+  insert into invites(token, role, circle_id, created_by, expires_at, max_uses, team, name, email, member_id)
+  values (tok, p_role, p_circle, bs_my_id(), now() + make_interval(days => days),
+          case when nm is not null or p_member is not null then 1 else p_max end,
+          coalesce(nullif(trim(coalesce(p_team,'')),''), m.team), nm, em, p_member);
+  if em is not null and p_url is not null then
+    select data->>'n' into circ from records where kind = 'circle' and id = p_circle;
+    perform bs_notify(p_member, em, 'Du är inbjuden till BANDOHQ',
+      'Hej' || coalesce(' ' || split_part(nm,' ',1), '') || '!' || E'\n\n'
+      || 'Du är inbjuden till BANDOHQ som ' || bs_role_sv(p_role::text) || coalesce(' i ' || circ, '') || '. '
+      || 'Tryck på knappen, välj användarnamn och lösenord och skriv in koden du får på mejlen — sedan är du inne.'
+      || E'\n\n' || 'Länken gäller i ' || days || ' dagar och bara för dig.',
+      'invite', 'invite:' || tok, '0', p_url || '#join=' || tok);
   end if;
   return tok;
 end $$;
@@ -154,14 +201,27 @@ begin
                 when inv.expires_at <= now() then 'Länken har gått ut'
                 when inv.max_uses is not null and inv.uses >= inv.max_uses then 'Länken är redan använd'
                 else '' end,
-    'role', inv.role, 'circle', cname, 'team', inv.team, 'name', inv.name);
+    'role', inv.role, 'circle', cname, 'team', inv.team, 'name', inv.name, 'email', inv.email,
+    'member', inv.member_id is not null);
 end $$;
 
+/* Är användarnamnet ledigt? Visas medan man fyller i formuläret, så att man inte
+   kör fast efter kodsteget. Användarnamn är inte hemliga — mejladresserna är det. */
+create or replace function username_free(p_username text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select lower(trim(coalesce(p_username,''))) ~ '^[a-z0-9._-]{2,24}$'
+     and not exists (select 1 from members where lower(username) = lower(trim(p_username)))
+$$;
+
 /* Löser in en länk för den som just skapat sitt konto. Rollen och
-   cirkelkopplingen kommer härifrån — aldrig från klienten. */
-create or replace function redeem_invite(p_token text, p_name text, p_phone text) returns jsonb
+   cirkelkopplingen kommer härifrån — aldrig från klienten. Gäller inbjudan en
+   person som redan finns kopplas inloggningen till den raden (namnet, passen och
+   färgen följer med); annars skapas ett nytt konto. */
+drop function if exists redeem_invite(text, text, text);
+create or replace function redeem_invite(p_token text, p_name text default null, p_username text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare inv invites; mid text; em text; nm text := trim(coalesce(p_name,''));
+declare inv invites; mid text; em text; nm text := trim(coalesce(p_name,'')); un text := lower(trim(coalesce(p_username,'')));
+        m members;
 begin
   if auth.uid() is null then raise exception 'Skapa kontot först'; end if;
   if exists (select 1 from members where user_id = auth.uid()) then
@@ -172,20 +232,31 @@ begin
   if inv.closed                                             then raise exception 'Länken är stängd'; end if;
   if inv.expires_at <= now()                                then raise exception 'Länken har gått ut'; end if;
   if inv.max_uses is not null and inv.uses >= inv.max_uses  then raise exception 'Länken är redan använd'; end if;
-  if length(nm) < 2 then raise exception 'Fyll i ditt namn'; end if;
-  /* SMS-notiserna går inte att stänga av — alla behöver ett nummer. */
-  if bs_phone(coalesce(nullif(trim(coalesce(p_phone,'')),''), inv.phone)) is null then
-    raise exception 'Fyll i ett mobilnummer — notiserna kommer som SMS';
+  if un !~ '^[a-z0-9._-]{2,24}$' then
+    raise exception 'Välj ett användarnamn: 2–24 tecken, a–z, 0–9, punkt, bindestreck eller understreck';
   end if;
-  if exists (select 1 from members where lower(name) = lower(nm)) then
-    raise exception 'Namnet finns redan — lägg till efternamnet';
-  end if;
-
+  if exists (select 1 from members where lower(username) = un) then raise exception 'Användarnamnet är upptaget'; end if;
   select email into em from auth.users where id = auth.uid();
-  mid := bs_uid('m_');
-  insert into members (id, user_id, role, name, email, phone, team, up)
-  values (mid, auth.uid(), inv.role, nm, em, bs_phone(coalesce(nullif(trim(coalesce(p_phone,'')),''), inv.phone)),
-          inv.team, now_ms());
+
+  if inv.member_id is not null then
+    select * into m from members where id = inv.member_id for update;
+    if m.id is null then raise exception 'Kontot finns inte längre — be om en ny länk'; end if;
+    if m.user_id is not null then raise exception 'Kontot har redan en inloggning'; end if;
+    perform set_config('bs.link', '1', true);
+    update members set user_id = auth.uid(), email = em, role = inv.role, username = un,
+           team = coalesce(inv.team, team), up = now_ms()
+     where id = m.id;
+    perform set_config('bs.link', '', true);
+    mid := m.id; nm := m.name;
+  else
+    if length(nm) < 2 then raise exception 'Fyll i ditt namn'; end if;
+    if exists (select 1 from members where lower(name) = lower(nm)) then
+      raise exception 'Namnet finns redan — lägg till efternamnet';
+    end if;
+    mid := bs_uid('m_');
+    insert into members (id, user_id, role, name, email, username, team, up)
+    values (mid, auth.uid(), inv.role, nm, em, un, inv.team, now_ms());
+  end if;
 
   /* En godkänd ny kund: bokningen från förfrågan blir kundens egen. */
   if inv.lead_id is not null then
@@ -198,7 +269,7 @@ begin
        set data = jsonb_set(data, '{members}', coalesce(data->'members','[]'::jsonb) || to_jsonb(mid))
                   || jsonb_build_object('up', now_ms()),
            up = now_ms()
-     where kind = 'circle' and id = inv.circle_id;
+     where kind = 'circle' and id = inv.circle_id and not (coalesce(data->'members','[]'::jsonb) ? mid);
   elsif inv.circle_id is not null and inv.role = 'leader' then
     update records
        set data = data || jsonb_build_object('leader', nm, 'up', now_ms()), up = now_ms()
@@ -206,8 +277,24 @@ begin
   end if;
 
   update invites set uses = uses + 1 where token = inv.token;
-  return jsonb_build_object('id', mid, 'role', inv.role, 'name', nm);
+  return jsonb_build_object('id', mid, 'role', inv.role, 'name', nm, 'username', un);
 end $$;
+
+/* För edge-funktionen auth-login (bara service_role): användarnamn → e-post, och
+   hur många fel det varit senaste kvarten. */
+create or replace function bs_login_lookup(p_username text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'email', (select u.email from members m join auth.users u on u.id = m.user_id
+               where lower(m.username) = lower(trim(coalesce(p_username,''))) and m.active limit 1),
+    'fails', (select count(*) from login_fails
+               where username = lower(trim(coalesce(p_username,''))) and at > now() - interval '15 minutes'))
+$$;
+create or replace function bs_login_fail(p_username text) returns void
+language sql security definer set search_path = public as $$
+  delete from login_fails where at < now() - interval '1 day';
+  insert into login_fails(username) values (lower(trim(coalesce(p_username,''))));
+$$;
 
 -- =====================================================================
 --  LEDARE, DELTAGARE, KUND — det enda de når
@@ -407,16 +494,17 @@ $$;
 create or replace function public_request(p_name text, p_email text, p_phone text, p_date date,
   p_start text, p_end text, p_studio text, p_message text, p_hp text default '') returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare ph text := bs_phone(p_phone); id text; nm text := trim(coalesce(p_name,'')); em text := lower(trim(coalesce(p_email,'')));
+declare ph text := bs_phone(nullif(trim(coalesce(p_phone,'')),'')); id text; nm text := trim(coalesce(p_name,''));
+        em text := lower(trim(coalesce(p_email,'')));
 begin
   if coalesce(p_hp,'') <> '' then return jsonb_build_object('ok', true); end if;      -- robot: säg ok, gör inget
   if length(nm) < 2 then raise exception 'Fyll i ditt namn'; end if;
-  if ph is null then raise exception 'Fyll i ett mobilnummer — svaret kommer som SMS'; end if;
+  if nullif(trim(coalesce(p_phone,'')),'') is not null and ph is null then raise exception 'Telefonnumret ser fel ut'; end if;
   if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'E-postadressen ser fel ut'; end if;
   if p_date < current_date or p_date > current_date + 120 then raise exception 'Välj en dag inom de närmaste fyra månaderna'; end if;
   if p_start !~ '^\d\d:\d\d$' or p_end !~ '^\d\d:\d\d$' or p_start = p_end then raise exception 'Välj start och slut'; end if;
   if coalesce(p_studio,'') not in ('','A','B') then raise exception 'Välj studio'; end if;
-  if (select count(*) from leads where status = 'new' and (phone = ph or lower(email) = em)) >= 3 then
+  if (select count(*) from leads where status = 'new' and (lower(email) = em or (ph is not null and phone = ph))) >= 3 then
     raise exception 'Du har redan tre förfrågningar som väntar på svar';
   end if;
   if (select count(*) from leads where created_at > now() - interval '1 day') >= 30 then
@@ -428,8 +516,9 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
-/* Admin godkänner: bokningen skapas, en kundinbjudan skickas som SMS. När
-   kunden gått med blir bokningen hens (redeem_invite, lead_id). */
+/* Admin godkänner: bokningen skapas, och kunden får ett mejl med tiden och en
+   länk för att skapa sitt konto. När kunden gått med blir bokningen hens
+   (redeem_invite, lead_id). */
 create or replace function approve_lead(p_lead text, p_studio text, p_url text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare l leads; d jsonb; tok text;
@@ -446,11 +535,14 @@ begin
   perform bs_put_booking(d);
   tok := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 4) || '-' ||
                substr(md5(clock_timestamp()::text || random()::text), 1, 6));
-  insert into invites(token, role, created_by, expires_at, max_uses, name, phone, lead_id)
-  values (tok, 'customer', bs_my_id(), now() + interval '30 days', 1, l.name, l.phone, l.id);
+  insert into invites(token, role, created_by, expires_at, max_uses, name, email, lead_id)
+  values (tok, 'customer', bs_my_id(), now() + interval '30 days', 1, l.name, l.email, l.id);
   update leads set status = 'approved', booking_id = d->>'id', invite = tok, handled_by = bs_my_id() where id = l.id;
-  perform bs_sms(null, l.phone, 'Hej ' || split_part(l.name,' ',1) || '! Din tid ' || bs_day(l.date) || ' ' || l.start_t || '-' || l.end_t
-    || ' är bokad. Skapa ditt konto för att se och ändra den: ' || p_url || '#join=' || tok, 'lead', 'lead-ok:' || l.id);
+  perform bs_notify(null, l.email, 'Bokningsbekräftelse: ' || bs_when(d),
+    'Hej ' || split_part(l.name,' ',1) || '! Din tid är bokad:' || E'\n\n'
+    || bs_when(d) || ' · ' || bs_studio(p_studio) || E'\n\n'
+    || 'Skapa ditt konto med knappen nedan för att se och ändra bokningen. Länken gäller i 30 dagar.',
+    'lead-ok', 'lead-ok:' || l.id, '0', p_url || '#join=' || tok);
   return jsonb_build_object('booking', d->>'id', 'invite', tok);
 end $$;
 
@@ -462,9 +554,10 @@ begin
   select * into l from leads where id = p_lead for update;
   if l.id is null or l.status <> 'new' then raise exception 'Förfrågan finns inte längre'; end if;
   update leads set status = 'declined', handled_by = bs_my_id() where id = l.id;
-  perform bs_sms(null, l.phone, 'Hej ' || split_part(l.name,' ',1) || '! Tyvärr kan vi inte ta tiden ' || bs_day(l.date) || ' '
-    || l.start_t || '-' || l.end_t || '.' || case when coalesce(p_reason,'') <> '' then ' ' || p_reason else ' Hör av dig för en annan tid!' end
-    || ' /BANDOHQ', 'lead', 'lead-no:' || l.id);
+  perform bs_notify(null, l.email, 'Tiden gick tyvärr inte',
+    'Hej ' || split_part(l.name,' ',1) || '! Tyvärr kan vi inte ta tiden ' || bs_day(l.date) || ' '
+    || l.start_t || '-' || l.end_t || '.' || case when coalesce(p_reason,'') <> '' then ' ' || p_reason else ' Hör av dig för en annan tid!' end,
+    'lead-no', 'lead-no:' || l.id);
 end $$;
 
 /* Kund avbokar sin bokning, deltagare tar tillbaka sin förfrågan. */
@@ -513,7 +606,7 @@ begin
    where (kind = 'agenda' and data->>'who' = m.name) or (kind = 'goal' and data->>'owner' = m.id) or (kind = 'plan' and id = m.id);
   update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t where kind = 'beat' and data->>'who' = m.name;
   update records set data = data || jsonb_build_object('by', '', 'up', t), up = t where kind = 'media' and data->>'by' = m.id;
-  delete from sms_outbox where member_id = m.id and sent_at is null;
+  delete from outbox where member_id = m.id and sent_at is null;
   delete from members where id = m.id;                       -- push_subs följer med (on delete cascade)
   if m.user_id is not null then delete from auth.users where id = m.user_id; end if;
   return jsonb_build_object('deleted', m.name, 'bookings', n);
@@ -534,3 +627,15 @@ revoke all on function free_slots(date, date) from public, anon;
 grant execute on function free_slots(date, date) to anon, authenticated;
 revoke all on function public_request(text,text,text,date,text,text,text,text,text) from public, anon;
 grant execute on function public_request(text,text,text,date,text,text,text,text,text) to anon, authenticated;
+revoke all on function username_free(text) from public, anon;
+grant execute on function username_free(text) to anon, authenticated;
+-- inloggning med användarnamn: bara servern (edge-funktionen auth-login)
+revoke all on function bs_login_lookup(text) from public, anon, authenticated;
+revoke all on function bs_login_fail(text) from public, anon, authenticated;
+revoke all on function bs_role_sv(text) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function bs_login_lookup(text) to service_role;
+    grant execute on function bs_login_fail(text) to service_role;
+  end if;
+end $$;
