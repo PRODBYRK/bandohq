@@ -147,7 +147,7 @@ create or replace function create_invite(p_role bs_role, p_circle text, p_days i
   p_member text default null)
 returns text language plpgsql security definer set search_path = public as $$
 declare tok text; nm text := nullif(trim(coalesce(p_name,'')),''); em text := lower(nullif(trim(coalesce(p_email,'')),''));
-        m members; days int := greatest(1, coalesce(p_days,14)); circ text;
+        m members; days int := greatest(1, coalesce(p_days,14)); circ text; leads text;
 begin
   if not bs_is_admin() then raise exception 'Bara admin och manager kan bjuda in'; end if;
   if p_role::text = 'manager' and not bs_is_manager() then raise exception 'Bara managern kan bjuda in en manager'; end if;
@@ -177,9 +177,14 @@ begin
           coalesce(nullif(trim(coalesce(p_team,'')),''), m.team), nm, em, p_member);
   if em is not null and p_url is not null then
     select data->>'n' into circ from records where kind = 'circle' and id = p_circle;
+    /* leder personen cirklar (t.ex. producent och cirkelledare) står det i mejlet */
+    select string_agg(data->>'n', ', ' order by data->>'n') into leads from records
+     where kind = 'circle' and not del and p_member is not null and data->>'leader' = nm;
     perform bs_notify(p_member, em, 'Du är inbjuden till BANDOHQ',
       'Hej' || coalesce(' ' || split_part(nm,' ',1), '') || '!' || E'\n\n'
-      || 'Du är inbjuden till BANDOHQ som ' || bs_role_sv(p_role::text) || coalesce(' i ' || circ, '') || '. '
+      || 'Du är inbjuden till BANDOHQ som '
+      || case when p_role::text = 'leader' then 'cirkelledare för ' || coalesce(leads, circ, 'en cirkel')
+              else bs_role_sv(p_role::text) || coalesce(' och cirkelledare för ' || leads, '') || coalesce(' i ' || circ, '') end || '. '
       || 'Tryck på knappen, välj användarnamn och lösenord och skriv in koden du får på mejlen — sedan är du inne.'
       || E'\n\n' || 'Länken gäller i ' || days || ' dagar och bara för dig.',
       'invite', 'invite:' || tok, '0', p_url || '#join=' || tok);
@@ -202,7 +207,10 @@ begin
                 when inv.max_uses is not null and inv.uses >= inv.max_uses then 'Länken är redan använd'
                 else '' end,
     'role', inv.role, 'circle', cname, 'team', inv.team, 'name', inv.name, 'email', inv.email,
-    'member', inv.member_id is not null);
+    'member', inv.member_id is not null,
+    /* cirklarna en befintlig person leder — "producent och cirkelledare för …" */
+    'leads', case when inv.member_id is null then '[]'::jsonb else coalesce((select jsonb_agg(data->>'n' order by data->>'n')
+               from records where kind = 'circle' and not del and data->>'leader' = inv.name), '[]'::jsonb) end);
 end $$;
 
 /* Är användarnamnet ledigt? Visas medan man fyller i formuläret, så att man inte

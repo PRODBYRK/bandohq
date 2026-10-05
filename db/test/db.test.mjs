@@ -390,13 +390,16 @@ ok('admin kan inte bjuda in någon som redan har ett konto', /RKAY har redan ett
 ok('e-post krävs till en befintlig person utan adress', /Fyll i en e-postadress till Moez Ny/.test(await boom(async()=>{
   await q(`insert into members(id,role,name) values('moezny','camera','Moez Ny')`);
   return C(()=>rpc('create_invite',{p_role:'camera',p_circle:null,p_days:14,p_max:1,p_member:'moezny',p_url:'https://bandohq.se/'}));})||''));
+await q(`insert into records(kind,id,data,up) values('circle','c3',$1,1)`,[JSON.stringify({id:'c3',n:'Grupp 3',leader:'ADREY',members:[]})]);
 const ta1 = await C(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:9,p_member:'adrey',p_email:'adrey@gmail.com',p_url:'https://bandohq.se/'}));
 ok('inbjudan till ADREY sparar e-posten på personen', (await one(`select email from members where id='adrey'`)).email==='adrey@gmail.com');
 const ta2 = await C(()=>rpc('create_invite',{p_role:'admin',p_circle:null,p_days:7,p_max:1,p_member:'adrey',p_url:'https://bandohq.se/'}));
 ok('"skicka igen" stänger den förra länken', (await one(`select closed from invites where token=$1`,[ta1])).closed===true);
 ok('och det nya mejlet går till samma adress, som admin denna gång', /som admin/.test((await one(`select body, email from outbox where dedupe_key=$1`,['invite:'+ta2])).body)
    && (await one(`select email from outbox where dedupe_key=$1`,['invite:'+ta2])).email==='adrey@gmail.com');
+ok('ADREY leder Grupp 3 — mejlet säger "admin och cirkelledare för Grupp 3"', /som admin och cirkelledare för Grupp 3\./.test((await one(`select body from outbox where dedupe_key=$1`,['invite:'+ta2])).body));
 const ai = await asAnon(db,()=>rpc('invite_info',{p_token:ta2}));
+ok('och länken vet vilka cirklar ADREY leder', JSON.stringify(ai.leads)==='["Grupp 3"]', ai.leads);
 ok('länken visar namnet som redan finns och e-posten', ai.ok && ai.member===true && ai.name==='ADREY' && ai.email==='adrey@gmail.com' && ai.role==='admin', ai);
 U.adrey = await user('adrey@gmail.com');
 ok('den gamla länken går inte att använda', /stängd/.test(await boom(()=>as(db,U.adrey,()=>rpc('redeem_invite',{p_token:ta1,p_username:'adrey'})))||''));

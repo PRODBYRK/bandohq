@@ -9,9 +9,9 @@ python3 -m http.server 8000
 
 | Sida | Vad | Antal |
 |---|---|---|
-| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar med användarnamn, lägg till person med e-post, bjud in någon som redan finns, kunder och bokningssidan, artistgrader och kalkylarksimport, push-filerna, integritet, säkerhetskopia, radera person, öppettider | 316 |
+| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar med användarnamn, lägg till person med e-post, bjud in någon som redan finns, flera roller (producent + cirkelledare), kunder och bokningssidan, artistgrader och kalkylarksimport, push-filerna, integritet, säkerhetskopia, radera person, öppettider | 324 |
 | `test/cloud.html` | appen mot Supabase-emulatorn: inloggning med användarnamn eller e-post, inbjudningslänkar, koden vid första inloggningen (fel kod, ny kod, annan enhet), RLS sett från webbläsaren, godkännanden, kundförfrågningar, ny kund via bokningssidan, admin, utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord (även med användarnamn), inbjudan till RKAY som redan finns, flytten från förhandsvisningen | 116 |
-| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, notiskön (orderbekräftelser, kvitton, svar, timmar, agenda), påminnelser, inbjudningar per mejl och till befintliga personer, användarnamn, nya kunder, push och radering direkt i Postgres (`node db.test.mjs`) | 203 |
+| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, notiskön (orderbekräftelser, kvitton, svar, timmar, agenda), påminnelser, inbjudningar per mejl och till befintliga personer, användarnamn, nya kunder, push och radering direkt i Postgres (`node db.test.mjs`) | 205 |
 | `db/test/notify.test.mjs` | edge-funktionerna: notify-send (kryptering mot RFC 8291:s testvärden, VAPID, mejl via Resend, push först för påminnelser) och auth-login (inloggning med användarnamn, spärr, glömt lösenord) (`node notify.test.mjs`) | 47 |
 | `test/shot.html` | demodata att titta på | — |
 

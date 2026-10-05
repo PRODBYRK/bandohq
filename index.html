@@ -1300,8 +1300,12 @@ async function renderJoin(tag, b){
     return;
   }
   const role = INVITE_ROLES[joinInfo.role] || joinInfo.role, known = !!joinInfo.name, jd = joinDraft || {};
-  tag.innerHTML = `${known ? `Hej <b>${esc(joinInfo.name)}</b>! ` : ''}Du är inbjuden som <b>${esc(role)}</b>${
-    joinInfo.circle?` i <b>${esc(joinInfo.circle)}</b>`:''}${joinInfo.team?` i <b>${esc(joinInfo.team)}</b>`:''}.`;
+  const leads = joinInfo.leads || [];
+  const what = joinInfo.role==='leader'
+    ? `<b>${esc(role)}</b> för <b>${esc(leads.length ? leads.join(', ') : joinInfo.circle||'')}</b>`
+    : `<b>${esc(role)}</b>${leads.length ? ` och <b>${esc(INVITE_ROLES.leader)}</b> för <b>${esc(leads.join(', '))}</b>` : ''}${
+      joinInfo.circle ? ` i <b>${esc(joinInfo.circle)}</b>` : ''}`;
+  tag.innerHTML = `${known ? `Hej <b>${esc(joinInfo.name)}</b>! ` : ''}Du är inbjuden som ${what}${joinInfo.team?` i <b>${esc(joinInfo.team)}</b>`:''}.`;
   const un = jd.username !== undefined ? jd.username : suggestUsername(joinInfo.name||'');
   b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doJoin()" autocomplete="on">
       ${known ? '' : `<label class="lbl" for="jN">DITT NAMN</label>
@@ -1714,7 +1718,8 @@ async function inviteInfo(tok){
     const i = S.invites.find(x=>x.token===String(tok).toUpperCase());
     const c = i && i.circle_id ? circleById(i.circle_id) : null;
     return Object.assign(inviteState(i), {role:i&&i.role, circle:c?c.n:null, team:i&&i.team, name:i&&i.name,
-      email:i&&i.email, member:!!(i&&i.member_id)});
+      email:i&&i.email, member:!!(i&&i.member_id),
+      leads: i && i.member_id ? lcircle().filter(x=>x.leader===i.name).map(x=>x.n) : []});
   }
   return sbRpc('invite_info', {p_token:tok});
 }
@@ -3736,7 +3741,7 @@ function vTeam(){
     return `<button class="member" onclick="openProfile('${t.id}')">
       ${avatar(t)}
       <div class="grow"><div class="mname">${esc(t.n)}${own?' <span class="pill" style="background:rgba(168,85,247,.16);color:var(--pur3)">DU</span>':''}</div>
-        <div class="mrole">${ROLE_NAME[t.r]} · ${up} kommande</div></div>
+        <div class="mrole">${roleLabel(t)} · ${up} kommande</div></div>
       <div class="mstat">${showH ? `<b>${hh(h)}h</b><span>DENNA MÅN</span>`
         : `<b style="color:var(--mut2)">–</b><span>PRIVAT</span>`}</div>
     </button>`;
@@ -4101,18 +4106,48 @@ function deleteLocally(a){
    kod från mejlet. Med ett id gäller det någon som redan finns men inte loggat in —
    då kopplas inloggningen till den raden, och passen och färgen följer med. */
 let addDraft = null;
+/* Roller går att kombinera: Cirkelledare går ihop med Producent, Admin och Manager —
+   crewet ser cirklarna ändå — eller står för sig själv, för den som bara leder.
+   Vem som leder en cirkel sitter på cirkeln, så kombinationen kräver ingen ny roll. */
+const leadsWith = r => !r || isCrewRole(r);
+const ledBy = a => a ? lcircle().filter(c=>c.leader===a.n).map(c=>c.id) : [];
+const draftRole = d => d.main || 'leader';
 function openAddPerson(role, existingId){
   if(!can('manageCrew')) return;
-  const ex = existingId ? byId(existingId) : null;
-  addDraft = ex
-    ? {id:ex.id, name:ex.n, email:ex.email||'', role: INVITE_ROLES[ex.r] ? ex.r : 'producer',
-       circle: inviteCircleFor(ex) || (lcircle()[0]||{}).id || '', team:ex.team||'', producer:ex.producer||''}
-    : {role: role || 'producer', circle:(lcircle()[0]||{}).id||'', team:'', producer:''};
+  const ex = existingId ? byId(existingId) : null, led = ledBy(ex);
+  const start = ex ? ex.r : (role || 'producer');
+  addDraft = {id: ex ? ex.id : null, name: ex ? ex.n : '', email: ex ? ex.email||'' : '',
+    main: start==='leader' ? null : (INVITE_ROLES[start] ? start : 'producer'),
+    lead: start==='leader' || led.length > 0,
+    leads: led.length ? led : start==='leader' ? [(lcircle()[0]||{}).id].filter(Boolean) : [],
+    circle: (ex && ex.r==='participant' && inviteCircleFor(ex)) || (lcircle()[0]||{}).id || '',
+    team: ex ? ex.team||'' : '', producer: ex ? ex.producer||'' : ''};
+  paintAddPerson();
+}
+function pickAddRole(r){
+  const d = addDraft;
+  if(r==='leader'){
+    if(d.lead && !d.main) return;                                    /* någon roll måste finnas */
+    d.lead = !d.lead;
+    if(d.lead && !leadsWith(d.main)) d.main = null;                  /* kamera, kund, deltagare leder inte */
+    if(d.lead && !d.leads.length && lcircle()[0]) d.leads = [lcircle()[0].id];
+  } else if(d.main===r){
+    if(d.lead) d.main = null;                                        /* bara cirkelledare kvar */
+  } else {
+    d.main = r;
+    if(!leadsWith(r)) d.lead = false;
+  }
+  paintAddPerson();
+}
+function toggleLeadCircle(id){
+  const d = addDraft;
+  d.leads = d.leads.includes(id) ? d.leads.filter(x=>x!==id) : d.leads.concat(id);
   paintAddPerson();
 }
 function paintAddPerson(){
-  const d = addDraft, roles = inviteRoles(), ex = d.id ? byId(d.id) : null;
-  const needC = d.role==='leader' || d.role==='participant';
+  const d = addDraft, roles = inviteRoles(), ex = d.id ? byId(d.id) : null, role = draftRole(d);
+  const help = d.main ? (ROLE_HELP[d.main]||'') + (d.lead ? ' Dessutom cirkelledare: bokar pass för sina cirklar och når sina medlemmar.' : '')
+                      : ROLE_HELP.leader;
   openSheet(`${X}
     <h2>${ex ? 'Bjud in ' + esc(ex.n) : 'Lägg till person'}</h2>
     <div class="sub">${ex ? esc(ex.n) + ' finns redan i appen. Inbjudan går till e-posten — inloggningen kopplas till kontot, och passen följer med.'
@@ -4122,17 +4157,21 @@ function paintAddPerson(){
     <input id="apN" value="${esc(d.name||'')}" placeholder="För- och efternamn" maxlength="40" oninput="addDraft.name=this.value">`}
     <label class="lbl" for="apE">E-POST</label>
     <input id="apE" type="email" inputmode="email" value="${esc(d.email||'')}" placeholder="namn@exempel.se" oninput="addDraft.email=this.value">
-    <label class="lbl">${ex ? 'INBJUDEN SOM' : 'ROLL'}</label>
-    <div class="chips wrap">${roles.map(([r,n])=>`<button class="chip ${d.role===r?'on':''}"
-      onclick="addDraft.role='${r}';paintAddPerson()">${n}</button>`).join('')}</div>
-    <div class="note" style="margin-top:10px">${esc(ROLE_HELP[d.role]||'')}</div>
-    ${needC ? `<label class="lbl" for="apC">${d.role==='leader'?'LEDARE FÖR':'DELTAGARE I'}</label>
+    <label class="lbl">${ex ? 'INBJUDEN SOM' : 'ROLL'} <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— Cirkelledare går att kombinera</span></label>
+    <div class="chips wrap" id="apRoles">${roles.map(([r,n])=>`<button class="chip ${(r==='leader' ? d.lead : d.main===r)?'on':''}"
+      data-r="${r}" onclick="pickAddRole('${r}')">${n}</button>`).join('')}</div>
+    <div class="note" style="margin-top:10px">${esc(help)}</div>
+    ${d.lead ? `<label class="lbl">LEDER</label>
+      ${lcircle().length ? `<div class="chips wrap" id="apLeads">${lcircle().map(c=>`<button class="chip ${d.leads.includes(c.id)?'on':''}"
+        data-c="${c.id}" onclick="toggleLeadCircle('${c.id}')">${esc(c.n)}</button>`).join('')}</div>`
+        : `<div class="warn" style="margin-top:0">Det finns inga cirklar än — skapa en under Cirklar först.</div>`}` : ''}
+    ${role==='participant' ? `<label class="lbl" for="apC">DELTAGARE I</label>
       <select id="apC" onchange="addDraft.circle=this.value">${lcircle().map(c=>
         `<option value="${c.id}" ${d.circle===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>` : ''}
-    ${d.role==='camera' ? `<label class="lbl" for="apT">TEAM</label>
+    ${role==='camera' ? `<label class="lbl" for="apT">TEAM</label>
       <input id="apT" list="teamList2" value="${esc(d.team||'')}" placeholder="t.ex. D2L — lämna tomt om personen är ett eget team" oninput="addDraft.team=this.value.trim()">
       <datalist id="teamList2">${[...new Set(cameras().map(a=>a.team).filter(Boolean))].map(t=>`<option value="${esc(t)}">`).join('')}</datalist>` : ''}
-    ${d.role==='customer' ? `<label class="lbl" for="apK">KUNDENS PRODUCENT</label>
+    ${role==='customer' ? `<label class="lbl" for="apK">KUNDENS PRODUCENT</label>
       <select id="apK" onchange="addDraft.producer=this.value"><option value="">Ingen särskild</option>
         ${producers().map(c=>`<option value="${c.id}" ${d.producer===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>` : ''}
     <button class="btn" style="margin-top:22px" onclick="saveAddPerson()">${ex ? 'SKICKA INBJUDAN' : PREVIEW_LOGIN ? 'LÄGG TILL' : 'LÄGG TILL OCH SKICKA INBJUDAN'}</button>
@@ -4154,38 +4193,51 @@ const ROLE_HELP = {
   participant:'Ser sin läroplan och föreslår tider med sin cirkelledare.',
   customer:'Ser lediga studiotider och skickar bokningsförfrågningar.'};
 async function saveAddPerson(){
-  const d = addDraft, ex = d.id ? byId(d.id) : null;
+  const d = addDraft, ex = d.id ? byId(d.id) : null, role = draftRole(d);
   const name = ex ? ex.n : (d.name||'').trim(), em = String(d.email||'').trim().toLowerCase();
   if(name.length < 2) return toast('Fyll i namn');
   if(!PREVIEW_LOGIN && !EMAIL_RE.test(em)) return toast('Fyll i en e-postadress — inbjudan kommer som mejl');
   if(em && !EMAIL_RE.test(em)) return toast('E-postadressen ser fel ut');
   if(!ex && accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) return toast('Namnet finns redan');
-  const circle = (d.role==='leader'||d.role==='participant') ? (d.circle || (document.getElementById('apC')||{}).value) : null;
-  if((d.role==='leader'||d.role==='participant') && !circle) return toast('Skapa en cirkel först');
-  const team = d.role==='camera' ? (d.team||'') : '', producer = d.role==='customer' ? (d.producer||'') : '';
+  const partCircle = role==='participant' ? (d.circle || (document.getElementById('apC')||{}).value) : null;
+  if(role==='participant' && !partCircle) return toast('Skapa en cirkel först');
+  const leads = d.lead ? d.leads.filter(id=>circleById(id)) : [];
+  if(d.lead && !leads.length) return toast(lcircle().length ? 'Välj vilken cirkel hen ska leda' : 'Skapa en cirkel först');
+  const team = role==='camera' ? (d.team||'') : '', producer = role==='customer' ? (d.producer||'') : '';
   /* personen läggs in (eller uppdateras) först — inbjudan kopplas sedan till raden */
   let acc = ex;
   if(!acc){
-    const pal = PALETTE[S.accounts.length % PALETTE.length], tm = isTeamRole(d.role);
-    acc = bump({id:'m_'+uid(), n:name, r:d.role, email:em, phone:'', team, producer,
+    const pal = PALETTE[S.accounts.length % PALETTE.length], tm = isTeamRole(role);
+    acc = bump({id:'m_'+uid(), n:name, r:role, email:em, phone:'', team, producer,
       c: tm?pal[0]:'#6633b8', g: tm?pal[1]:'#9d5cf5', active:true, del:false, login:false});
     S.accounts.push(acc);
-    const c = circle ? circleById(circle) : null;
-    if(c && d.role==='participant'){ c.members = (c.members||[]).concat(acc.id); bump(c); }
-    if(c && d.role==='leader'){ c.leader = acc.n; bump(c); }
+    const c = partCircle ? circleById(partCircle) : null;
+    if(c){ c.members = (c.members||[]).concat(acc.id); bump(c); }
   } else {
-    bump(Object.assign(acc, {email:em || acc.email}, d.role==='camera' ? {team} : {}, d.role==='customer' ? {producer} : {}));
+    bump(Object.assign(acc, {email:em || acc.email}, role==='camera' ? {team} : {}, role==='customer' ? {producer} : {}));
   }
+  /* cirkelledare: sätts direkt på cirklarna (och tas bort från dem man avmarkerat) */
+  const changed = [];
+  lcircle().forEach(c=>{
+    const want = leads.includes(c.id);
+    if(want && c.leader!==acc.n){ c.leader = acc.n; bump(c); changed.push(c); }
+    if(!want && c.leader===acc.n){ c.leader = ''; bump(c); changed.push(c); }
+  });
   save();
   try{
-    if(!PREVIEW_LOGIN) await pushMember(acc);
-    const tok = await createInvite(d.role, circle, 14, 1, {member:acc.id, email:em, team});
+    if(!PREVIEW_LOGIN){
+      await pushMember(acc);
+      if(changed.length) await sbRpc('push_records', {rows: changed.map(c=>({kind:'circle', id:String(c.id), data:c, up:c.up||0, del:!!c.del}))});
+    }
+    const tok = await createInvite(role, role==='participant' ? partCircle : role==='leader' ? leads[0] : null, 14, 1,
+      {member:acc.id, email:em, team});
     invListAt = 0; refreshInvites(true);
+    const as = (d.main ? ROLE_NAME[d.main].toLowerCase() : '') + (d.lead ? (d.main ? ' och ' : '') + 'cirkelledare' : '');
     document.getElementById('apOut').innerHTML = PREVIEW_LOGIN
-      ? `<div class="okbox"><b>${esc(name)} är tillagd.</b> I drift går inbjudan som mejl — här kan du prova länken direkt.</div>
+      ? `<div class="okbox"><b>${esc(name)} är tillagd</b> som ${esc(as)}. I drift går inbjudan som mejl — här kan du prova länken direkt.</div>
          <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN</button>`
-      : `<div class="okbox"><b>Klart.</b> ${esc(name)} får ett mejl till <b>${esc(em)}</b> inom någon minut.
-          Länken gäller i 14 dagar.</div>
+      : `<div class="okbox"><b>Klart.</b> ${esc(name)} bjuds in som ${esc(as)} och får ett mejl till <b>${esc(em)}</b>
+          inom någon minut. Länken gäller i 14 dagar.</div>
          <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`;
     if(!ex){ addDraft.name = ''; addDraft.email = ''; }
     buildNav(); render(); sync(true);
@@ -4202,6 +4254,8 @@ function refreshInvites(force){
   listInvites().then(r=>{ invList = r || []; if(view==='team') render(); }).catch(()=>{});
 }
 const invCreated = i => +new Date(i.created_at || i.created || 0);
+/* "Producent · cirkelledare" — leder man en cirkel syns det, oavsett roll. */
+const roleLabel = a => ROLE_NAME[a.r] + (a.r!=='leader' && lcircle().some(c=>c.leader===a.n) ? ' · cirkelledare' : '');
 function inviteStatus(a){
   const i = (invList||[]).filter(x=>x.member_id===a.id).sort((x,y)=>invCreated(y)-invCreated(x))[0];
   if(!i) return {txt:'inte inbjuden', open:false};
@@ -4224,7 +4278,7 @@ function invitesSection(){
         Skicka en inbjudan — de väljer användarnamn och lösenord och skriver in en kod från mejlet.</div>
       ${(invAll ? w : w.slice(0,5)).map(a=>{ const st = inviteStatus(a); return `<div class="member invrow" style="cursor:default">${avatar(a)}
         <div class="grow"><div class="mname">${esc(a.n)}</div>
-          <div class="mrole">${ROLE_NAME[a.r]} · ${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'} · ${esc(st.txt)}</div></div>
+          <div class="mrole">${roleLabel(a)} · ${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'} · ${esc(st.txt)}</div></div>
         <button class="btn slim ${st.open?'ghost':''}" style="width:auto;flex:none;padding:9px 12px" onclick="openAddPerson(null,'${a.id}')">${st.open?'IGEN':'BJUD IN'}</button>
       </div>`; }).join('')}
       ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}

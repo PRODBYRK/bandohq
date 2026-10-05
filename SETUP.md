@@ -210,6 +210,11 @@ inloggningen kopplas till det konto som redan finns, så namnet, passen och fär
 Har flera redan en e-post: **Skicka till alla med e-post**. **Igen** skickar en ny länk och
 stänger den gamla.
 
+**Flera roller:** *Cirkelledare* går att kombinera med *Producent*, *Admin* och *Manager* — tryck på
+båda och välj vilka cirklar personen leder. Ledarskapet sätts direkt på cirklarna, och inbjudan
+säger t.ex. "producent och cirkelledare för Grupp 1". Bara *Cirkelledare* går också, för den som
+leder utan att vara i crewet.
+
 | Vem | Roll |
 |---|---|
 | **Costa**, **Nabbe** | Admin — sköter konton, cirklar, schemat och artister. Leder cirklar. |
@@ -466,7 +471,7 @@ kod — logga in i stället.
 python3 -m http.server 8000
 ```
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 316 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 324 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -474,7 +479,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 203 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 205 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 47 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```

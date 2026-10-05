@@ -901,13 +901,29 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openAddPerson(null, 'adrey'); res.exSheet = /Bjud in ADREY/.test(document.getElementById('sheetBody').textContent) && !document.getElementById('apN');
     addDraft.email='adrey@gmail.com'; await saveAddPerson();
     const i1 = S.invites.filter(i=>i.member_id==='adrey');
-    openAddPerson(null, 'adrey'); addDraft.role='admin'; await saveAddPerson();
+    openAddPerson(null, 'adrey'); pickAddRole('admin'); await saveAddPerson();
     const i2 = S.invites.filter(i=>i.member_id==='adrey');
     res.adrey = {n:accounts().filter(a=>a.n==='ADREY').length, email:byId('adrey').email, first:i1.length===1 && i1[0].role==='producer',
       second:i2.length===2 && i2[0].closed===true && !i2[1].closed && i2[1].role==='admin' && i2[1].name==='ADREY'};
     res.adreyTok = i2[1].token;
     closeSheet(); invListAt = 0; go('team'); await new Promise(r=>setTimeout(r,40));
     res.status = /inbjuden/.test(document.getElementById('view').innerHTML);
+    /* flera roller: producent OCH cirkelledare */
+    S.circles.push(bump({id:'c9',n:'Beatmaking – Grupp 2',subject:'Beatmaking',leader:'',curriculumId:'',members:[],active:true,del:false}));
+    openAddPerson('producer'); addDraft.name='Lina Ny'; addDraft.email='lina@b.se';
+    pickAddRole('leader');
+    const chipsOn = [...document.querySelectorAll('#apRoles .chip.on')].map(b=>b.dataset.r).join(',');
+    const leadPick = !!document.getElementById('apLeads');
+    toggleLeadCircle('c1'); toggleLeadCircle('c9');
+    await saveAddPerson();
+    const lina = byName('Lina Ny'), linaInv = lina && S.invites.find(i=>i.member_id===lina.id);
+    res.lina = {chips:chipsOn, leadPick, r:lina&&lina.r, c9:circleById('c9').leader, c1:circleById('c1').leader,
+      inv:linaInv&&linaInv.role, label:lina&&roleLabel(lina), out:document.getElementById('apOut').textContent, tok:linaInv&&linaInv.token};
+    openAddPerson('producer'); pickAddRole('leader'); pickAddRole('camera'); res.camLead = addDraft.lead===false && addDraft.main==='camera';
+    openAddPerson('producer'); pickAddRole('leader'); pickAddRole('producer'); res.onlyLeader = addDraft.main===null && addDraft.lead===true;
+    pickAddRole('leader'); res.keepOne = addDraft.lead===true;
+    openAddPerson(null,'rkay'); res.rkayPre = addDraft.main==='producer' && addDraft.lead===true && addDraft.leads.join()==='c1';
+    closeSheet();
     go('goals'); res.goalsLeak = /RKAYS MÅL/.test(document.getElementById('view').innerHTML);
     S.session.member='AZ';
     return res;`);
@@ -926,6 +942,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('inbjudan kopplas till personen och e-posten sparas — ingen ny person', r.adrey.n===1 && r.adrey.email==='adrey@gmail.com' && r.adrey.first, r.adrey);
   ok('"igen" med annan roll stänger den förra länken', r.adrey.second===true, r.adrey);
   ok('status syns i listan', r.status===true);
+  ok('flera roller: Producent och Cirkelledare markerade samtidigt, med val av cirkel', r.lina.chips==='producer,leader' && r.lina.leadPick, r.lina);
+  ok('personen blir producent och leder den valda cirkeln — andra cirklar orörda', r.lina.r==='producer' && r.lina.c9==='Lina Ny' && r.lina.c1==='RKAY', r.lina);
+  ok('inbjudan gäller producent, och listorna visar "Producent · cirkelledare"', r.lina.inv==='producer' && r.lina.label==='Producent · cirkelledare', r.lina);
+  ok('kvittot säger "producent och cirkelledare"', /som producent och cirkelledare/.test(r.lina.out), r.lina.out);
+  ok('kamerateam och cirkelledare går inte ihop', r.camLead===true);
+  ok('bara cirkelledare går också — men sista rollen kan inte tas bort', r.onlyLeader===true && r.keepOne===true);
+  ok('den som redan leder en cirkel får det förifyllt', r.rkayPre===true);
+  const LINA_TOK = r.lina.tok;
   const ADREY_TOK = r.adreyTok;
 
   boot.hash = '#join=' + ADREY_TOK;
@@ -941,6 +965,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('ADREYS länk hälsar med namnet och frågar inte efter det', /Hej ADREY/.test(r.tag) && r.noName, r);
   ok('användarnamnet föreslås och e-posten är ifylld', r.sug==='adrey' && r.mail==='adrey@gmail.com', r);
   ok('inloggningen kopplas till ADREYS konto — samma person, rollen från länken', r.same && r.r==='admin' && r.username==='adrey' && r.login===true && r.who==='ADREY', r);
+  boot.hash = '#join=' + LINA_TOK;
+  w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session=null; return S;`))));
+  r = await ev(w,`${'await new Promise(r=>setTimeout(r,150));'} return document.getElementById('gateTag').textContent;`);
+  ok('Linas länk säger "Producent och Cirkelledare för Beatmaking – Grupp 2"', /Producent och Cirkelledare för Beatmaking – Grupp 2/.test(r), r);
   w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session={member:'AZ',name:'AZ',email:'',via:'preview',ts:1}; return S;`))));
   r = await ev(w,`
     S.session.member='Moez'; showApp();
