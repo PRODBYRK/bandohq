@@ -1,0 +1,23 @@
+/* Uppgraderingen: dagens driftschema (projektmappen) och sedan de nya filerna ovanpå. */
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync } from 'fs';
+const [oldDir, newDir] = process.argv.slice(2);
+const db = new PGlite();
+await db.exec(`create schema if not exists auth;
+  create table auth.users (id uuid primary key default gen_random_uuid(), email text unique);
+  create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+  create role anon nologin; create role authenticated nologin; create role service_role nologin;
+  grant usage on schema public, auth to anon, authenticated;
+  alter default privileges in schema public grant all on functions to anon, authenticated;`);
+const files = ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql'];
+for (const f of files) await db.exec(readFileSync(oldDir + '/' + f, 'utf8'));
+await db.exec(`insert into members(id,role,name,email) values('az','manager','AZ','az@b.se'),('rkay','producer','RKAY','r@b.se'),('k1','customer','Kund','k@b.se');
+  insert into records(kind,id,data,up) values('booking','old1','{"id":"old1","studio":"A","date":"2030-01-01","start":"10:00","end":"14:00","who":"RKAY","status":""}',1);`);
+for (const f of files) await db.exec(readFileSync(newDir + '/' + f, 'utf8'));
+const r = (await db.query(`select pg_get_function_arguments(p.oid) a from pg_proc p where proname='request_customer_slot'`)).rows;
+const pol = (await db.query(`select policyname from pg_policies where tablename='members' order by 1`)).rows.map(x=>x.policyname);
+const kept = (await db.query(`select count(*)::int n from records where id='old1'`)).rows[0].n;
+const anonExec = (await db.query(`select has_function_privilege('anon','bs_any_free(tsrange,text)','execute') a, has_function_privilege('authenticated','bs_studio_opt(text)','execute') b`)).rows[0];
+console.log(JSON.stringify({request_customer_slot:r.map(x=>x.a), policies:pol, kept, anonExec}));
+const ok = r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
+console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);

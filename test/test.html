@@ -331,19 +331,18 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='AZ';
     return {
       part:{len:part.len, err:part.err,
-        hasCurr:/Arrangemang/.test(part.html||''), hasBook:/FÖRESLÅ EN TID/.test(part.html||''),
-        hasHours:/480/.test(part.html||''), noSchedule:!/RESTEN AV VECKAN/.test(part.html||''),
+        noCurr:!/Arrangemang/.test(part.html||''), hasBook:/BOKA ETT PASS/.test(part.html||'') && /tl-bar/.test(part.html||''),
+        noHours:!/DINA TIMMAR/.test(part.html||''), noSchedule:!/RESTEN AV VECKAN/.test(part.html||''),
         noFiles:!/Lägg in ditt arbete/.test(part.html||'')},
       lead:{len:lead2.len, err:lead2.err,
         hasReq:/VÄNTAR PÅ DIG/.test(lead2.html||''), hasMembers:/William Ek/.test(lead2.html||''),
         noCrew:!/STUDIOBELÄGGNING/.test(lead2.html||'')},
-      cust:{len:cust.len, err:cust.err, hasBook:/LEDIGA TIDER/.test(cust.html||''),
+      cust:{len:cust.len, err:cust.err, hasBook:/Boka studiotid/.test(cust.html||'') && /tl-bar/.test(cust.html||''),
         noCircles:!/läroplan/i.test(cust.html||'')},
       navHidden: document.getElementById('nav').style.display};`);
   ok('deltagarvyn renderar', !r.part.err && r.part.len>300, r.part.err||r.part.len);
-  ok('deltagaren ser läroplanen', r.part.hasCurr===true);
-  ok('och kan föreslå en tid', r.part.hasBook===true);
-  ok('och ser sina timmar', r.part.hasHours===true);
+  ok('deltagaren kan boka ett pass', r.part.hasBook===true);
+  ok('men ser inget annat — ingen läroplan och inga timmar', r.part.noCurr===true && r.part.noHours===true, r.part);
   ok('men INTE schemat', r.part.noSchedule===true);
   ok('och INTE filerna', r.part.noFiles===true);
   ok('ledarvyn renderar', !r.lead.err && r.lead.len>300, r.lead.err||r.lead.len);
@@ -368,7 +367,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     catch(e){ sheets='KRASCH: '+e.message; }
     S.session.member='William Ek'; byId('p1').r='participant'; render();
     let psheet='ok';
-    try{ openRequest('c1'); closeSheet(); openMe(); closeSheet(); }
+    try{ openSlot(iso(addDays(new Date(),3)),'14:00'); closeSheet(); openMe(); closeSheet(); }
     catch(e){ psheet='KRASCH: '+e.message; }
     S.session.member='AZ';
     /* bara det som ritas — inte appens egen källkod i <script> */
@@ -1047,66 +1046,123 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     return {csv:blobText, bom};`);
   ok('exporten är en CSV för svensk Excel (BOM, semikolon)', r.bom==='239,187,191' && /Namn;Prio;Genre;Anteckning;Instagram/.test(r.csv) && /Nova;1;R&B;;novamusic/.test(r.csv), r);
 
-  /* ============ v8 · KUNDER ============ */
-  log('\n── v8: kunder och nya kunder ──');
+  /* ============ v10 · KUNDER OCH BOKNINGSSIDAN ============ */
+  log('\n── v10: kunder, tre timmar, inget studioval ──');
   const day = n => { const d = new Date(); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
-  w = await boot(seed({bookings:[{id:'cb1',studio:'A',date:day(3),start:'12:00',end:'16:00',who:'ADREY',title:'Mix',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
+  const BK = (id,st,d,a,b,who) => ({id,studio:st,date:d,start:a,end:b,who,title:'Hemlig mix',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false});
+  w = await boot(seed({bookings:[BK('cb1','A',day(3),'12:00','16:00','ADREY'), BK('cb2','B',day(3),'13:00','15:00','ADREY'),
+    BK('cf1','A',day(4),'10:00','23:00','RKAY'), BK('cf2','B',day(4),'09:00','23:30','RKAY')]}));
   r = await ev(w,`
     byId('p2').r='customer'; byId('p2').producer='rkay'; save();
-    const fb = freeBlocks('${day(3)}','A');
-    S.session.member='Nora Lind'; custDay='${day(3)}'; render();
+    const ss = slotStarts('${day(3)}', booked()).filter(s=>s.t%60===0);
+    S.session.member='Nora Lind'; bookDay='${day(3)}'; render();
     const html = document.getElementById('view').innerHTML;
-    openCustRequest('${day(3)}','A','16:00','23:00');
-    document.getElementById('crS').value='17:00'; document.getElementById('crE').value='20:00';
-    await sendCustRequest('${day(3)}','A','16:00','23:00');
+    const chips = [...document.querySelectorAll('#view .chip.slot')].map(b=>b.textContent+(b.disabled?'×':'')).join(' ');
+    const fullDay = dayState('${day(4)}', booked()), fullChip = [...document.querySelectorAll('#view .dchip')].find(b=>/fullbokat/.test(b.textContent));
+    const openArgs = [...html.matchAll(/openSlot\\(([^)]*)\\)/g)].map(m=>m[1].split(',').length);
+    openSlot('${day(3)}','17:00');
+    const end = document.getElementById('slE').textContent;
+    document.getElementById('slS').value='11:00'; const taken = paintSlot('${day(3)}', booked(), 'sl'),
+      takenMsg = document.getElementById('slW').textContent, takenBtn = document.getElementById('slBtn').disabled;
+    document.getElementById('slS').value='21:00'; const late = paintSlot('${day(3)}', booked(), 'sl'), lateMsg = document.getElementById('slW').textContent;
+    document.getElementById('slS').value='17:00'; paintSlot('${day(3)}', booked(), 'sl');
+    await sendSlot('${day(3)}');
     const rq = S.bookings.find(b=>b.status==='request' && b.who==='Nora Lind');
+    const rqv = rq && {who:rq.who, by:rq.reqBy, paid:rq.paid, start:rq.start, end:rq.end, studio:rq.studio};
     const blocks = clash({studio:'A',date:'${day(3)}',start:'18:00',end:'19:00'}).length;
-    const rqv = {who:rq&&rq.who, by:rq&&rq.reqBy, paid:rq&&rq.paid};
     S.session.member='RKAY'; go('today'); const rkay = document.getElementById('view').innerHTML;
     S.session.member='ADREY'; go('today'); const adrey = document.getElementById('view').innerHTML;
-    S.session.member='RKAY'; await doApprove(rq.id,'A');
+    S.session.member='RKAY'; await doApprove(rq.id,'B');
     const after = S.bookings.find(b=>b.id===rq.id).status;
     S.session.member='AZ';
-    return {fb:JSON.stringify(fb), free:/LEDIGA TIDER/.test(html) && /16:00–23:00/.test(html), rqv, blocks,
-      rkay:/VÄNTAR PÅ SVAR/.test(rkay) && /Nora Lind/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
-  ok('lediga tider = öppettid minus bokat', r.fb==='[{"start":"10:00","end":"12:00"},{"start":"16:00","end":"23:00"}]', r.fb);
-  ok('kundvyn visar dem', r.free===true);
-  ok('kunden skickar en förfrågan på en ledig tid', r.rqv.who==='Nora Lind' && r.rqv.by==='p2' && r.rqv.paid===true, r.rqv);
+    return {ss:ss.map(s=>s.hm+':'+s.st).join(' '), chips, noNames:!/ADREY|Hemlig/.test(html), bokat:/>Bokat</.test(html),
+      noStudioPick:!/spick/.test(html) && openArgs.length>0 && openArgs.every(n=>n===2), fullDay, fullChip:!!fullChip,
+      end, taken, takenMsg, takenBtn, late, lateMsg, rqv, blocks,
+      rkay:/VÄNTAR PÅ SVAR/.test(rkay) && /Nora Lind/.test(rkay) && !/önskar/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
+  ok('en starttid går när minst en studio är ledig i tre timmar', r.ss==='10:00:ok 11:00:taken 12:00:taken 13:00:taken 14:00:taken 15:00:ok 16:00:ok 17:00:ok 18:00:ok 19:00:ok 20:00:ok', r.ss);
+  ok('kunden ser starttiderna som 3-timmarspass, de bokade överstrukna', /^10:00–13:00 11:00–14:00× 12:00–15:00× .*20:00–23:00$/.test(r.chips), r.chips);
+  ok('och vad som är bokat — men inte vem eller vad', r.bokat===true && r.noNames===true, r);
+  ok('fullbokade dagar syns i dagremsan', r.fullDay==='full' && r.fullChip===true, r);
+  ok('kunden väljer aldrig studio', r.noStudioPick===true);
+  ok('förfrågan visar sluttiden: tre timmar', /20:00/.test(r.end) && /3 timmar/.test(r.end), r.end);
+  ok('en bokad starttid går inte att skicka', r.taken==='taken' && /Båda studiorna är bokade/.test(r.takenMsg) && r.takenBtn===true, r);
+  ok('inte heller en som slutar efter stängning', r.late==='closed' && /sista starttid är 20:00/.test(r.lateMsg), r.lateMsg);
+  ok('kunden skickar en förfrågan på 17–20 utan studio', r.rqv && r.rqv.who==='Nora Lind' && r.rqv.by==='p2' && r.rqv.paid===true
+     && r.rqv.start==='17:00' && r.rqv.end==='20:00' && r.rqv.studio==='', r.rqv);
   ok('förfrågan reserverar ingen tid', r.blocks===0, r.blocks);
-  ok('kundens producent ser den på IDAG', r.rkay===true);
+  ok('kundens producent ser den på IDAG (utan önskad studio)', r.rkay===true);
   ok('en annan producent gör det inte', r.adrey===false);
-  ok('producenten godkänner', r.after==='', r.after);
+  ok('producenten godkänner och väljer studio', r.after==='', r.after);
+
+  r = await ev(w,`
+    window.confirm = () => true;
+    const n = new Date(Date.now()+30*60000), hm = String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+    S.bookings.push(bump(Object.assign(${JSON.stringify(BK('soon','A','','','','Nora Lind'))}, {date:iso(n), start:hm, end:plusSlot(hm)})));
+    save(); S.session.member='Nora Lind'; render();
+    const html = document.getElementById('view').innerHTML;
+    const btns = [...document.querySelectorAll('#view .srow button')].map(b=>b.textContent.trim()).join(',');
+    await cancelMine('soon'); const lateSheet = document.getElementById('sheetBody').innerHTML, stillThere = !S.bookings.find(b=>b.id==='soon').del;
+    closeSheet();
+    const mine = S.bookings.find(b=>b.who==='Nora Lind' && b.start==='17:00');
+    await cancelMine(mine.id); const gone = S.bookings.find(b=>b.id===mine.id).del;
+    S.session.member='AZ';
+    return {btns, lateSheet:/Mindre än en timme kvar/.test(lateSheet) && /RKAY/.test(lateSheet) && /mailto:rkay@b.se/.test(lateSheet), stillThere, gone,
+      contact:/DIN PRODUCENT/.test(html) && /rkay@b.se/.test(html)};`);
+  ok('med mindre än en timme kvar står det "Hör av dig" i stället för Avboka', /Hör av dig/.test(r.btns) && /Avboka/.test(r.btns), r.btns);
+  ok('och kunden hänvisas till sin producent med kontaktuppgifter', r.lateSheet===true && r.stillThere===true, r);
+  ok('i god tid avbokar kunden själv', r.gone===true);
+  ok('producentens kontaktuppgifter står i kundvyn', r.contact===true);
 
   r = await ev(w,`
     signOut(); gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
-    const page = document.getElementById('gateBody').innerHTML;
     pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
-    [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click();
+    const page = document.getElementById('gateBody').innerHTML;
+    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^10:00/.test(b.textContent)).click();
     await new Promise(r=>setTimeout(r,30));
-    const noPhone = !document.getElementById('puP');
-    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se';
-    document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
-    document.getElementById('puC').checked=true; await sendPublic();
+    const form = {phone:!!document.getElementById('puP'), mail:!!document.getElementById('puM'), name:!!document.getElementById('puN'),
+      end:document.getElementById('puE').textContent, sel:/tl-sel/.test(document.getElementById('gateBody').innerHTML)};
+    const send = async (o) => { pubDraft.done=false; Object.entries(o).forEach(([k,v])=>{ const el=document.getElementById(k); if(el.type==='checkbox') el.checked=v; else el.value=v; });
+      await sendPublic(); await new Promise(r=>setTimeout(r,20)); return gateErr; };
+    const none = await send({puN:'Ingen Kontakt', puP:'', puM:'', puC:true});
+    const busy = await send({puS:'11:00', puN:'Vera Ny', puM:'vera@x.se', puC:true});
+    document.getElementById('puS').value='10:00';
+    await send({puS:'10:00', puN:'Vera Ny', puP:'', puM:'vera@x.se', puC:true});
     const done = document.getElementById('gateBody').textContent;
     const lead = (S.leads||[]).find(l=>l.name==='Vera Ny');
     pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
-    [...document.querySelectorAll('#gateBody .chip')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
-    document.getElementById('puN').value='Bot'; document.getElementById('puM').value='b@x.se'; document.getElementById('puH').value='spam';
-    document.getElementById('puC').checked=true; await sendPublic();
+    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
+    await send({puN:'Olle Tel', puP:'070-123 45 67', puM:'', puC:true});
+    const doneTel = document.getElementById('gateBody').textContent;
+    const tel = (S.leads||[]).find(l=>l.name==='Olle Tel');
+    pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
+    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
+    await send({puN:'Bot', puM:'b@x.se', puH:'spam', puC:true});
     const bot = (S.leads||[]).some(l=>l.name==='Bot');
     leavePublic();
     signIn(byName('AZ')); go('today');
     const inbox = document.getElementById('view').innerHTML;
-    openLead(lead.id); await approveLead(lead.id,'A');
+    openLead(lead.id); await approveLead(lead.id,'B');
     const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
-    return {page:/LEDIGA TIDER/.test(page), done:/Tack/.test(done) && /vera@x.se/.test(done), noPhone,
-      lead:lead && {email:lead.email, start:lead.start_t, end:lead.end_t, studio:lead.studio}, bot, inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
-      bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status};`);
-  ok('bokningssidan visar lediga tider utan inloggning', r.page===true);
-  ok('ny kund skickar förfrågan utan telefon och får ett tack med sin e-post', r.done && r.noPhone && r.lead && r.lead.email==='vera@x.se' && r.lead.start==='10:00', r);
+    openLead(tel.id); const telSheet = document.getElementById('sheetBody').innerHTML;
+    await approveLead(tel.id,'A'); const smsSheet = document.getElementById('sheetBody').innerHTML;
+    return {page:/tl-bar/.test(page) && !/spick/.test(page) && !/ADREY|Hemlig/.test(page), form, none, busy,
+      done:/Tack/.test(done) && /vera@x.se/.test(done) && /10:00–13:00/.test(done),
+      lead:lead && {email:lead.email, start:lead.start_t, end:lead.end_t, studio:lead.studio},
+      tel:tel && {email:tel.email, phone:tel.phone, end:tel.end_t}, doneTel:/Vi hör av oss på/.test(doneTel), bot,
+      inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
+      bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status,
+      telSheet:/TELEFON/.test(telSheet) && !/E-POST/.test(telSheet) && /färdig text/.test(telSheet),
+      sms:/SKICKA SOM SMS/.test(smsSheet) && /sms:\\+46701234567/.test(smsSheet) && /#join=/.test(leadText)};`);
+  ok('bokningssidan visar vad som är bokat utan namn och utan studioval', r.page===true);
+  ok('formuläret: namn, telefon och e-post — slutet räknas ut', r.form.phone && r.form.mail && r.form.name && /13:00/.test(r.form.end) && r.form.sel, r.form);
+  ok('utan både telefon och e-post går det inte', /telefonnummer eller e-post/.test(r.none||''), r.none);
+  ok('en bokad starttid går inte', /Båda studiorna är bokade/.test(r.busy||''), r.busy);
+  ok('med e-post: tack och kvitto på mejlen, 10–13 utan studio', r.done && r.lead && r.lead.email==='vera@x.se' && r.lead.start==='10:00' && r.lead.end==='13:00' && r.lead.studio===null, r);
+  ok('med bara telefon: numret sparas och vi hör av oss', r.tel && r.tel.email===null && r.tel.phone==='+46701234567' && r.tel.end==='19:00' && r.doneTel, r.tel);
   ok('robotar (honeypot) sparas inte', r.bot===false);
   ok('admin ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
+  ok('ny kund utan e-post: admin får en färdig text med länken att sms:a', r.telSheet===true && r.sms===true, r);
   boot.hash = '#join=' + r.tok;
   w = await boot(JSON.parse(JSON.stringify(await ev(w, `S.session=null; return S;`))));
   r = await ev(w,`
@@ -1118,6 +1174,74 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     return {pre, mail, view:roleView(), who:bk&&bk.who, mine:bk&&bk.reqBy===me().id, username:me().username};`);
   ok('länken har namnet och e-posten från förfrågan ifyllda', r.pre && r.mail==='vera@x.se' && r.username==='vera', r);
   ok('kunden landar i kundvyn och bokningen är hens', r.view==='customer' && r.who==='Vera Ny' && r.mine===true, r);
+
+  /* ============ v10 · DELTAGARE, CREWETS KUNDER, SNABBVAL ============ */
+  log('\n── v10: deltagare bokar, producenter lägger till kunder ──');
+  w = await boot(seed({bookings:[BK('pl1','A',day(3),'18:00','21:00','RKAY'), Object.assign(BK('pl2','B',day(5),'18:00','21:00','RKAY'),{circleId:'c1',title:'Grupp 1'})]}));
+  r = await ev(w,`
+    window.confirm = () => true;
+    byId('p1').r='participant'; save(); S.session.member='William Ek'; bookDay='${day(3)}'; render();
+    const html = document.getElementById('view').innerHTML;
+    openSlot('${day(3)}','14:00'); const sheet = document.getElementById('sheetBody').innerHTML;
+    await sendSlot('${day(3)}');
+    const rq = S.bookings.find(b=>b.status==='request' && b.reqBy==='p1');
+    const rqv = rq && {circle:rq.circleId, who:rq.who, start:rq.start, end:rq.end, studio:rq.studio};
+    render(); const html2 = document.getElementById('view').innerHTML;
+    const groupBtn = [...document.querySelectorAll('#view .srow')].find(r=>/Studio|THE BOOTH|STUDIO A/.test(r.textContent) && /18:00–21:00/.test(r.textContent));
+    await cancelMine(rq.id); const gone = S.bookings.find(b=>b.id===rq.id).del;
+    S.session.member='AZ';
+    return {book:/BOKA ETT PASS/.test(html) && /Er cirkel/.test(html), noCurr:!/Arrangemang|DINA TIMMAR/.test(html), sheet:/går till <b>RKAY<\\/b>/.test(sheet) && !/MEDDELANDE/.test(sheet),
+      rqv, waiting:/VÄNTAR PÅ SVAR/.test(html2), groupNoCancel: !!groupBtn && !groupBtn.querySelector('button'), gone,
+      leader:/DIN CIRKELLEDARE/.test(html) && /rkay@b.se/.test(html)};`);
+  ok('deltagaren bokar i sin cirkel och ser cirkelns pass som "Er cirkel"', r.book===true && r.noCurr===true, r);
+  ok('förslaget går till ledaren, utan studio och med tre timmar', r.sheet===true && r.rqv && r.rqv.circle==='c1' && r.rqv.who==='RKAY' && r.rqv.start==='14:00' && r.rqv.end==='17:00' && r.rqv.studio==='', r);
+  ok('det väntar på svar och kan tas tillbaka', r.waiting===true && r.gone===true, r);
+  ok('gruppens pass som ledaren bokat kan deltagaren inte avboka', r.groupNoCancel===true, r);
+  ok('ledarens kontaktuppgifter står i deltagarvyn', r.leader===true);
+
+  r = await ev(w,`
+    S.accounts.push(bump({id:'moez',n:'Moez',r:'camera',c:'#d97706',g:'#fbbf24',email:'moez@b.se',team:'Moez',active:true,del:false}));
+    save();
+    const asWho = n => { S.session.member = n; };
+    asWho('RKAY'); go('team'); const team = document.getElementById('view').innerHTML;
+    openAddPerson('customer'); const roles = [...document.querySelectorAll('#apRoles .chip')].map(b=>b.dataset.r).join(','),
+      prod = document.getElementById('apK').value;
+    addDraft.name='Kalle Kund'; addDraft.email='kalle@x.se'; await saveAddPerson();
+    const kalle = byName('Kalle Kund'), inv = S.invites.find(i=>i.member_id===(kalle||{}).id);
+    openAddPerson('participant'); addDraft.name='Dina Deltagare'; addDraft.email='dina@x.se'; addDraft.circle='c1'; await saveAddPerson();
+    const dina = byName('Dina Deltagare');
+    closeSheet(); go('team'); const team2 = document.getElementById('view').innerHTML;
+    let crewBlocked = 'nej'; const realToast = toast; window.toast = m => { crewBlocked = m; };
+    openAddPerson(null,'adrey'); window.toast = realToast;
+    asWho('Moez'); const cam = can('addClients'); closeSheet(); openAddPerson('customer'); const camSheet = document.getElementById('sheet').classList.contains('on');
+    asWho('AZ'); go('team');
+    return {team:/\\+ KUND/.test(team) && /\\+ DELTAGARE/.test(team) && !/LÄGG TILL PERSON/.test(team), roles, prod,
+      kalle:kalle && {r:kalle.r, producer:kalle.producer, email:kalle.email}, inv:inv && {role:inv.role, email:inv.email},
+      dina:dina && {r:dina.r, inCircle:(circleById('c1').members||[]).includes(dina.id)},
+      waiting:/HAR INTE LOGGAT IN ÄN/.test(team2) && /Kalle Kund/.test(team2), crewBlocked, cam, camSheet};`);
+  ok('producenten har knappar för kund och cirkeldeltagare — inte för crewet', r.team===true, r);
+  ok('och kan bara välja de två rollerna', r.roles==='participant,customer', r.roles);
+  ok('en kund producenten lägger till blir producentens kund', r.prod==='rkay' && r.kalle && r.kalle.r==='customer' && r.kalle.producer==='rkay' && r.kalle.email==='kalle@x.se', r);
+  ok('och får en inbjudan som kund', r.inv && r.inv.role==='customer' && r.inv.email==='kalle@x.se', r.inv);
+  ok('en deltagare läggs i sin cirkel', r.dina && r.dina.r==='participant' && r.dina.inCircle===true, r.dina);
+  ok('producenten ser vilka som inte loggat in än', r.waiting===true);
+  ok('men kan inte bjuda in någon i crewet', /bara bjuda in kunder/.test(r.crewBlocked), r.crewBlocked);
+  ok('kamerateamet kan inte lägga till någon', r.cam===false && r.camSheet===false, r);
+
+  r = await ev(w,`
+    S.session.member='AZ'; openForm();
+    const s0 = document.getElementById('fStart').value, e0 = document.getElementById('fEnd').value;
+    const pre = [...document.querySelectorAll('#sheetBody .chip')].map(b=>b.textContent).filter(t=>/^\\d\\d:\\d\\d–/.test(t)).join(' ');
+    document.getElementById('fStart').value='15:00'; shiftEnd(); const e1 = document.getElementById('fEnd').value;
+    document.getElementById('fEnd').value='19:00'; checkForm();
+    document.getElementById('fStart').value='16:00'; shiftEnd(); const e2 = document.getElementById('fEnd').value;
+    setTime('22:00','01:00'); document.getElementById('fStart').value='21:00'; shiftEnd(); const e3 = document.getElementById('fEnd').value;
+    closeSheet();
+    return {s0, e0, pre, e1, e2, e3};`);
+  ok('crewets förval är ett 3-timmarspass', r.s0==='13:00' && r.e0==='16:00', r);
+  ok('snabbvalen är tre timmar från öppningen, plus nattpass', r.pre==='10:00–13:00 13:00–16:00 16:00–19:00 19:00–22:00 22:00–01:00', r.pre);
+  ok('flyttas starten följer slutet med', r.e1==='18:00', r.e1);
+  ok('men en ändrad längd behålls', r.e2==='20:00' && r.e3==='00:00', r);
 
   /* ============ v8 · GALLERI ============ */
   log('\n── v8: galleriet ──');
@@ -1249,15 +1373,17 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('kontoformuläret har en ruta för att godkänna den', r.box===true);
   ok('utan kryss skapas inget konto', /Kryssa i/.test(r.noConsent) && r.created===false, r);
 
-  w = await boot(seed({bookings:[{id:'ob1',studio:'A',date:'2027-03-10',start:'12:00',end:'14:00',who:'RKAY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
+  w = await boot(seed({bookings:[{id:'ob1',studio:'A',date:'2027-03-10',start:'12:00',end:'14:00',who:'RKAY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false},
+    {id:'ob2',studio:'B',date:'2027-03-10',start:'12:00',end:'14:00',who:'ADREY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',up:1,del:false,paid:false}]}));
   r = await ev(w,`
-    const def = JSON.stringify(freeBlocks('2027-03-10','A'));
+    const okStarts = () => slotStarts('2027-03-10', booked()).filter(s=>s.st==='ok' && s.t%60===0).map(s=>s.hm).join(',');
+    const def = okStarts();
     openStudios(); document.getElementById('sO1').value='12:00'; document.getElementById('sO2').value='20:00'; saveStudios();
-    const set = JSON.stringify(freeBlocks('2027-03-10','A')), saved = S.studios.openFrom+'-'+S.studios.openTo;
+    const set = okStarts(), saved = S.studios.openFrom+'-'+S.studios.openTo;
     openStudios(); document.getElementById('sO1').value='22:00'; document.getElementById('sO2').value='10:00'; saveStudios();
     return {def, set, saved, kept:S.studios.openFrom+'-'+S.studios.openTo};`);
-  ok('lediga tider följer standardöppettiderna 10–23', r.def==='[{"start":"10:00","end":"12:00"},{"start":"14:00","end":"23:00"}]', r.def);
-  ok('admin ställer in öppettider — kunderna ser bara dem', r.saved==='12:00-20:00' && r.set==='[{"start":"14:00","end":"20:00"}]', r);
+  ok('starttiderna följer standardöppettiderna 10–23 (sista start 20:00)', r.def==='14:00,15:00,16:00,17:00,18:00,19:00,20:00', r.def);
+  ok('admin ställer in öppettider — kunderna ser bara dem', r.saved==='12:00-20:00' && r.set==='14:00,15:00,16:00,17:00', r);
   ok('stängning före öppning sparas inte', r.kept==='12:00-20:00', r.kept);
 
   w = await boot(seed());
@@ -1301,5 +1427,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
  }catch(e){ log('HARNESS-KRASCH: '+e.message+'\n'+e.stack); }
  document.title='DONE';
+ /* test/run.py väntar på resultatet här */
+ try{ fetch('/__result', {method:'POST', body:out.textContent}); }catch(_){}
 })();
 </script>

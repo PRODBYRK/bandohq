@@ -121,23 +121,26 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const direct = await sb('/records?select=id');
     const mems = (await sb('/members?select=name')).map(m=>m.name);
     const seesSecret = S.bookings.some(b=>/Hemlig/.test(b.title||''));
-    openRequest('c1');
-    document.getElementById('rqD').value='${D(5)}'; document.getElementById('rqS').value='18:00'; document.getElementById('rqE').value='21:00';
-    await sendRequest('c1');
+    render(); const pv = document.getElementById('view').innerHTML;
+    openSlot('${D(5)}','18:00'); await sendSlot('${D(5)}');
+    let short = ''; try{ await sbRpc('request_session',{p_circle:'c1',p_date:'${D(5)}',p_start:'18:00',p_end:'19:00'}); }catch(e){ short = e.message; }
     const req = S.bookings.find(b=>b.status==='request');
     let forged = ''; try{ await sbRpc('answer_request',{p_booking:req.id,p_approve:true,p_studio:'A'}); }catch(e){ forged = e.message; }
     let hack = ''; try{ await sb('/members?id=eq.'+me().id,{method:'PATCH',body:JSON.stringify({role:'manager'})}); }catch(e){ hack = e.message; }
     await cloudView();
     return {view, circles, direct:direct.length, mems, seesSecret, req:req&&{who:req.who, by:req.reqBy===me().id}, forged, hack, role:me().r,
-      leaderName:(circleById('c1')||{}).leader, leaderPhone:(byName('Sofia Marks')||{}).phone||''};`);
+      leaderName:(circleById('c1')||{}).leader, leaderMail:(byName('Sofia Marks')||{}).email||'', short,
+      onlyBooking:/BOKA ETT PASS/.test(pv) && !/DINA TIMMAR/.test(pv), reqEnd:req&&req.end, reqStudio:req&&req.studio};`);
   ok('deltagaren landar i sin vy med sin cirkel', r.view==='participant' && JSON.stringify(r.circles)==='["Grupp 1"]', r);
   ok('kan inte läsa posterna direkt', r.direct===0, r.direct);
   ok('ser bara sitt eget konto i medlemstabellen', JSON.stringify(r.mems)==='["William Ek"]', r.mems);
   ok('ser inte managerns pass', r.seesSecret===false);
-  ok('förfrågan landar hos ledaren', r.req && r.req.who==='Sofia Marks' && r.req.by, r.req);
+  ok('deltagaren ser bara bokningen', r.onlyBooking===true);
+  ok('förfrågan landar hos ledaren — tre timmar, utan studio', r.req && r.req.who==='Sofia Marks' && r.req.by && r.reqEnd==='21:00' && r.reqStudio==='', r);
+  ok('servern tar bara emot pass på tre timmar', /tre timmar/.test(r.short), r.short);
   ok('kan inte godkänna sin egen förfrågan', /Bara cirkelns ledare/.test(r.forged), r.forged);
   ok('kan inte ge sig själv en annan roll', r.role==='participant', [r.role, r.hack]);
-  ok('ser ledarens namn men inte telefonnummer', r.leaderName==='Sofia Marks' && r.leaderPhone==='', r);
+  ok('ser ledarens namn och e-post (för avbokning med kort varsel)', r.leaderName==='Sofia Marks' && r.leaderMail==='sofia@b.se', r);
 
   /* ============ LEDAREN SVARAR ============ */
   log('\n── ledaren godkänner, bokar och markerar genomförd ──');
@@ -208,25 +211,22 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`
     ${JOIN('Studio Nord AB','studionord','kund@b.se','kund12345')}
     const view = roleView();
-    custDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
-    openCustRequest('${D(3)}','A','10:00','23:00');
-    document.getElementById('crS').value='19:00'; document.getElementById('crE').value='20:00';
-    await sendCustRequest('${D(3)}','A','10:00','23:00');
-    const clash = document.getElementById('toast').textContent;
-    openCustRequest('${D(4)}','B','10:00','23:00');
-    document.getElementById('crS').value='12:00'; document.getElementById('crE').value='14:00';
-    await sendCustRequest('${D(4)}','B','10:00','23:00');
-    openCustRequest('${D(5)}','B','10:00','23:00');
-    document.getElementById('crS').value='12:00'; document.getElementById('crE').value='13:00';
-    await sendCustRequest('${D(5)}','B','10:00','23:00');
+    bookDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
+    openSlot('${D(3)}','18:00'); const uiFull = paintSlot('${D(3)}', booked(), 'sl'); closeSheet();
+    let clash = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(3)}',p_start:'18:00',p_end:'21:00',p_studio:'',p_note:''}); }catch(e){ clash = e.message; }
+    let short = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(4)}',p_start:'12:00',p_end:'14:00',p_studio:'',p_note:''}); }catch(e){ short = e.message; }
+    openSlot('${D(4)}','12:00'); await sendSlot('${D(4)}');
+    openSlot('${D(5)}','12:00'); document.getElementById('slN').value='Mix av EP'; await sendSlot('${D(5)}');
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
     const last = mine.find(b=>b.date==='${D(5)}');
-    await cancelRequest(last.id);
-    return {view, free:/LEDIGA TIDER/.test(html) && !/Hemlig/.test(html), clash, n:mine.length, paid:mine.every(b=>b.paid),
+    await cancelMine(last.id);
+    return {view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
+      noStudio:mine.every(b=>b.studio==='' && b.end==='15:00'), note:(last||{}).note,
       after:S.bookings.filter(b=>!b.busy && b.status==='request').length};`);
-  ok('kunden landar i kundvyn med lediga tider (utan andras namn)', r.view==='customer' && r.free===true, r);
-  ok('kan inte fråga om upptagen tid', /bokad/.test(r.clash), r.clash);
-  ok('skickar förfrågningar, markerade betalda', r.n===2 && r.paid===true, r);
+  ok('kunden landar i kundvyn: bokat syns, men inte vem eller vad', r.view==='customer' && r.free===true, r);
+  ok('kan inte fråga om en fullbokad tid — varken i appen eller på servern', r.uiFull==='taken' && /fullbokad/.test(r.clash), r);
+  ok('servern tar bara emot pass på tre timmar', /tre timmar/.test(r.short), r.short);
+  ok('skickar förfrågningar utan studio, markerade betalda', r.n===2 && r.paid===true && r.noStudio===true && r.note==='Mix av EP', r);
   ok('och kan ta tillbaka en', r.after===1, r.after);
 
   /* ============ v8: NYA KUNDER OCH ADMIN — allt på mejlen ============ */
@@ -237,17 +237,24 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     ${wait(400)}
     const page = document.getElementById('gateBody').innerHTML;
     pubDraft.day='${D(6)}'; renderGate(); ${wait(80)}
-    [...document.querySelectorAll('#gateBody .chip')].find(b=>/^10:00/.test(b.textContent)).click(); ${wait(80)}
-    const noPhone = !document.getElementById('puP');
-    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se';
-    document.getElementById('puS').value='10:00'; document.getElementById('puE').value='12:00';
+    const page2 = document.getElementById('gateBody').innerHTML;
+    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^10:00/.test(b.textContent)).click(); ${wait(80)}
+    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se'; document.getElementById('puP').value='';
     document.getElementById('puC').checked=true; await sendPublic();
-    return {page:/LEDIGA TIDER/.test(page), done:document.getElementById('gateBody').textContent, err:gateErr, noPhone};`);
-  ok('bokningssidan hämtar lediga tider från servern utan inloggning', r.page===true);
-  ok('förfrågan skickas utan telefonnummer och tackas', /Tack/.test(r.done) && /vera@x.se/.test(r.done) && r.noPhone, r.err || r.done);
+    const done = document.getElementById('gateBody').textContent, err = gateErr;
+    Object.assign(pubDraft,{day:'${D(6)}',start:'',done:false,name:'',email:'',phone:''}); renderGate(); ${wait(80)}
+    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); ${wait(80)}
+    document.getElementById('puN').value='Olle Tel'; document.getElementById('puP').value='070-123 45 67'; document.getElementById('puM').value='';
+    document.getElementById('puC').checked=true; await sendPublic();
+    return {page:/tl-bar/.test(page2) && !/spick/.test(page2), done, err, telDone:document.getElementById('gateBody').textContent, telErr:gateErr};`);
+  ok('bokningssidan hämtar bokade tider från servern utan inloggning, utan studioval', r.page===true);
+  ok('förfrågan med e-post skickas och tackas', /Tack/.test(r.done) && /vera@x.se/.test(r.done) && /10:00–13:00/.test(r.done), r.err || r.done);
+  ok('och med bara telefonnummer', /Vi hör av oss på/.test(r.telDone) && /070-123 45 67/.test(r.telDone), r.telErr || r.telDone);
   let box = await outbox();
   ok('admins och managern får mejl om den nya kunden', box.some(m=>m.kind==='lead' && m.member_id==='az' && m.email==='az@b.se' && /Vera Ny/.test(m.body)), box.map(m=>m.kind+':'+m.member_id));
   ok('och kunden får ett kvitto på mejlen', box.some(m=>m.kind==='received' && m.email==='vera@x.se'), box.filter(m=>m.kind==='received'));
+  ok('kunden med bara telefon: admins får numret, inget kvitto går', box.some(m=>m.kind==='lead' && m.member_id==='az' && /Olle Tel \(\+46701234567\)/.test(m.body))
+     && !box.some(m=>m.kind==='received' && /Olle/.test(m.body)), box.filter(m=>/Olle/.test(m.body)).map(m=>m.kind));
   ok('managerns direktbokning gav en orderbekräftelse', box.some(m=>m.kind==='booked' && m.email==='az@b.se' && /Hemlig mix/.test(m.body)), box.filter(m=>m.kind==='booked'));
 
   w = await boot();
@@ -373,7 +380,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const foot = document.getElementById('gateBody').innerHTML;
     gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); ${wait(300)}
     const page = document.getElementById('gateBody').innerHTML;
-    return {foot:/Integritet/.test(foot), booth:/THE BOOTH/.test(page), consent:!!document.getElementById('puC') || /LEDIGA TIDER/.test(page)};`);
+    return {foot:/Integritet/.test(foot), booth:/THE BOOTH/.test(page), consent:!!document.getElementById('puC') || /tl-bar/.test(page)};`);
   ok('inloggningssidan länkar till integritetstexten', r.foot===true);
   ok('bokningssidan hämtar studionamnen från servern', r.booth===true);
   w = await boot();
@@ -523,10 +530,34 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${LOGIN('rkay','rkay12345')} return {member:S.session&&S.session.member, n:(await sb('/members?select=id&name=eq.RKAY')).length};`);
   ok('nästa gång loggar RKAY in med användarnamnet — och det finns bara en RKAY', r.member==='RKAY' && r.n===1, r);
 
+  /* ============ v10 · PRODUCENTEN LÄGGER TILL KUNDER OCH DELTAGARE ============ */
+  log('\n── v10: producenten lägger till en kund och en deltagare ──');
+  r = await ev(w,`
+    ${wait(200)}
+    openAddPerson('customer'); addDraft.name='Kalle Kund'; addDraft.email='kalle@x.se'; await saveAddPerson();
+    const kOut = document.getElementById('apOut').textContent;
+    openAddPerson('participant'); addDraft.name='Dina Deltagare'; addDraft.email='dina@x.se'; addDraft.circle='c1'; await saveAddPerson();
+    for(let i=0; i<30 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true);
+    const k = (await sb('/members?select=id,role,producer,email,user_id&name=eq.Kalle%20Kund'))[0];
+    const d = (await sb('/members?select=id,role&name=eq.Dina%20Deltagare'))[0];
+    const circ = (await sb('/records?select=data&kind=eq.circle&id=eq.c1'))[0];
+    let crew = ''; try{ await sbRpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:1,p_member:k.id,p_url:appUrl()}); }catch(e){ crew = e.message; }
+    let ins = ''; try{ await sb('/members',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify([{id:'x_hack',role:'admin',name:'Hack'}])}); }catch(e){ ins = e.message; }
+    return {kOut, k, d, inCircle: !!circ && (circ.data.members||[]).includes(d && d.id), crew, ins};`);
+  ok('producenten lägger in en kund på servern — som sin egen kund', r.k && r.k.role==='customer' && r.k.producer==='rkay' && r.k.email==='kalle@x.se' && !r.k.user_id && /Klart/.test(r.kOut), r);
+  ok('och en deltagare i cirkeln', r.d && r.d.role==='participant' && r.inCircle===true, r);
+  ok('men kan inte skapa en admin eller bjuda in någon som producent', /Bara admin/.test(r.crew) && !!r.ins, r);
+  box = await outbox();
+  ok('kunden och deltagaren får sina inbjudningar på mejlen', box.some(m=>m.kind==='invite' && m.email==='kalle@x.se') && box.some(m=>m.kind==='invite' && m.email==='dina@x.se'),
+     box.filter(m=>m.kind==='invite').map(m=>m.email));
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
  }catch(e){ log('HARNESS-KRASCH: '+e.message+'\n'+e.stack); }
  document.title='DONE';
+ /* test/run.py väntar på resultatet här */
+ try{ fetch('/__result', {method:'POST', body:out.textContent}); }catch(_){}
 })();
 </script>

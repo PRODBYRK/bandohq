@@ -228,10 +228,17 @@ leder utan att vara i crewet.
 *[cirkeln]* · *Hela gruppen* → klistra in i gruppchatten. Under länklistan ser du hur många
 som gått med och kan stänga en länk.
 
+**Producenterna lägger själva till sina kunder och cirkeldeltagare:** Crew → **+ Kund** eller
+**+ Deltagare**. En kund som en producent lägger till blir producentens kund. Personen får en
+inbjudan på mejlen. Kamerateamet kan inte lägga till någon, och producenterna kan bara bjuda in
+kunder och deltagare. Allt annat sköter admin.
+
 **Nya kunder** behöver ingen inbjudan. Lägg länken `https://bandohq.se/#boka`
-i Instagram-bion: där ser de lediga tider och skickar en förfrågan. Den hamnar under
-**Väntar på svar** på IDAG. Kunden får ett kvitto direkt. Godkänn → tiden bokas och kunden får
-en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.
+i Instagram-bion. Där ser de vilka tider som är bokade och skickar en förfrågan med namn och
+telefon eller e-post; studion väljer de inte. Förfrågan hamnar under **Väntar på svar** på IDAG.
+Med e-post får kunden ett kvitto direkt, och vid ett ja en bokningsbekräftelse med en länk för att
+skapa sitt konto. Har kunden bara lämnat telefonnummer får du efter godkännandet en färdig text
+med länken, som du skickar som sms.
 
 **Artister** (de som inte ska logga in) läggs in under **Mer → Artister** — eller importeras
 från ett kalkylark (se nedan).
@@ -251,6 +258,7 @@ Notiserna går **inte** att stänga av. De skickas vid:
 | Ny bokningsförfrågan | cirkelledaren, eller kundens producent + admins; nya kunder → admins | mejl (+ push) |
 | Kvitto på förfrågan | kunden (med konto eller via `#boka`) | mejl |
 | Svar på förfrågan | den som frågade — ja är en orderbekräftelse, nej ett eget mejl | mejl (+ push) |
+| Avbokning (kund eller deltagare avbokar själv) | de andra i passet, kundens producent (annars admins), cirkelledaren | push, annars mejl |
 | Inbjudan | den som bjuds in | mejl |
 | Påminnelse dagen innan (kl 17) | den som bokat, de som är med, cirkelns ledare och deltagare, kunden | push, annars mejl |
 | Agendan ändrad | den det gäller (samlas: högst en per halvtimme) — gemensamma uppgifter till hela teamet | push, annars mejl |
@@ -316,14 +324,32 @@ Resend → *Emails*.
 | **Producent** | Hela schemat, agenda, beats, artister, galleriet, sina egna mål och siffror, och de cirklar hen leder |
 | **Kamerateam** (Moez, D2L) | Schemat, sin agenda och galleriet — laddar upp bilder och film |
 | **Cirkelledare** | Två saker: **boka pass** för sina cirklar (godkänna förfrågningar, markera genomförda) och **medlemmarna** med e-post (och telefon om den finns) |
-| **Deltagare** | Sin läroplan, sina timmar, och föreslå tider med sin ledare |
-| **Kund** | Lediga studiotider, förfrågningar och sina egna bokningar |
+| **Deltagare** | Bara bokning: föreslå pass i sin cirkel och avboka sina egna, senast en timme innan |
+| **Kund** | Bara bokning: skicka förfrågningar och avboka sina bokningar, senast en timme innan |
 
 Behörigheterna ligger **i databasen**, inte bara i appen. En deltagare kan inte läsa andras
 pass ens med webbläsarens utvecklarverktyg, en ledare ser bara sina egna medlemmars
 kontaktuppgifter, och mål och planer syns bara för ägaren och managern.
 
 ---
+
+## Det nya i v10
+
+**Alla pass är tre timmar.** Kunder, deltagare och `#boka` väljer bara en starttid, och passet
+slutar alltid tre timmar senare. Starttiden kan vara vilken halvtimme som helst inom öppettiden.
+Crewets snabbval är också tre timmar (10–13, 13–16, … och ett nattpass), men crewet kan ändra
+sluttiden.
+
+**Kunder och deltagare bokar och gör inget annat.** De ser en dagremsa där fullbokade dagar är
+markerade, och en tidslinje per studio med det som är bokat. Där står bara *Bokat*, aldrig vem
+eller vad. Kunder och `#boka` väljer aldrig studio; crewet väljer den när förfrågan godkänns.
+Läroplanen och timmarna syns inte längre i deltagarvyn.
+
+**Avboka senast en timme innan.** Därefter hänvisar appen till producenten (kund) eller till
+cirkelledaren (deltagare), med telefon och mejl. Avbokningen meddelas crewet. Deltagare kan bara
+avboka pass de själva föreslagit, inte gruppens pass.
+
+**Producenterna lägger till kunder och deltagare**, se steg 4.
 
 ## Det nya i v9
 
@@ -471,7 +497,13 @@ kod — logga in i stället.
 python3 -m http.server 8000
 ```
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 324 testfall
+**Enklast:** `python3 test/run.py` kör allt (databasen, edge-funktionerna, förhandsläget och
+molnet mot en egen emulator) i en headless Chrome och säger om något är rött. `python3 test/run.py test`
+kör bara förhandsläget, och `cloud` eller `db` en del i taget.
+
+För hand:
+
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 355 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -479,7 +511,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 205 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 235 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 47 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
@@ -487,6 +519,7 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 … och sedan `http://localhost:8000/test/cloud.html` — appen mot emulatorn: inloggning,
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
-användarnamn, inbjudan till någon som redan finns och flytten från förhandsvisningen, 116 testfall.
+användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
+från förhandsvisningen, 125 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.

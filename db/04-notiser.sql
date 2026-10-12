@@ -4,12 +4,13 @@
 --  Notiserna går inte att stänga av. De köas av triggers när något händer:
 --    · ett pass bokas (orderbekräftelse till alla i sessionen)
 --    · förfrågningar (cirkel, kund, ny kund), kvitton och svaren på dem
+--    · avbokningar som kunder och deltagare gör själva (till crewet och de andra i passet)
 --    · timmar som närmar sig 480 (vid 400, 440, 470 och 480)
 --    · ändringar i agendan (samlade — högst en notis per halvtimme)
 --    · påminnelse dagen innan ett pass (körs kl 17)
 --  Utskicket väljer kanal: bekräftelser, förfrågningar, svar och inbjudningar
---  går alltid som mejl (och push till den som har det); påminnelser, timmar
---  och agenda går som push och bara som mejl om personen saknar push.
+--  går alltid som mejl (och push till den som har det); påminnelser, timmar,
+--  agenda och avbokningar går som push och bara som mejl om personen saknar push.
 -- =====================================================================
 
 /* v9: SMS-versionerna av funktionerna tas bort. */
@@ -36,6 +37,11 @@ create or replace function bs_studio(p text) returns text
 language sql stable security definer set search_path = public as $$
   select coalesce((select data->>p from records where kind='setting' and id='studios'), 'studio ' || coalesce(p,''))
 $$;
+/* ", THE BOOTH" — eller inget alls när studion inte är vald än (kundförfrågningar) */
+create or replace function bs_studio_opt(p text) returns text
+language sql stable security definer set search_path = public as $$
+  select case when coalesce(p,'') = '' then '' else ', ' || bs_studio(p) end
+$$;
 create or replace function bs_when(d jsonb) returns text
 language sql immutable as $$
   select bs_day((d->>'date')::date) || ' ' || (d->>'start') || '-' || (d->>'end')
@@ -57,7 +63,34 @@ declare
   who text; rq text; rqname text; circ text; pid text; h numeric; th int; m record; win bigint;
   ids text[]; mid text; line text;
 begin
-  if new.del then return new; end if;
+  /* avbokning: en kund eller deltagare tar själv bort ett bokat pass (cancel_my_booking).
+     De som fick orderbekräftelsen får veta det — och kundens producent (eller admins),
+     så att crewet ser att tiden är ledig igen. */
+  if new.del then
+    if new.kind = 'booking' and tg_op = 'UPDATE' and not old.del and coalesce(old.data->>'status','') = ''
+       and coalesce(old.data->>'date','') ~ '^\d{4}-\d\d-\d\d$'
+       and (old.data->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date
+       and (select role::text from members where id = actor) in ('customer','participant') then
+      d := old.data; rq := d->>'reqBy';
+      ids := array[bs_member_by_name(d->>'who'), rq]
+          || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x);
+      if coalesce(d->>'circleId','') <> '' then
+        ids := ids || array(select jsonb_array_elements_text(coalesce(data->'members','[]'))
+                              from records where kind='circle' and id = d->>'circleId');
+      else
+        ids := ids || coalesce((select array[producer] from members where id = actor and producer is not null),
+                               array(select id from members where active and role::text in ('manager','admin')));
+      end if;
+      rqname := coalesce((select name from members where id = actor), 'Någon');
+      for mid in select distinct x from unnest(ids) x where x is not null and x <> actor loop
+        perform bs_notify(mid, null, 'Avbokat: ' || bs_when(d),
+          rqname || ' har avbokat ' || bs_when(d) || bs_studio_opt(d->>'studio')
+          || coalesce(' (' || nullif(d->>'title','') || ')', '') || '. Tiden är ledig igen.',
+          'cancel', 'cancel:' || new.id || ':' || mid);
+      end loop;
+    end if;
+    return new;
+  end if;
 
   if new.kind = 'booking' then
     if coalesce(d->>'date','') !~ '^\d{4}-\d\d-\d\d$' then return new; end if;
@@ -97,7 +130,7 @@ begin
         for m in select id from members where active and (role::text in ('manager','admin')
                    or id = (select producer from members where id = rq)) loop
           perform bs_notify(m.id, null, 'Ny bokningsförfrågan från ' || rqname,
-            'Ny bokningsförfrågan från ' || rqname || ': ' || bs_when(d) || ', ' || bs_studio(d->>'studio')
+            'Ny bokningsförfrågan från ' || rqname || ': ' || bs_when(d) || bs_studio_opt(d->>'studio')
             || case when coalesce(d->>'note','') <> '' then '.' || E'\n\n' || 'Meddelande: ' || (d->>'note') else '' end
             || E'\n\n' || 'Svara i BANDOHQ.',
             'request', 'req:' || new.id || ':' || m.id);
@@ -105,7 +138,7 @@ begin
         /* kvitto till kunden */
         if rq is not null then
           perform bs_notify(rq, null, 'Vi har tagit emot din förfrågan',
-            'Hej ' || bs_first(rq) || '! Vi har tagit emot din förfrågan om ' || bs_when(d) || ', ' || bs_studio(d->>'studio')
+            'Hej ' || bs_first(rq) || '! Vi har tagit emot din förfrågan om ' || bs_when(d) || bs_studio_opt(d->>'studio')
             || '. Du får ett mejl när den är besvarad.',
             'received', 'rcv:' || new.id);
         end if;
@@ -173,7 +206,7 @@ declare m record; tid text := bs_day(new.date) || ' ' || new.start_t || '-' || n
 begin
   for m in select id from members where active and role::text in ('manager','admin') loop
     perform bs_notify(m.id, null, 'Ny kund vill boka: ' || new.name,
-      'Ny kund vill boka: ' || new.name || ' (' || coalesce(new.email,'') || '), ' || tid
+      'Ny kund vill boka: ' || new.name || coalesce(' (' || nullif(concat_ws(', ', new.email, new.phone), '') || ')', '') || ', ' || tid
       || case when coalesce(new.message,'') <> '' then '.' || E'\n\n' || 'Meddelande: ' || new.message else '' end
       || E'\n\n' || 'Svara i BANDOHQ.',
       'lead', 'lead:' || new.id || ':' || m.id);
@@ -320,12 +353,16 @@ end $$;
 -- ---------------------------------------------------------------------
 revoke all on function bs_put_booking(jsonb) from public, anon, authenticated;
 revoke all on function bs_clash(text, tsrange, text) from public, anon, authenticated;
+revoke all on function bs_any_free(tsrange, text) from public, anon, authenticated;
+revoke all on function bs_starts(jsonb) from public, anon, authenticated;
+revoke all on function bs_three_hours(jsonb) from public, anon, authenticated;
 revoke all on function bs_notify(text,text,text,text,text,text,interval,text) from public, anon, authenticated;
 revoke all on function bs_notify_digest(text,text,text,text,text,interval) from public, anon, authenticated;
 revoke all on function bs_notify_append(text,text,text,text,text,text,text,text,interval) from public, anon, authenticated;
 revoke all on function bs_hours(text) from public, anon, authenticated;
 revoke all on function bs_member_by_name(text) from public, anon, authenticated;
 revoke all on function bs_first(text) from public, anon, authenticated;
+revoke all on function bs_studio_opt(text) from public, anon, authenticated;
 revoke all on function outbox_claim(int) from public, anon, authenticated;
 revoke all on function outbox_done(bigint, boolean, text, text) from public, anon, authenticated;
 revoke all on function push_targets(text) from public, anon, authenticated;

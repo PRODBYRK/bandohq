@@ -1,6 +1,11 @@
 # Tester
 
-Kräver en lokal server — `file://` funkar inte (localStorage och crypto strular).
+**Snabbast:** `python3 test/run.py` från projektmappen kör alla sviter i en headless Chrome
+(egen profil, egen server, egen emulator) och skriver ut bara det som är rött plus summeringen.
+`python3 test/run.py test|cloud|db` kör en del. `python3 test/run.py shot 'as=AZ&tab=team' bild.png 390 1000`
+tar en skärmdump via `shot.html`.
+
+För hand kräver sidorna en lokal server — `file://` funkar inte (localStorage och crypto strular).
 
 ```
 cd ..            # projektmappen, där index.html ligger
@@ -9,11 +14,12 @@ python3 -m http.server 8000
 
 | Sida | Vad | Antal |
 |---|---|---|
-| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar med användarnamn, lägg till person med e-post, bjud in någon som redan finns, flera roller (producent + cirkelledare), kunder och bokningssidan, artistgrader och kalkylarksimport, push-filerna, integritet, säkerhetskopia, radera person, öppettider | 324 |
-| `test/cloud.html` | appen mot Supabase-emulatorn: inloggning med användarnamn eller e-post, inbjudningslänkar, koden vid första inloggningen (fel kod, ny kod, annan enhet), RLS sett från webbläsaren, godkännanden, kundförfrågningar, ny kund via bokningssidan, admin, utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord (även med användarnamn), inbjudan till RKAY som redan finns, flytten från förhandsvisningen | 116 |
-| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, notiskön (orderbekräftelser, kvitton, svar, timmar, agenda), påminnelser, inbjudningar per mejl och till befintliga personer, användarnamn, nya kunder, push och radering direkt i Postgres (`node db.test.mjs`) | 205 |
+| `test/test.html` | appen i förhandsläget: roller (även admin och kamera), förfrågningar, timmar, synk, agenda, veckoplan, texttolken, Dropbox-mocken, galleri, beatprofiler, inbjudningar med användarnamn, lägg till person med e-post, bjud in någon som redan finns, flera roller (producent + cirkelledare), kunder och bokningssidan, artistgrader och kalkylarksimport, push-filerna, integritet, säkerhetskopia, radera person, öppettider, v10: pass på tre timmar, fullbokat, inget studioval, avboka senast en timme innan, deltagare bokar, producenter lägger till kunder, crewets snabbval | 355 |
+| `test/cloud.html` | appen mot Supabase-emulatorn: inloggning med användarnamn eller e-post, inbjudningslänkar, koden vid första inloggningen (fel kod, ny kod, annan enhet), RLS sett från webbläsaren, godkännanden, kundförfrågningar, ny kund via bokningssidan, admin, utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord (även med användarnamn), inbjudan till RKAY som redan finns, flytten från förhandsvisningen, v10: tre timmar och fullbokat även på servern, bara telefon via `#boka`, producenten lägger till kund och deltagare | 125 |
+| `db/test/db.test.mjs` | behörigheter, stängda interna funktioner, notiskön (orderbekräftelser, kvitton, svar, timmar, agenda), påminnelser, inbjudningar per mejl och till befintliga personer, användarnamn, nya kunder, push och radering, v10: tre timmar, avboka senast en timme innan, avbokningsnotiser, producenters kunder — direkt i Postgres (`node db.test.mjs`) | 235 |
 | `db/test/notify.test.mjs` | edge-funktionerna: notify-send (kryptering mot RFC 8291:s testvärden, VAPID, mejl via Resend, push först för påminnelser) och auth-login (inloggning med användarnamn, spärr, glömt lösenord) (`node notify.test.mjs`) | 47 |
 | `test/shot.html` | demodata att titta på | — |
+| `db/test/migrate.check.mjs` | uppgraderingen: kör en äldre `db/`-mapp och sedan de nya filerna ovanpå (`node migrate.check.mjs <gammal db-mapp> ..`) | — |
 
 **Molntestet** kräver emulatorn: `cd db/test && npm install && node emulator.mjs`. Den kör
 riktig Postgres (PGlite) med filerna i `db/` och svarar på samma anrop som Supabase.
@@ -25,7 +31,7 @@ Starta om den före varje körning — testet räknar med en tom databas med bar
 as=AZ                 manager (hela appen)
 as=RKAY               producent (hela appen)
 as=Sofia%20Marks      cirkelledare utan producentroll (Pass / Medlemmar)
-as=William%20Ek       deltagare (läroplan + föreslå tid)
+as=William%20Ek       deltagare (bara bokning)
 as=Studio%20Nord%20AB kund (lediga tider, förfrågningar)
 as=Costa             admin
 as=Moez              kamerateam (schema, agenda, galleri)

@@ -95,8 +95,8 @@ export async function sendPush(target, payload, vapid, urgency) {
 /* ---------- utskicket ---------- */
 const env = (k) => (globalThis.Deno ? Deno.env.get(k) : process.env[k]) || '';
 const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfrågan mottagen', answer: 'Svar på din förfrågan',
-  reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
-const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked'];
+  cancel: 'Avbokat', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
+const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked', 'cancel'];
 /* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
 export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no'];
 const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto' };

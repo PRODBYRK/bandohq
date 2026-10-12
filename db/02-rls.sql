@@ -89,6 +89,12 @@ create policy members_admin on members for all to authenticated
   using (bs_is_admin())
   with check (bs_is_admin() and (role::text <> 'manager' or bs_is_manager()));
 
+/* Crewet (inte kamerateamet) lägger in kunder och cirkeldeltagare — bara nya rader
+   utan inloggning, och bara de två rollerna. Ändringar efteråt sköter admin. */
+drop policy if exists members_crew_clients on members;
+create policy members_crew_clients on members for insert to authenticated
+  with check (bs_is_crew() and role::text in ('customer','participant') and user_id is null);
+
 drop policy if exists members_self on members;
 create policy members_self on members for update to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());

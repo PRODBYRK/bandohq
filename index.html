@@ -207,7 +207,7 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .mstat span{font-size:10.5px;color:var(--mut);letter-spacing:.06em;font-weight:700}
 
 /* ---------- formulär ---------- */
-label.lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--mut);margin:var(--s4) 0 var(--s2)}
+label.lbl,div.lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--mut);margin:var(--s4) 0 var(--s2)}
 input,textarea,select{width:100%;background:rgba(10,7,20,.7);border:1px solid rgba(255,255,255,.12);border-radius:var(--r-sm);
   color:var(--txt);font:inherit;font-size:16px;padding:13px 14px;-webkit-appearance:none;appearance:none;
   transition:.16s var(--ease)}
@@ -541,7 +541,43 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .plan-t{background:none;border:0;color:var(--txt);font:inherit;text-align:left;cursor:pointer;padding:0}
 .plan-t b{font-weight:650}
 .rankempty{min-height:52px}
-.chip.slot{color:var(--txt);border-color:rgba(255,255,255,.14)}
+.chip.slot{color:var(--txt);border-color:rgba(255,255,255,.14);font-variant-numeric:tabular-nums}
+.chip.slot.on{border-color:rgba(168,85,247,.7);background:rgba(168,85,247,.28)}
+.chip.slot.taken{color:var(--mut2);border-color:var(--line3);background:transparent;text-decoration:line-through;cursor:not-allowed}
+.chip.slot.taken:active{transform:none}
+/* bokningsväljaren: dagremsa, tidslinje per studio, starttider */
+.days{display:flex;gap:7px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none;-ms-overflow-style:none}
+.days::-webkit-scrollbar{display:none}
+.dchip{flex:none;width:60px;padding:8px 0 7px;border-radius:14px;border:1px solid var(--line);
+  background:var(--surface);color:var(--txt);text-align:center;font:inherit;cursor:pointer;transition:.16s var(--ease)}
+.dchip:active{transform:scale(.95)}
+.dchip span{display:block;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--mut)}
+.dchip b{display:block;font-family:var(--disp);font-size:21px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums}
+.dchip i{display:block;font-style:normal;font-size:10px;color:var(--mut2);margin-top:1px}
+.dchip.full b,.dchip.past b{color:var(--mut)}
+.dchip.full i{color:var(--warn);font-weight:650}
+.dchip.on{background:rgba(168,85,247,.2);border-color:rgba(168,85,247,.55)}
+.dchip.on span{color:var(--pur3)}
+.tl{margin-top:2px}
+.tl-n{font-size:10.5px;font-weight:700;letter-spacing:.12em;color:var(--mut);margin:10px 0 5px}
+.tl-bar{position:relative;height:28px;border-radius:9px;background:rgba(52,211,153,.07);
+  box-shadow:inset 0 0 0 1px rgba(52,211,153,.2);overflow:hidden}
+.tl-past{position:absolute;left:0;top:0;bottom:0;
+  background:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 4px,rgba(7,5,12,.55) 4px 9px)}
+.tl-b{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:rgba(124,58,237,.38);box-shadow:inset 0 0 0 1px rgba(192,132,252,.45);border-radius:7px}
+.tl-b span{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#efe6ff;white-space:nowrap;padding:0 5px}
+.tl-b.own{background:linear-gradient(90deg,var(--pur2),var(--pur));box-shadow:0 0 14px rgba(168,85,247,.5)}
+.tl-sel{position:absolute;top:2px;bottom:2px;border:1.5px dashed #fff;border-radius:7px;pointer-events:none}
+.tl-ax{position:relative;height:15px;margin-top:6px;font-size:10px;color:var(--mut2);font-variant-numeric:tabular-nums}
+.tl-ax span{position:absolute;top:0;transform:translateX(-50%)}
+.tl-key{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--mut);margin-top:8px}
+.tl-key i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.tl-key .k-free{background:rgba(52,211,153,.12);box-shadow:inset 0 0 0 1px rgba(52,211,153,.35)}
+.tl-key .k-b{background:rgba(124,58,237,.5);box-shadow:inset 0 0 0 1px rgba(192,132,252,.5)}
+.tl-key .k-own{background:var(--pur)}
+.slot-end{display:flex;align-items:center;font-size:14px;color:var(--mut);padding-left:2px}
+.slot-end b{color:var(--txt);margin:0 4px;font-variant-numeric:tabular-nums}
 /* samarbeten */
 .ctop-r{display:grid;grid-template-columns:18px minmax(0,1fr) 70px 24px 38px;gap:8px;align-items:center;padding:6px 0;
   border-bottom:1px solid var(--line3);font-size:13.5px}
@@ -959,6 +995,8 @@ function can(action, t){
     case 'manageStudios':
     case 'manageDropbox':
     case 'setRates':    return adm;
+    /* kunder och cirkeldeltagare: hela crewet, inte kamerateamet (members_crew_clients) */
+    case 'addClients':  return crewRole;
     case 'grantManager': return mgr;             /* bara managern rör managerrollen */
     /* --- cirkelsidan --- */
     case 'manageCircles':
@@ -1562,6 +1600,10 @@ async function pushMember(a){
   await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
     body: JSON.stringify([memberRow(a)])});
 }
+/* Producenternas väg: bara en ny rad (members_crew_clients), aldrig en ändring. */
+async function insertMember(a){
+  await sb('/members', {method:'POST', headers:{Prefer:'return=minimal'}, body: JSON.stringify([memberRow(a)])});
+}
 function applyRecord(r){
   const up = +r.up || 0;
   if(r.kind==='setting'){
@@ -1611,6 +1653,7 @@ async function cloudView(){
   if(v.rates) S.rates = Object.assign({}, S.rates, v.rates);
   S.hoursOverride = v.hours || {};
   S.myProducer = v.producer || '';
+  S.contact = v.contact || null;          /* kundens producent — för avbokning med kort varsel */
   save();
 }
 
@@ -3754,7 +3797,10 @@ function vTeam(){
     ${adm ? `<div class="row" style="gap:9px;margin-bottom:var(--s4)">
       <button class="btn" style="flex:1" onclick="openAddPerson()">+ LÄGG TILL PERSON</button>
       <button class="btn ghost" style="flex:1" onclick="openInvites()">BJUD IN MED LÄNK</button></div>
-      ${invitesSection()}` : ''}
+      ${invitesSection()}` : can('addClients') ? `<div class="row" style="gap:9px;margin-bottom:var(--s4)">
+      <button class="btn" style="flex:1" onclick="openAddPerson('customer')">+ KUND</button>
+      <button class="btn ghost" style="flex:1" onclick="openAddPerson('participant')">+ DELTAGARE</button></div>
+      ${clientsSection()}` : ''}
     <div class="stagger">${rows}</div>
     ${cameras().length ? `<div class="eyebrow">KAMERATEAM<span class="ln"></span></div>
       ${[...new Set(cameras().map(creditOf))].map(t=>{ const ms = cameras().filter(a=>creditOf(a)===t);
@@ -4112,16 +4158,21 @@ let addDraft = null;
 const leadsWith = r => !r || isCrewRole(r);
 const ledBy = a => a ? lcircle().filter(c=>c.leader===a.n).map(c=>c.id) : [];
 const draftRole = d => d.main || 'leader';
+const CLIENT_ROLES = ['customer','participant'];
 function openAddPerson(role, existingId){
-  if(!can('manageCrew')) return;
+  const adm = can('manageCrew');
+  if(!adm && !can('addClients')) return;
   const ex = existingId ? byId(existingId) : null, led = ledBy(ex);
-  const start = ex ? ex.r : (role || 'producer');
+  if(!adm && ex && !CLIENT_ROLES.includes(ex.r)) return toast('Du kan bara bjuda in kunder och cirkeldeltagare');
+  const start = ex ? ex.r : (role || (adm ? 'producer' : 'customer'));
   addDraft = {id: ex ? ex.id : null, name: ex ? ex.n : '', email: ex ? ex.email||'' : '',
     main: start==='leader' ? null : (INVITE_ROLES[start] ? start : 'producer'),
     lead: start==='leader' || led.length > 0,
     leads: led.length ? led : start==='leader' ? [(lcircle()[0]||{}).id].filter(Boolean) : [],
     circle: (ex && ex.r==='participant' && inviteCircleFor(ex)) || (lcircle()[0]||{}).id || '',
-    team: ex ? ex.team||'' : '', producer: ex ? ex.producer||'' : ''};
+    team: ex ? ex.team||'' : '',
+    /* en producent som lägger till en kund blir kundens producent */
+    producer: ex ? ex.producer||'' : me().r==='producer' ? me().id : ''};
   paintAddPerson();
 }
 function pickAddRole(r){
@@ -4145,7 +4196,8 @@ function toggleLeadCircle(id){
   paintAddPerson();
 }
 function paintAddPerson(){
-  const d = addDraft, roles = inviteRoles(), ex = d.id ? byId(d.id) : null, role = draftRole(d);
+  const adm = can('manageCrew'), d = addDraft, ex = d.id ? byId(d.id) : null, role = draftRole(d);
+  const roles = inviteRoles().filter(([r])=>adm || CLIENT_ROLES.includes(r));
   const help = d.main ? (ROLE_HELP[d.main]||'') + (d.lead ? ' Dessutom cirkelledare: bokar pass för sina cirklar och når sina medlemmar.' : '')
                       : ROLE_HELP.leader;
   openSheet(`${X}
@@ -4157,7 +4209,7 @@ function paintAddPerson(){
     <input id="apN" value="${esc(d.name||'')}" placeholder="För- och efternamn" maxlength="40" oninput="addDraft.name=this.value">`}
     <label class="lbl" for="apE">E-POST</label>
     <input id="apE" type="email" inputmode="email" value="${esc(d.email||'')}" placeholder="namn@exempel.se" oninput="addDraft.email=this.value">
-    <label class="lbl">${ex ? 'INBJUDEN SOM' : 'ROLL'} <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— Cirkelledare går att kombinera</span></label>
+    <label class="lbl">${ex ? 'INBJUDEN SOM' : 'ROLL'}${adm ? ' <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— Cirkelledare går att kombinera</span>' : ''}</label>
     <div class="chips wrap" id="apRoles">${roles.map(([r,n])=>`<button class="chip ${(r==='leader' ? d.lead : d.main===r)?'on':''}"
       data-r="${r}" onclick="pickAddRole('${r}')">${n}</button>`).join('')}</div>
     <div class="note" style="margin-top:10px">${esc(help)}</div>
@@ -4190,8 +4242,8 @@ const ROLE_HELP = {
   producer:'Crewets vy: bokar studio, beats, agenda, och leder de cirklar hen tilldelas.',
   camera:'Ser schemat, har sin agenda och laddar upp bilder och film i galleriet.',
   leader:'Bokar pass för sina cirklar och når sina medlemmar.',
-  participant:'Ser sin läroplan och föreslår tider med sin cirkelledare.',
-  customer:'Ser lediga studiotider och skickar bokningsförfrågningar.'};
+  participant:'Bokar pass med sin cirkelledare och kan avboka dem — inget annat.',
+  customer:'Ser lediga tider, skickar bokningsförfrågningar och kan avboka — inget annat.'};
 async function saveAddPerson(){
   const d = addDraft, ex = d.id ? byId(d.id) : null, role = draftRole(d);
   const name = ex ? ex.n : (d.name||'').trim(), em = String(d.email||'').trim().toLowerCase();
@@ -4226,7 +4278,9 @@ async function saveAddPerson(){
   save();
   try{
     if(!PREVIEW_LOGIN){
-      await pushMember(acc);
+      /* admin sparar personen direkt; en producent lägger bara in nya rader (e-posten
+         på en befintlig person sätts av create_invite) */
+      if(can('manageCrew')) await pushMember(acc); else if(!ex) await insertMember(acc);
       if(changed.length) await sbRpc('push_records', {rows: changed.map(c=>({kind:'circle', id:String(c.id), data:c, up:c.up||0, del:!!c.del}))});
     }
     const tok = await createInvite(role, role==='participant' ? partCircle : role==='leader' ? leads[0] : null, 14, 1,
@@ -4283,6 +4337,21 @@ function invitesSection(){
       </div>`; }).join('')}
       ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}
       ${ready.length ? `<button class="btn" style="margin-top:12px" onclick="inviteAll()">SKICKA TILL ALLA MED E-POST (${ready.length})</button>` : ''}
+    </div>`;
+}
+/* Producentens lista: kunder och deltagare som inte loggat in än. Inbjudningarna i sig
+   ser bara admin, så här står bara om personen loggat in. */
+function clientsSection(){
+  const w = waitingAccounts().filter(a=>CLIENT_ROLES.includes(a.r)); if(!w.length) return '';
+  return `<div class="eyebrow">HAR INTE LOGGAT IN ÄN<span class="ln"></span><span style="color:var(--warn)">${w.length}</span></div>
+    <div class="card">
+      ${(invAll ? w : w.slice(0,5)).map(a=>`<div class="member invrow" style="cursor:default">${avatar(a)}
+        <div class="grow"><div class="mname">${esc(a.n)}</div>
+          <div class="mrole">${ROLE_NAME[a.r]}${a.r==='customer' && byId(a.producer) ? ' · ' + esc(byId(a.producer).n) : ''} · ${
+            a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'}</div></div>
+        <button class="btn slim ghost" style="width:auto;flex:none;padding:9px 12px" onclick="openAddPerson(null,'${a.id}')">BJUD IN</button>
+      </div>`).join('')}
+      ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}
     </div>`;
 }
 async function inviteAll(){
@@ -4833,68 +4902,53 @@ function sessionLine(b, extra){
   </div>`;
 }
 
-/* ---------- DELTAGARE ---------- */
+/* ---------- DELTAGARE ----------
+   Bara bokning: välj en tid, skicka förslaget till cirkelledaren, se och avboka sina pass. */
 function vParticipant(){
   const m = me();
   const cs = myCirclesAsMember();
   if(!cs.length) return `
     <div class="h1">Hej ${esc(m.n.split(' ')[0])}</div>
     <div class="sub">Du är inte inlagd i någon cirkel än.</div>
-    <div class="empty">Så fort du kopplas till en grupp dyker läroplanen upp här,
-      och du kan föreslå tider med din cirkelledare.</div>`;
+    <div class="empty">Så fort du kopplas till en grupp kan du boka pass här.</div>`;
 
   if(!simpleCircle || !cs.some(c=>c.id===simpleCircle)) simpleCircle = cs[0].id;
-  const c = circleById(simpleCircle);
-  const cur = currFor(c);
-  const hrs = hoursFor(m.id), full = hrs >= MAX_HOURS;
+  const c = circleById(simpleCircle), now = new Date(), list = booked();
   const mine = circleSessions(c.id)
     .filter(b => b.status!=='request' || b.reqBy===m.id)
-    .sort((a,b)=>startAt(b)-startAt(a));
-  const upcoming = mine.filter(b=>b.status!=='done' && endAt(b)>new Date()).reverse();
-  const past = mine.filter(b=>b.status==='done' || endAt(b)<=new Date());
+    .sort((a,b)=>startAt(a)-startAt(b));
+  const waiting = mine.filter(b=>b.status==='request' && endAt(b)>now);
+  const upcoming = mine.filter(b=>b.status!=='request' && b.status!=='done' && endAt(b)>now);
+  const past = mine.filter(b=>b.status==='done' || (b.status!=='request' && endAt(b)<=now)).reverse();
+  const days = bookDays(14), day = pickBookDay(list, days), p = myContact({circleId:c.id});
+  const sub = b => b.status==='request' ? `Väntar på svar från ${esc(c.leader||'ledaren')}`
+    : b.status==='done' ? 'Genomfört'
+    : (b.studio ? esc(S.studios[b.studio]||'') : 'Studio ej satt') + (b.reqBy===m.id ? ' · ditt förslag' : '');
 
   return `
     <div class="h1" style="font-size:${c.n.length>22?'22px':'26px'};overflow-wrap:anywhere">${esc(c.n)}</div>
     <div class="sub">Din cirkelledare är
-      <b style="color:${glow(c.leader)}">${esc(c.leader||'inte satt än')}</b></div>
+      <b style="color:${glow(c.leader)}">${esc(c.leader||'inte satt än')}</b> · ett pass är 3 timmar</div>
     ${cs.length>1?`<div class="chips">${cs.map(x=>`<button class="chip ${x.id===c.id?'on':''}"
       onclick="simpleCircle='${x.id}';render()">${esc(x.n)}</button>`).join('')}</div>`:''}
 
-    <div class="eyebrow">AKTUELL LÄROPLAN<span class="ln"></span></div>
-    ${cur?`<div class="card">
-      <div class="studio-name">${esc(cur.subject)}</div>
-      <div class="live-title" style="font-size:17px;margin-top:6px">${esc(cur.title)}</div>
-      <div style="margin-top:12px;white-space:pre-wrap;line-height:1.85;color:var(--txt);font-size:15px">${esc(cur.body)}</div>
-      ${cur.from?`<div class="tiny" style="color:var(--mut2);margin-top:14px">Gäller från ${esc(cur.from)}</div>`:''}
-    </div>`:`<div class="empty">Ingen läroplan är kopplad till cirkeln än.</div>`}
+    <div class="eyebrow" style="margin-top:0">BOKA ETT PASS<span class="ln"></span></div>
+    ${c.leader ? slotPicker({list, days, day, dayJs:d=>`bookDay='${d}';render()`, startJs:(d,hm)=>`openSlot('${d}','${hm}')`,
+        mine:b=>cs.some(x=>x.id===b.circleId), mineLabel:'Er cirkel'})
+      + `<div class="note">Välj en starttid och skicka ett förslag. ${esc(c.leader)} väljer studio när förslaget godkänns
+          — då är passet bokat.</div>`
+      : `<div class="empty">Cirkeln saknar ledare — be AZ koppla en.</div>`}
 
-    <div class="eyebrow">DINA SESSIONS<span class="ln"></span></div>
-    ${c.leader?`<button class="btn" onclick="openRequest('${c.id}')">
-      + FÖRESLÅ EN TID MED ${esc(c.leader)}</button>`
-      :`<div class="empty">Cirkeln saknar ledare — be AZ koppla en.</div>`}
-    <div style="margin-top:12px">
-      ${upcoming.length ? upcoming.map(b=>sessionLine(b,
-          b.status==='request' && b.reqBy===m.id
-            ? `<button class="btn ghost slim" style="width:auto;padding:7px 11px;flex:none"
-                 onclick="cancelRequest('${b.id}')">ÅNGRA</button>` : '')).join('')
-        : `<div class="empty">Inga kommande sessions.</div>`}
-    </div>
-
+    ${waiting.length?`<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${waiting.length}</span></div>
+      ${waiting.map(b=>myRow(b, sub(b), mineBtn(b))).join('')}`:''}
+    <div class="eyebrow">KOMMANDE PASS<span class="ln"></span></div>
+    ${upcoming.length ? upcoming.map(b=>myRow(b, sub(b), b.reqBy===m.id ? mineBtn(b) : '')).join('')
+      : `<div class="empty">Inga bokade pass än.</div>`}
+    <div class="tiny muted" style="margin-top:4px;line-height:1.55">Pass du själv föreslagit kan du avboka fram till en timme innan.
+      Efter det, eller för pass som ${esc(c.leader||'ledaren')} bokat: hör av dig till ${esc(c.leader||'din cirkelledare')}.</div>
     ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>
-      ${past.slice(0,10).map(b=>sessionLine(b)).join('')}`:''}
-
-    <div class="eyebrow">DINA TIMMAR<span class="ln"></span></div>
-    <div class="card">
-      <div class="row"><div class="grow">
-        <div style="font-family:var(--disp);font-size:30px;font-weight:600;line-height:1;
-          color:${full?'var(--warn)':'var(--txt)'}">${hh(hrs)}<span style="font-size:16px;color:var(--mut);font-weight:400"> / ${MAX_HOURS} h</span></div>
-      </div>${full?'<span class="pill" style="background:rgba(250,178,25,.14);color:var(--warn)">MAX NÅTT</span>':''}</div>
-      <div class="bar" style="margin-top:14px">
-        <i style="width:${Math.min(100,hrs/MAX_HOURS*100)}%;background:${full?'var(--warn)':'linear-gradient(90deg,var(--pur2),var(--pur))'}"></i></div>
-      <div class="tiny muted" style="margin-top:10px">${full
-        ? 'Du har nått ramen. Prata med din cirkelledare om vad som gäller härnäst.'
-        : hh(MAX_HOURS-hrs)+' timmar kvar. Timmarna räknas när ledaren markerat en session genomförd och du stod som närvarande.'}</div>
-    </div>`;
+      ${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
+    ${contactCard(p, 'DIN CIRKELLEDARE')}`;
 }
 
 /* ---------- CIRKELLEDARE (utan producentroll) ----------
@@ -4983,82 +5037,238 @@ function vLeader(){
       ${done.slice(0,12).map(b=>row(b, sm('Ändra',`openComplete('${b.id}')`,1), 'done')).join('')}`:''}`;
 }
 
-/* ---------- KUND ---------- */
-/* Lediga tider: studions öppettid minus det som är bokat, i block om minst en timme. */
+/* ---------- BOKA: KUND, DELTAGARE OCH BOKNINGSSIDAN ----------
+   Ett pass är tre timmar och får börja när som helst inom öppettiden. Den som bokar
+   ser vilka tider som är upptagna — aldrig vem eller vad (my_view och free_slots
+   skickar bara studio och tid) — och skickar en förfrågan. Crewet väljer studio när
+   den godkänns, så kunden väljer aldrig studio själv. */
 /* Öppettiderna ställs in under Crew → Studios (sparas med studionamnen). */
 const openFrom = () => /^\d\d:\d\d$/.test(S.studios.openFrom||'') ? S.studios.openFrom : '10:00';
 const openTo   = () => /^\d\d:\d\d$/.test(S.studios.openTo||'') ? S.studios.openTo : '23:00';
 const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };
 const toHm  = n => String(Math.floor(n/60)).padStart(2,'0') + ':' + String(n%60).padStart(2,'0');
-function freeBlocks(date, studio, busyList){
-  const busy = (busyList || booked()).filter(b=>b.date===date && b.studio===studio)
-    .map(b=>[toMin(b.start), toMin(b.end) <= toMin(b.start) ? 24*60 : toMin(b.end)]).sort((x,y)=>x[0]-y[0]);
-  let from = toMin(openFrom()); const to = toMin(openTo()) || 24*60, out = [];
-  if(date === iso(new Date())){ const n = new Date(); from = Math.max(from, Math.ceil((n.getHours()*60 + n.getMinutes())/30)*30 + 30); }
-  for(const [s0, e0] of busy){ if(s0 - from >= 60) out.push([from, Math.min(s0, to)]); from = Math.max(from, e0); }
-  if(to - from >= 60) out.push([from, to]);
-  return out.filter(([x,y])=>y-x>=60).map(([x,y])=>({start:toHm(x), end:toHm(y)}));
+const SLOT = 180;                                        /* ett pass, i minuter */
+const plusSlot = t => toHm((toMin(t) + SLOT) % 1440);
+const dayEnd = () => toMin(openTo()) || 1440;            /* 00:00 = midnatt */
+/* Upptaget i en studio en dag, i minuter från midnatt: [start, slut, passet].
+   Ett nattpass från dagen innan räknas från 00:00. */
+function busySpans(date, studio, list){
+  const prev = iso(addDays(fromIso(date), -1)), out = [];
+  for(const b of list){
+    if(b.studio !== studio || (b.date !== date && b.date !== prev)) continue;
+    const s = toMin(b.start), e = toMin(b.end), night = e <= s;
+    if(b.date === date) out.push([s, night ? e + 1440 : e, b]);
+    else if(night && e > 0) out.push([0, e, b]);
+  }
+  return out.sort((x,y)=>x[0]-y[0]);
 }
-let custDay = null;
+/* En starttid är 'ok' när minst en studio är ledig hela passet, annars 'taken'.
+   'past' = redan passerad (eller mindre än en halvtimme bort), 'closed' = utanför öppettiden. */
+function slotState(date, list, hm, spans){
+  if(!/^\d\d:\d\d$/.test(hm||'')) return 'closed';
+  const t = toMin(hm), now = new Date();
+  if(t < toMin(openFrom()) || t + SLOT > dayEnd()) return 'closed';
+  if(date < iso(now) || (date === iso(now) && t < now.getHours()*60 + now.getMinutes() + 30)) return 'past';
+  spans = spans || ['A','B'].map(st=>busySpans(date, st, list));
+  return spans.some(sp => !sp.some(([s,e]) => s < t + SLOT && t < e)) ? 'ok' : 'taken';
+}
+function slotStarts(date, list){
+  const spans = ['A','B'].map(st=>busySpans(date, st, list)), out = [];
+  for(let t = toMin(openFrom()); t + SLOT <= dayEnd(); t += 30) out.push({t, hm:toHm(t), st:slotState(date, list, toHm(t), spans)});
+  return out;
+}
+/* Det som visas som knappar: hela timmar, och en halvtimme bara när den är enda vägen in. */
+const shownStarts = ss => ss.filter((s,i) => s.st!=='past' && (s.t % 60 === 0
+  || (s.st==='ok' && (ss[i-1]||{}).st!=='ok' && (ss[i+1]||{}).st!=='ok')));
+function dayState(date, list){
+  const ss = slotStarts(date, list);
+  return ss.some(s=>s.st==='ok') ? 'free' : ss.some(s=>s.st==='taken') ? 'full' : 'past';
+}
+const slotWhy = st => st==='taken' ? 'Båda studiorna är bokade då. Välj en annan starttid.'
+  : st==='past' ? 'Den tiden har redan varit eller är för nära — välj en senare.'
+  : `Studion har öppet ${openFrom()}–${openTo()}. Ett pass är tre timmar, så sista starttid är ${toHm(dayEnd()-SLOT)}.`;
+/* Starttidsfältet: visar sluttiden och varför tiden inte går. p = prefix för fältens id. */
+function paintSlot(date, list, p){
+  const v = (document.getElementById(p+'S')||{}).value || '', st = slotState(date, list, v);
+  const e = document.getElementById(p+'E'), w = document.getElementById(p+'W'), btn = document.getElementById(p+'Btn');
+  if(e) e.innerHTML = /^\d\d:\d\d$/.test(v) ? `till <b>${plusSlot(v)}</b> · 3 timmar` : '';
+  if(w) w.innerHTML = st==='ok' ? '' : `<div class="warn">${esc(slotWhy(st))}</div>`;
+  if(btn) btn.disabled = st!=='ok';
+  return st;
+}
+
+/* Dagremsa, tidslinje per studio och starttider. Andras pass syns bara som "Bokat".
+   c: list (bokat), days, day (vald dag), dayJs(d) och startJs(d, hm) (onclick),
+   sel (vald starttid), mine(b) och mineLabel för egna pass. */
+function slotPicker(c){
+  const ds = c.day, ss = slotStarts(ds, c.list), shown = shownStarts(ss), st = dayState(ds, c.list);
+  const from = toMin(openFrom()), to = dayEnd(), span = Math.max(1, to - from), today = iso(new Date());
+  const pct = m => (Math.min(Math.max(m, from), to) - from) / span * 100;
+  const n = new Date(), nowMin = ds === today ? n.getHours()*60 + n.getMinutes() : ds < today ? to : from;
+  const ticks = []; for(let t = Math.ceil(from/60)*60; t <= to; t += 180) ticks.push(t);
+  const sel = c.sel && slotState(ds, c.list, c.sel)==='ok' ? toMin(c.sel) : null;
+  const bar = stu => `<div class="tl-n">${esc(S.studios[stu]||stu)}</div>
+    <div class="tl-bar">
+      ${nowMin > from ? `<i class="tl-past" style="width:${pct(nowMin).toFixed(2)}%"></i>` : ''}
+      ${busySpans(ds, stu, c.list).filter(([s,e])=>e > from && s < to).map(([s,e,b])=>{
+        const own = !!(c.mine && c.mine(b)), lab = own ? c.mineLabel : 'Bokat';
+        return `<i class="tl-b${own?' own':''}" style="left:${pct(s).toFixed(2)}%;width:${(pct(e)-pct(s)).toFixed(2)}%"
+          title="${esc(lab)} ${toHm(s%1440)}–${toHm(e%1440)}"><span>${esc(lab)}</span></i>`; }).join('')}
+      ${sel!==null ? `<i class="tl-sel" style="left:${pct(sel).toFixed(2)}%;width:${(pct(sel+SLOT)-pct(sel)).toFixed(2)}%"></i>` : ''}
+    </div>`;
+  return `
+    <div class="days" role="tablist" aria-label="Välj dag">${c.days.map(d=>{ const s = dayState(d, c.list), x = fromIso(d);
+      return `<button class="dchip ${s} ${d===ds?'on':''}" role="tab" aria-selected="${d===ds}" onclick="${c.dayJs(d)}">
+        <span>${d===today ? 'IDAG' : DAY[x.getDay()]}</span><b>${x.getDate()}</b>
+        <i>${s==='free' ? MON[x.getMonth()] : s==='full' ? 'fullbokat' : 'stängt'}</i></button>`; }).join('')}</div>
+    <div class="tl" aria-label="Bokat ${esc(longDate(ds).toLowerCase())}">
+      ${bar('A')}${bar('B')}
+      <div class="tl-ax">${ticks.map(t=>`<span style="left:${pct(t).toFixed(2)}%;${t===from?'transform:none':t>=to?'transform:translateX(-100%)':''}">${toHm(t%1440)}</span>`).join('')}</div>
+      <div class="tl-key"><span><i class="k-free"></i>Ledigt</span><span><i class="k-b"></i>Bokat</span>${
+        c.mine ? `<span><i class="k-own"></i>${esc(c.mineLabel)}</span>` : ''}</div>
+    </div>
+    <div class="lbl" style="margin-top:16px">STARTTID <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— passet är 3 timmar</span></div>
+    ${shown.length ? `<div class="chips wrap slots">${shown.map(s => s.st==='ok'
+        ? `<button class="chip slot ${c.sel===s.hm?'on':''}" onclick="${c.startJs(ds, s.hm)}">${s.hm}–${plusSlot(s.hm)}</button>`
+        : `<button class="chip slot taken" disabled title="Bokat">${s.hm}–${plusSlot(s.hm)}</button>`).join('')}</div>` : ''}
+    ${st==='full' ? `<div class="note" style="margin-top:6px"><b>Fullbokat</b> ${ds===today?'resten av dagen':'den här dagen'}. Välj en annan dag.</div>`
+      : st==='past' ? `<div class="note" style="margin-top:6px">Inga fler tider ${ds===today?'idag':'den här dagen'}. Välj en annan dag.</div>` : ''}`;
+}
+
+let bookDay = null;                      /* vald dag i bokningen (kund och deltagare) */
+const bookDays = n => [...Array(n)].map((_,i)=>iso(addDays(new Date(), i)));
+function pickBookDay(list, days){
+  if(!bookDay || !days.includes(bookDay)) bookDay = days.find(d=>dayState(d, list)==='free') || days[0];
+  return bookDay;
+}
+const dayName = d => relDay(d) ? relDay(d).toLowerCase().replace(/^./,x=>x.toUpperCase()) : DAY2[fromIso(d).getDay()].replace(/^./,x=>x.toUpperCase());
+function myRow(b, sub, act){
+  const d = fromIso(b.date);
+  return `<div class="srow ${b.status==='request'?'req':b.status==='done'?'done':''}">
+    <div class="srow-d"><b>${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
+    <div class="grow" style="min-width:0"><div class="srow-t">${dayName(b.date)} · ${b.start}–${b.end}</div>
+      <div class="srow-m">${sub}</div></div>
+    ${act||''}</div>`;
+}
+
+/* Avboka: förfrågningar när som helst, bokade pass senast en timme innan (samma
+   regel som cancel_my_booking). Sedan hör man av sig till producenten eller ledaren. */
+const tooLate = b => b.status!=='request' && startAt(b) - Date.now() < 36e5;
+function mineBtn(b){
+  const [label, js] = b.status==='request' ? ['Ta tillbaka', `cancelMine('${b.id}')`]
+    : tooLate(b) ? ['Hör av dig', `openLate('${b.id}')`] : ['Avboka', `cancelMine('${b.id}')`];
+  return `<button class="btn ghost slim" style="width:auto;flex:none;padding:9px 13px" onclick="${js}">${label}</button>`;
+}
+async function cancelMine(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  if(tooLate(b)) return openLate(id);
+  const req = b.status==='request';
+  if(!confirm(req ? 'Ta tillbaka förfrågan?' : `Avboka ${longDate(b.date).toLowerCase()} ${b.start}–${b.end}?`)) return;
+  if(!await act('cancel_my_booking', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
+  render(); toast(req ? 'Förfrågan borttagen' : 'Avbokad · crewet får veta'); sync(true);
+}
+/* Den kunden hör av sig till är sin producent; deltagaren sin cirkelledare. */
+function myContact(b){
+  const m = me(); if(!m) return null;
+  if(m.r==='customer'){
+    const p = S.contact || byId(m.producer);
+    return p ? {name:p.name||p.n, email:p.email||'', phone:p.phone||''} : null;
+  }
+  const c = circleById((b && b.circleId) || simpleCircle), l = c && c.leader ? byName(c.leader) : null;
+  return l ? {name:l.n, email:l.email||'', phone:l.phone||''} : null;
+}
+const ICO = {
+  tel:'<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
+  sms:'<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1.1-4.6A8 8 0 1121 12z"/></svg>',
+  mail:'<svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>'};
+const contactLinks = (p, subject) => `<div class="contact">
+    ${p.phone?`<a href="${telHref(p.phone)}">${ICO.tel}${esc(p.phone)}</a>
+      <a href="sms:${String(p.phone).replace(/[^\d+]/g,'')}" aria-label="SMS till ${esc(p.name)}">${ICO.sms}SMS</a>`:''}
+    ${p.email?`<a href="mailto:${esc(p.email)}${subject?'?subject='+encodeURIComponent(subject):''}">${ICO.mail}${esc(p.email)}</a>`:''}
+    ${!p.phone&&!p.email?'<span class="muted tiny">Inga kontaktuppgifter</span>':''}
+  </div>`;
+const contactCard = (p, label) => p ? `<div class="eyebrow">${label}<span class="ln"></span></div>
+  <div class="card person"><div class="mname">${esc(p.name)}</div>${contactLinks(p)}</div>` : '';
+function openLate(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  const p = myContact(b), who = p ? p.name : me().r==='customer' ? 'din producent' : 'din cirkelledare';
+  openSheet(`${X}<h2>Mindre än en timme kvar</h2>
+    <div class="sub">${esc(longDate(b.date))} · ${b.start}–${b.end}</div>
+    <div class="note" style="margin-top:14px">Det går inte att avboka i appen när det är mindre än en timme kvar.
+      Hör av dig till <b>${esc(who)}</b> direkt.</div>
+    ${p && (p.phone||p.email) ? `<div class="card person" style="margin-top:12px"><div class="mname">${esc(p.name)}</div>
+        ${contactLinks(p, 'Avbokning ' + longDate(b.date).toLowerCase() + ' ' + b.start)}</div>`
+      : `<div class="tiny muted" style="margin-top:10px">Svara på bokningsbekräftelsen i din mejl, så når du studion.</div>`}`);
+}
+
+/* ---------- KUND ---------- */
 function vCustomer(){
-  const m = me(), now = new Date();
+  const m = me(), now = new Date(), list = booked();
   const mine = live().filter(b=>b.who===m.n && !b.busy).sort((a,b)=>startAt(a)-startAt(b));
   const waiting = mine.filter(b=>b.status==='request' && endAt(b)>now);
   const upcoming = mine.filter(b=>b.status!=='request' && b.status!=='declined' && endAt(b)>now);
   const past = mine.filter(b=>b.status!=='request' && b.status!=='declined' && endAt(b)<=now).reverse();
-  const rate = rateFor(m.n), prod = S.myProducer || (byId(m.producer)||{}).n || '';
-  const days = [...Array(14)].map((_,i)=>iso(addDays(now, i)));
-  if(!custDay || !days.includes(custDay)) custDay = days.find(d=>['A','B'].some(st=>freeBlocks(d, st).length)) || days[0];
-  const row = (b, act) => `<div class="srow ${b.status==='request'?'req':''}">
-      <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
-      <div class="grow" style="min-width:0"><div class="srow-t">${DAY2[fromIso(b.date).getDay()]} · ${b.start}–${b.end}</div>
-        <div class="srow-m">${esc(S.studios[b.studio]||'')}${rate?' · '+Math.round(dur(b)*rate)+' kr':''}${b.status==='request'?' · väntar på svar':''}</div></div>
-      ${act||''}</div>`;
-  const sm = (label, js) => `<button class="btn ghost slim" style="width:auto;flex:none;padding:9px 13px" onclick="${js}">${label}</button>`;
+  const rate = rateFor(m.n), days = bookDays(14), day = pickBookDay(list, days), p = myContact();
+  const sub = b => b.status==='request' ? 'Väntar på svar · studion väljs när den godkänns'
+    : esc(S.studios[b.studio]||'') + (rate ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
   return `
-    <div class="h1">Boka studio</div>
-    <div class="sub">${rate?hh(rate)+' kr per timme':'Pris enligt överenskommelse'}${prod?` · din producent är <b>${esc(prod)}</b>`:''}</div>
+    <div class="h1">Boka studiotid</div>
+    <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':'pris enligt överenskommelse'}</div>
 
-    <div class="eyebrow" style="margin-top:0">LEDIGA TIDER<span class="ln"></span></div>
-    <div class="chips">${days.map(d=>{ const n = ['A','B'].reduce((a,st)=>a+freeBlocks(d, st).length, 0);
-      return `<button class="chip ${custDay===d?'on':''}" ${n?'':'disabled style="opacity:.4"'} onclick="custDay='${d}';render()">${
-        relDay(d) ? relDay(d).toLowerCase().replace(/^./,c=>c.toUpperCase()) : DAY2[fromIso(d).getDay()] + ' ' + fromIso(d).getDate() + '/' + (fromIso(d).getMonth()+1)}</button>`; }).join('')}</div>
-    ${['A','B'].map(st=>{ const fb = freeBlocks(custDay, st);
-      return `<div class="card" style="margin-bottom:var(--s2)"><div class="studio-name">${esc(S.studios[st])}</div>
-        ${fb.length ? `<div class="chips wrap" style="margin-top:10px">${fb.map(f=>`<button class="chip slot" onclick="openCustRequest('${custDay}','${st}','${f.start}','${f.end}')">${f.start}–${f.end}</button>`).join('')}</div>`
-          : `<div class="tiny muted" style="margin-top:8px">Fullbokat den här dagen.</div>`}</div>`; }).join('')}
-    <div class="note">Tryck på en ledig tid och skicka en förfrågan. Du får svar på mejlen — tiden är din först när den är bekräftad.</div>
+    ${slotPicker({list, days, day, dayJs:d=>`bookDay='${d}';render()`, startJs:(d,hm)=>`openSlot('${d}','${hm}')`,
+      mine:b=>b.who===m.n && !b.busy, mineLabel:'Din tid'})}
+    <div class="note">Välj en starttid och skicka en förfrågan. Crewet väljer studio och bekräftar på mejlen —
+      tiden är din först när den är bekräftad.</div>
 
     ${waiting.length?`<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${waiting.length}</span></div>
-      ${waiting.map(b=>row(b, sm('Ta tillbaka',`cancelRequest('${b.id}')`))).join('')}`:''}
-    <div class="eyebrow">BOKADE<span class="ln"></span></div>
-    ${upcoming.length ? upcoming.map(b=>row(b, sm('Avboka',`del('${b.id}')`))).join('') : `<div class="empty">Inga bekräftade bokningar än.</div>`}
-    ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,10).map(b=>row(b)).join('')}`:''}`;
+      ${waiting.map(b=>myRow(b, sub(b), mineBtn(b))).join('')}`:''}
+    <div class="eyebrow">DINA BOKNINGAR<span class="ln"></span></div>
+    ${upcoming.length ? upcoming.map(b=>myRow(b, sub(b), mineBtn(b))).join('') : `<div class="empty">Inga bekräftade bokningar än.</div>`}
+    <div class="tiny muted" style="margin-top:4px;line-height:1.55">Avboka senast en timme innan. Efter det: hör av dig till
+      ${esc(p ? p.name : 'din producent')}.</div>
+    ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
+    ${contactCard(p, 'DIN PRODUCENT')}`;
 }
-function openCustRequest(date, studio, s0, e0){
-  const end = toHm(Math.min(toMin(e0), toMin(s0) + 240));
-  openSheet(`${X}<h2>Skicka förfrågan</h2>
-    <div class="sub">${esc(longDate(date))} · ${esc(S.studios[studio])} · ledigt ${s0}–${e0}</div>
-    <label class="lbl">TID</label>
-    <div class="two"><input type="time" id="crS" value="${s0}" min="${s0}" max="${e0}" step="1800">
-      <input type="time" id="crE" value="${end}" min="${s0}" max="${e0}" step="1800"></div>
-    <label class="lbl" for="crN">MEDDELANDE <span class="muted">(valfritt)</span></label>
-    <textarea id="crN" maxlength="200" placeholder="Vad ska ni göra? Behövs en tekniker?"></textarea>
-    <div id="crMsg"></div>
-    <button class="btn" style="margin-top:20px" onclick="sendCustRequest('${date}','${studio}','${s0}','${e0}')">SKICKA FÖRFRÅGAN</button>`);
+
+/* Förfrågan från kund (request_customer_slot) eller deltagare (request_session).
+   Bara starttiden väljs — slutet är alltid tre timmar senare. */
+function openSlot(date, hm){
+  const m = me(), cust = m.r==='customer', c = cust ? null : circleById(simpleCircle);
+  if(!cust && (!c || !can('requestSession', c))) return toast('Du är inte med i den cirkeln');
+  openSheet(`${X}<h2>${cust ? 'Skicka förfrågan' : 'Föreslå en tid'}</h2>
+    <div class="sub">${esc(longDate(date))}${cust ? '' : ' · ' + esc(c.n) + ' · går till <b>' + esc(c.leader) + '</b>'}</div>
+    <label class="lbl" for="slS">STARTTID</label>
+    <div class="two"><input type="time" id="slS" value="${hm}" step="1800" oninput="paintSlot('${date}', booked(), 'sl')">
+      <div class="slot-end" id="slE"></div></div>
+    <div id="slW"></div>
+    ${cust ? `<label class="lbl" for="slN">MEDDELANDE <span class="muted">(valfritt)</span></label>
+      <textarea id="slN" maxlength="200" placeholder="Vad ska ni göra? Behövs en tekniker?"></textarea>` : ''}
+    <button class="btn" id="slBtn" style="margin-top:20px" onclick="sendSlot('${date}')">SKICKA FÖRFRÅGAN</button>
+    <div class="note">${cust ? 'Crewet väljer studio och bekräftar på mejlen.'
+      : esc(c.leader) + ' väljer studio när förslaget godkänns — då är passet bokat.'} Avboka senast en timme innan.</div>`);
+  paintSlot(date, booked(), 'sl');
 }
-async function sendCustRequest(date, studio, s0, e0){
-  const a = document.getElementById('crS').value, b = document.getElementById('crE').value, note = document.getElementById('crN').value.trim();
-  const msg = t => document.getElementById('crMsg').innerHTML = `<div class="warn">${esc(t)}</div>`;
-  if(!a || !b || toMin(b) <= toMin(a)) return msg('Sluttiden måste vara efter starttiden.');
-  if(toMin(a) < toMin(s0) || toMin(b) > toMin(e0)) return msg(`Välj en tid mellan ${s0} och ${e0}.`);
-  const m = me();
-  const ok = await act('request_customer_slot', {p_date:date, p_start:a, p_end:b, p_studio:studio, p_note:note}, ()=>{
-    S.bookings.push(bump({id:uid(), studio, date, start:a, end:b, who:m.n, title:'Studiotid', note, circleId:'',
-      status:'request', reqBy:m.id, hours:null, present:[], with:[], artistId:'', paid:true, del:false}));
-    save(); });
-  if(!ok) return;
-  closeSheet(); render(); toast('Förfrågan skickad — du får svar på mejlen'); sync(true);
+async function sendSlot(date){
+  const m = me(), a = document.getElementById('slS').value;
+  if(paintSlot(date, booked(), 'sl')!=='ok') return;
+  const b = plusSlot(a);
+  if(m.r==='customer'){
+    const note = document.getElementById('slN').value.trim();
+    const ok = await act('request_customer_slot', {p_date:date, p_start:a, p_end:b, p_studio:'', p_note:note}, ()=>{
+      S.bookings.push(bump({id:uid(), studio:'', date, start:a, end:b, who:m.n, title:'Studiotid', note, circleId:'',
+        status:'request', reqBy:m.id, hours:null, present:[], with:[], artistId:'', paid:true, del:false}));
+      save(); });
+    if(!ok) return;
+    closeSheet(); render(); toast('Förfrågan skickad — du får svar på mejlen'); sync(true);
+  } else {
+    const c = circleById(simpleCircle);
+    const ok = await act('request_session', {p_circle:c.id, p_date:date, p_start:a, p_end:b}, ()=>{
+      S.bookings.push(bump({id:uid(), studio:'', date, start:a, end:b, who:c.leader, title:c.n, note:'', circleId:c.id,
+        status:'request', reqBy:m.id, hours:null, present:[], with:[], artistId:'', paid:false, del:false}));
+      save(); });
+    if(!ok) return;
+    closeSheet(); render(); toast('Förslaget skickat till ' + c.leader); sync(true);
+  }
 }
 
 /* ---------- FÖRFRÅGNINGAR TILL CREWET (IDAG) ----------
@@ -5078,7 +5288,7 @@ function inboxCard(){
     ${reqs.map(b=>`<div class="srow req">
       <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
       <div class="grow" style="min-width:0"><div class="srow-t">${esc(b.who)}</div>
-        <div class="srow-m">${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end} · önskar ${esc(S.studios[b.studio]||'')}${b.note?' · '+esc(b.note):''}</div></div>
+        <div class="srow-m">${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end}${b.studio?' · önskar '+esc(S.studios[b.studio]):''}${b.note?' · '+esc(b.note):''}</div></div>
       <div class="srow-a">${sm('Godkänn',`openApprove('${b.id}')`)}${sm('Avböj',`declineRequest('${b.id}')`,1)}</div></div>`).join('')}`;
 }
 function openLead(id){
@@ -5088,38 +5298,51 @@ function openLead(id){
     <div class="sub">Ny kund · vill boka ${esc(longDate(l.date))} ${l.start_t}–${l.end_t}</div>
     <div style="margin-top:12px">
       ${l.phone?`<div class="kv"><span>TELEFON</span><b><a href="tel:${esc(l.phone)}" style="color:var(--txt)">${esc(l.phone)}</a></b></div>`:''}
-      <div class="kv"><span>E-POST</span><b><a href="mailto:${esc(l.email)}" style="color:var(--txt)">${esc(l.email)}</a></b></div>
+      ${l.email?`<div class="kv"><span>E-POST</span><b><a href="mailto:${esc(l.email)}" style="color:var(--txt)">${esc(l.email)}</a></b></div>`:''}
       ${l.message?`<div class="kv" style="border:0"><span>MEDDELANDE</span><b style="font-weight:500">${esc(l.message)}</b></div>`:''}</div>
     <label class="lbl">GODKÄNN I</label>
     <div class="studiopick">${['A','B'].map(st=>{ const ok = free.includes(st);
       return `<button class="spick ${l.studio===st&&ok?'on':''}" ${ok?`onclick="approveLead('${l.id}','${st}')"`:'disabled'} style="${ok?'':'opacity:.4'}">
         <b>${esc(S.studios[st])}</b><span>${ok?(l.studio===st?'Önskad · ledig':'Ledig'):'Upptagen'}</span></button>`; }).join('')}</div>
-    <div class="note">Godkänn = tiden bokas och kunden får en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.</div>
+    <div class="note">${l.email ? 'Godkänn = tiden bokas och kunden får en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.'
+      : 'Kunden har bara lämnat telefonnummer. Godkänn = tiden bokas, och du får en färdig text med länken att skicka som sms.'}</div>
     <button class="btn ghost" style="margin-top:14px" onclick="declineLead('${l.id}')">AVBÖJ</button>`);
 }
+let leadText = '';
 async function approveLead(id, studio){
   const l = (S.leads||[]).find(x=>x.id===id); if(!l) return;
+  let tok = null;
   try{
     if(PREVIEW_LOGIN){
       if(!freeAt(studio, l.date, l.start_t, l.end_t, null)) throw new Error('Studion hann bli upptagen');
       S.bookings.push(bump({id:uid(), studio, date:l.date, start:l.start_t, end:l.end_t, who:l.name, title:'Studiotid',
         note:l.message||'', circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, leadId:l.id, del:false}));
-      const tok = localToken();
+      tok = localToken();
       S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0,
         closed:false, created:Date.now(), name:l.name, email:l.email||null, lead_id:l.id});
       Object.assign(l, {status:'approved', invite:tok}); save();
-      toast('Bokad · i drift får kunden ett mejl med länken');
+      if(l.email) toast('Bokad · i drift får kunden ett mejl med länken');
     } else {
-      await sbRpc('approve_lead', {p_lead:id, p_studio:studio, p_url:appUrl()});
-      l.status = 'approved'; await sync(true);
-      toast('Bokad · kunden får en bekräftelse med länken på mejlen');
+      const r = await sbRpc('approve_lead', {p_lead:id, p_studio:studio, p_url:appUrl()});
+      tok = r && r.invite; l.status = 'approved'; await sync(true);
+      if(l.email) toast('Bokad · kunden får en bekräftelse med länken på mejlen');
     }
-    closeSheet(); render();
+    render();
+    if(l.email || !tok) return closeSheet();
+    /* ingen e-post: crewet skickar bekräftelsen och länken själva */
+    leadText = `Hej ${l.name.split(' ')[0]}! Din tid ${longDate(l.date).toLowerCase()} ${l.start_t}–${l.end_t} är bokad i ${S.studios[studio]}. `
+      + `Skapa ditt konto i BANDOHQ här: ${inviteUrl(tok)}`;
+    openSheet(`${X}<h2>Bokad</h2>
+      <div class="sub">${esc(l.name)} har ingen e-post — skicka bekräftelsen själv.</div>
+      <div class="note" style="margin-top:14px;white-space:pre-wrap">${esc(leadText)}</div>
+      ${l.phone ? `<a class="btn" style="display:block;text-align:center;text-decoration:none;margin-top:14px"
+        href="sms:${esc(l.phone)}?&body=${encodeURIComponent(leadText)}">SKICKA SOM SMS</a>` : ''}
+      <button class="btn ghost" style="margin-top:9px" onclick="copy(leadText,'Texten kopierad')">KOPIERA TEXTEN</button>`);
   }catch(e){ toast(e.message); }
 }
 async function declineLead(id){
   const l = (S.leads||[]).find(x=>x.id===id); if(!l) return;
-  if(!confirm(`Avböj ${l.name}? Kunden får ett mejl.`)) return;
+  if(!confirm(l.email ? `Avböj ${l.name}? Kunden får ett mejl.` : `Avböj ${l.name}? Kunden har ingen e-post — hör av dig på ${l.phone}.`)) return;
   try{
     if(!PREVIEW_LOGIN) await sbRpc('decline_lead', {p_lead:id, p_reason:''});
     l.status = 'declined'; save(); closeSheet(); render(); toast('Avböjd');
@@ -5130,13 +5353,13 @@ async function declineLead(id){
    Ingen inloggning. Lediga tider utan namn, en förfrågan, kvitto och svar på mejlen. */
 let pubDraft = null, pubBusy = null;
 async function renderPublic(tag, b){
-  tag.innerHTML = `Boka studiotid. Vi svarar på mejlen — sedan får du ett eget konto.`;
-  if(!pubDraft) pubDraft = {day:null, studio:'', start:'', end:'', done:false};
+  tag.innerHTML = `Boka studiotid. Ett pass är tre timmar — vi bekräftar och hör av oss.`;
+  if(!pubDraft) pubDraft = {day:null, start:'', done:false};
   const d = pubDraft;
   if(d.done){
     b.innerHTML = `<div class="okbox"><b>Tack!</b> Vi har fått din förfrågan för ${esc(longDate(d.day))} ${d.start}–${d.end}.
-      Ett kvitto och svaret kommer på mejlen till <b>${esc(d.email)}</b>.</div>
-      <button class="btn ghost" style="margin-top:14px" onclick="pubDraft=null;renderGate()">SKICKA EN TILL</button>
+      ${d.email ? `Ett kvitto och svaret kommer på mejlen till <b>${esc(d.email)}</b>.` : `Vi hör av oss på <b>${esc(d.phone)}</b>.`}</div>
+      <button class="btn ghost" style="margin-top:14px" onclick="Object.assign(pubDraft,{day:null,start:'',done:false});renderGate()">SKICKA EN TILL</button>
       <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
     return;
   }
@@ -5154,56 +5377,62 @@ async function renderPublic(tag, b){
                                      body:JSON.stringify({p_from:from, p_to:to})}); if(!r.ok) throw new Error(await sbErr(r)); return r.json(); })(); }
     catch(e){ pubBusy = null; b.innerHTML = `<div class="warn">${esc(e.message)}</div>`; return; }
   }
-  const days = [...Array(21)].map((_,i)=>iso(addDays(new Date(), i)));
-  if(!d.day) d.day = days.find(x=>['A','B'].some(st=>freeBlocks(x, st, pubBusy).length)) || days[0];
+  const days = bookDays(21);
+  if(!d.day || !days.includes(d.day)) d.day = days.find(x=>dayState(x, pubBusy)==='free') || days[0];
+  /* fälten sparas i pubDraft medan man skriver — sidan ritas om när man byter tid */
+  const keep = k => `oninput="pubDraft.${k}=this.value"`;
   b.innerHTML = `
-    <label class="lbl">VÄLJ DAG</label>
-    <div class="chips">${days.map(x=>{ const n = ['A','B'].reduce((a,st)=>a+freeBlocks(x, st, pubBusy).length, 0);
-      return `<button class="chip ${d.day===x?'on':''}" ${n?'':'disabled style="opacity:.4"'} onclick="pubDraft.day='${x}';pubDraft.start='';renderGate()">${
-        DAY2[fromIso(x).getDay()]} ${fromIso(x).getDate()}/${fromIso(x).getMonth()+1}</button>`; }).join('')}</div>
-    <label class="lbl">LEDIGA TIDER</label>
-    ${['A','B'].map(st=>{ const fb = freeBlocks(d.day, st, pubBusy);
-      return `<div class="tiny muted" style="margin:8px 0 6px">${esc(S.studios[st])}</div>
-        <div class="chips wrap">${fb.length ? fb.map(f=>`<button class="chip ${d.studio===st&&d.block===f.start?'on':''}"
-          onclick="Object.assign(pubDraft,{studio:'${st}',block:'${f.start}',bEnd:'${f.end}',start:'${f.start}',end:'${toHm(Math.min(toMin(f.end), toMin(f.start)+240))}'});renderGate()">${f.start}–${f.end}</button>`).join('')
-          : '<span class="tiny muted">Fullbokat</span>'}</div>`; }).join('')}
+    ${slotPicker({list:pubBusy, days, day:d.day, sel:d.start,
+      dayJs:x=>`pubDraft.day='${x}';pubDraft.start='';renderGate()`, startJs:(x,hm)=>`pubDraft.start='${hm}';renderGate()`})}
     ${d.start ? `<form class="gate-form" onsubmit="event.preventDefault();sendPublic()">
-      <label class="lbl">TID</label>
-      <div class="two"><input type="time" id="puS" value="${d.start}" step="1800"><input type="time" id="puE" value="${d.end}" step="1800"></div>
-      <label class="lbl" for="puN">NAMN</label><input id="puN" autocomplete="name" maxlength="60" required>
-      <label class="lbl" for="puM">E-POST</label><input id="puM" type="email" autocomplete="email" required>
+      <label class="lbl" for="puS">STARTTID</label>
+      <div class="two"><input type="time" id="puS" value="${d.start}" step="1800"
+        oninput="pubDraft.start=this.value;paintSlot(pubDraft.day, pubBusy, 'pu')"><div class="slot-end" id="puE"></div></div>
+      <div id="puW"></div>
+      <label class="lbl" for="puN">NAMN</label>
+      <input id="puN" autocomplete="name" maxlength="60" required value="${esc(d.name||'')}" ${keep('name')}>
+      <label class="lbl" for="puP">TELEFON</label>
+      <input id="puP" type="tel" autocomplete="tel" inputmode="tel" maxlength="20" value="${esc(d.phone||'')}" ${keep('phone')}>
+      <label class="lbl" for="puM">E-POST</label>
+      <input id="puM" type="email" autocomplete="email" maxlength="120" value="${esc(d.email||'')}" ${keep('email')}>
+      <div class="tiny muted" style="margin-top:7px;line-height:1.5">Fyll i telefon eller e-post — gärna båda. Med e-post får du ett kvitto direkt.</div>
       <label class="lbl" for="puX">VAD SKA DU GÖRA? <span class="muted">(valfritt)</span></label>
-      <textarea id="puX" maxlength="300" placeholder="Inspelning, mix, hur många ni är…"></textarea>
+      <textarea id="puX" maxlength="300" placeholder="Inspelning, mix, hur många ni är…" ${keep('msg')}>${esc(d.msg||'')}</textarea>
       <input id="puH" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px" aria-hidden="true">
-      <label class="consent"><input type="checkbox" id="puC" required>
+      <label class="consent"><input type="checkbox" id="puC" required ${d.agreed?'checked':''} onchange="pubDraft.agreed=this.checked">
         <span>Jag har läst <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur mina uppgifter hanteras</a></span></label>
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKICKAR…':'SKICKA FÖRFRÅGAN'}</button>
       ${gateErrBox()}</form>` : ''}
     <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
+  if(d.start) paintSlot(d.day, pubBusy, 'pu');
 }
 function sendPublic(){
-  const d = pubDraft, v = id => document.getElementById(id).value.trim();
-  const f = {name:v('puN'), email:v('puM'), msg:v('puX'), hp:v('puH'), start:v('puS'), end:v('puE')};
-  const agreed = (document.getElementById('puC')||{}).checked;
+  const d = pubDraft, v = id => ((document.getElementById(id)||{}).value || '').trim();
+  Object.assign(d, {start:v('puS'), name:v('puN'), phone:v('puP'), email:v('puM').toLowerCase(), msg:v('puX'),
+    agreed:!!(document.getElementById('puC')||{}).checked});
+  const hp = v('puH');
   return gateRun(async ()=>{
-    if(!agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
-    if(!f.start || !f.end || toMin(f.end) <= toMin(f.start)) throw new Error('Sluttiden måste vara efter starttiden');
-    if(toMin(f.start) < toMin(d.block) || toMin(f.end) > toMin(d.bEnd)) throw new Error(`Välj en tid mellan ${d.block} och ${d.bEnd}`);
-    if(!EMAIL_RE.test(f.email)) throw new Error('Fyll i din e-post — svaret kommer på mejlen');
+    if(!d.agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
+    const st = slotState(d.day, pubBusy, d.start);
+    if(st!=='ok') throw new Error(slotWhy(st));
+    if(d.name.length < 2) throw new Error('Fyll i ditt namn');
+    if(!d.phone && !d.email) throw new Error('Fyll i telefonnummer eller e-post, så att vi kan nå dig');
+    if(d.phone && !normPhone(d.phone)) throw new Error('Telefonnumret ser fel ut');
+    if(d.email && !EMAIL_RE.test(d.email)) throw new Error('E-postadressen ser fel ut');
+    const end = plusSlot(d.start);
     if(PREVIEW_LOGIN){
-      if(f.hp) return;
-      if(f.name.length < 2) throw new Error('Fyll i ditt namn');
-      S.leads = (S.leads||[]).concat({id:'l_'+uid(), name:f.name, email:f.email, phone:'', date:d.day,
-        start_t:f.start, end_t:f.end, studio:d.studio, message:f.msg, status:'new', created_at:new Date().toISOString()});
+      if(hp) return;
+      S.leads = (S.leads||[]).concat({id:'l_'+uid(), name:d.name, email:d.email||null, phone:normPhone(d.phone)||'', date:d.day,
+        start_t:d.start, end_t:end, studio:null, message:d.msg, status:'new', created_at:new Date().toISOString()});
       save();
     } else {
       const r = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST',
         headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
-        body:JSON.stringify({p_name:f.name, p_email:f.email, p_phone:'', p_date:d.day, p_start:f.start, p_end:f.end,
-          p_studio:d.studio, p_message:f.msg, p_hp:f.hp})});
+        body:JSON.stringify({p_name:d.name, p_email:d.email, p_phone:d.phone, p_date:d.day, p_start:d.start, p_end:end,
+          p_studio:'', p_message:d.msg, p_hp:hp})});
       if(!r.ok) throw new Error(await sbErr(r));
     }
-    Object.assign(d, {done:true, email:f.email, start:f.start, end:f.end});
+    Object.assign(d, {done:true, end});
   });
 }
 function leavePublic(){
@@ -5213,53 +5442,6 @@ function leavePublic(){
 }
 
 /* ---------- FÖRFRÅGNINGAR ---------- */
-function openRequest(cid){
-  const c = circleById(cid), m = me();
-  if(!c || !can('requestSession', c)) return toast('Du är inte med i den cirkeln');
-  const t = addDays(new Date(), 1);
-  openSheet(`${X}
-    <h2>Föreslå en tid</h2>
-    <div class="sub">${esc(c.n)} · går till <b>${esc(c.leader)}</b></div>
-    <label class="lbl">DATUM</label>
-    <input type="date" id="rqD" value="${iso(t)}" min="${iso(new Date())}">
-    <div class="chips" style="margin-top:8px">
-      ${[1,2,3,4,5,6,7].map(n=>{const dd=iso(addDays(new Date(),n));
-        return `<button class="chip" onclick="document.getElementById('rqD').value='${dd}'">${
-          n===1?'IMORGON':longDate(dd).toUpperCase()}</button>`;}).join('')}
-    </div>
-    <label class="lbl">TID</label>
-    <div class="two"><input type="time" id="rqS" value="18:00"><input type="time" id="rqE" value="21:00"></div>
-    <div class="chips" style="margin-top:8px">
-      ${PRESETS.map(pr=>`<button class="chip"
-        onclick="document.getElementById('rqS').value='${pr[0]}';document.getElementById('rqE').value='${pr[1]}'">${pr[0]}–${pr[1]}</button>`).join('')}
-    </div>
-    <div id="rqMsg"></div>
-    <button class="btn" style="margin-top:20px" onclick="sendRequest('${cid}')">SKICKA FÖRFRÅGAN</button>
-    <div class="note">Ingen studio reserveras än. ${esc(c.leader)} väljer studio när
-      förfrågan godkänns — då blir tiden bokad på riktigt.</div>`);
-}
-async function sendRequest(cid){
-  const c = circleById(cid), m = me();
-  const d = document.getElementById('rqD').value;
-  const a = document.getElementById('rqS').value, b = document.getElementById('rqE').value;
-  const msg = document.getElementById('rqMsg');
-  if(!d || !a || !b){ msg.innerHTML = '<div class="warn">Fyll i datum och tid.</div>'; return; }
-  if(a === b){ msg.innerHTML = '<div class="warn">Start och slut är samma tid.</div>'; return; }
-  const ok = await act('request_session', {p_circle:cid, p_date:d, p_start:a, p_end:b}, ()=>{
-    S.bookings.push({id:uid(), studio:'', date:d, start:a, end:b, who:c.leader,
-      title:c.n, note:'', circleId:cid, status:'request', reqBy:m.id,
-      hours:null, present:[], up:Date.now(), del:false, paid:false});
-    save(); });
-  if(!ok) return;
-  closeSheet(); render(); toast('Förfrågan skickad till '+c.leader); sync(true);
-}
-async function cancelRequest(id){
-  const b = S.bookings.find(x=>x.id===id); if(!b) return;
-  if(b.reqBy !== (me()||{}).id) return toast('Det är inte din förfrågan');
-  if(!confirm('Ta tillbaka förfrågan?')) return;
-  if(!await act('cancel_my_booking', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
-  render(); toast('Förfrågan borttagen'); sync(true);
-}
 /* Cirkelförfrågan: ledaren. Kundförfrågan: admins och kundens producent. */
 const mayAnswer = b => b.circleId ? can('answerRequest', circleById(b.circleId)) : can('answerCustomer', b);
 function openApprove(id){
@@ -5737,14 +5919,21 @@ function saveRates(){
 }
 
 /* ---------- BOKA / REDIGERA ---------- */
-const PRESETS = [['10:00','14:00'],['14:00','18:00'],['18:00','22:00'],['22:00','02:00'],['12:00','20:00']];
+/* Snabbval: tre timmar i taget från öppningen, och ett nattpass efter. Tiden går att ändra. */
+function presets(){
+  const out = []; let t = toMin(openFrom());
+  for(; t + SLOT <= dayEnd(); t += SLOT) out.push([toHm(t), toHm(t + SLOT)]);
+  if(t < 1440) out.push([toHm(t), toHm((t + SLOT) % 1440)]);
+  return out;
+}
 function openForm(id, date, circleId, asCustomer){
   const m = me(); if(!m) return;
   editId = id || null;
   const b = id ? S.bookings.find(x=>x.id===id) : null;
   if(b && !can('editBooking',b)) return toast('Du kan bara ändra dina egna pass');
   const d = b ? b.date : (date || selDate || iso(new Date()));
-  const v = Object.assign({studio:'A', date:d, start:'14:00', end:'18:00', who:m.n, title:'', note:'', paid:false, circleId:''}, b||{});
+  const pr = presets(), p0 = pr[1] || pr[0] || ['13:00','16:00'];
+  const v = Object.assign({studio:'A', date:d, start:p0[0], end:p0[1], who:m.n, title:'', note:'', paid:false, circleId:''}, b||{});
   /* En cirkelsession är en vanlig bokning med circleId satt. Därför hamnar
      den i samma kalender som crewets pass och krockkollen gäller över båda. */
   const cid = circleId || v.circleId || '';
@@ -5773,10 +5962,10 @@ function openForm(id, date, circleId, asCustomer){
     </div>
 
     <label class="lbl">TID</label>
-    <div class="two"><input type="time" id="fStart" value="${v.start}" onchange="checkForm()">
+    <div class="two"><input type="time" id="fStart" value="${v.start}" data-prev="${v.start}" onchange="shiftEnd()">
       <input type="time" id="fEnd" value="${v.end}" onchange="checkForm()"></div>
     <div class="chips" style="margin-top:8px">
-      ${PRESETS.map(p=>`<button class="chip" onclick="setTime('${p[0]}','${p[1]}')">${p[0]}–${p[1]}</button>`).join('')}
+      ${pr.map(p=>`<button class="chip" onclick="setTime('${p[0]}','${p[1]}')">${p[0]}–${p[1]}</button>`).join('')}
     </div>
 
     ${circ ? `<div class="note" style="margin-top:18px">Bokas som cirkelsession för
@@ -5839,7 +6028,17 @@ function pickWho(w){
   document.querySelectorAll('.chip.who').forEach(el=>el.classList.toggle('on',el.dataset.w===w));
 }
 function setDate(d){ document.getElementById('fDate').value=d; checkForm(); }
-function setTime(a,b){ document.getElementById('fStart').value=a; document.getElementById('fEnd').value=b; checkForm(); }
+function setTime(a,b){ const s = document.getElementById('fStart'); s.value = s.dataset.prev = a; document.getElementById('fEnd').value=b; checkForm(); }
+/* Flyttar man starttiden följer sluttiden med — passet behåller sin längd (tre timmar som förval). */
+function shiftEnd(){
+  const s = document.getElementById('fStart'), e = document.getElementById('fEnd'), ok = t => /^\d\d:\d\d$/.test(t||'');
+  if(ok(s.value) && ok(s.dataset.prev) && ok(e.value)){
+    const len = (toMin(e.value) - toMin(s.dataset.prev) + 1440) % 1440 || SLOT;
+    e.value = toHm((toMin(s.value) + len) % 1440);
+  }
+  if(ok(s.value)) s.dataset.prev = s.value;
+  checkForm();
+}
 function readForm(){
   return {studio:document.getElementById('fStudio').value, date:document.getElementById('fDate').value,
     start:document.getElementById('fStart').value, end:document.getElementById('fEnd').value,
