@@ -15,6 +15,9 @@ alter table leads enable row level security;
 alter table outbox enable row level security;
 alter table push_subs enable row level security;
 alter table login_fails enable row level security;
+alter table circle_membership enable row level security;
+alter table circle_signups enable row level security;
+alter table bs_secrets enable row level security;
 
 -- ---------- hjälpare (security definer: går förbi RLS internt) ----------
 create or replace function bs_me() returns members
@@ -48,24 +51,48 @@ language sql stable security definer set search_path = public as $$
   select coalesce(bs_my_role()::text = 'camera', false)
 $$;
 
-/* Får jag LÄSA posten? */
+/* Leder jag cirkeln? (ledaren sitter som namn på cirkelposten) */
+create or replace function bs_leads_circle(p_data jsonb) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(p_data->>'leader','') <> '' and p_data->>'leader' = (bs_me()).name
+$$;
+/* Leder jag en cirkel som personen är med i? Ledaren ser sina deltagare, ingen annans. */
+create or replace function bs_leads_member(p_member text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from records where kind = 'circle' and not del
+                    and data->>'leader' = (bs_me()).name and data->'members' ? p_member)
+$$;
+
+/* Får jag LÄSA posten?
+   Admin och manager: allt utom andras mål och planer (managern ser dem också).
+   Producenter: schemat, artister, beats, agenda m.m. — men bara cirklar de själva leder.
+   Cirkelpassen syns i kalendern för alla (studion är upptagen), men deltagarlistorna
+   ligger på cirkelposten och följer cirkeln. */
 create or replace function bs_can_read(p_kind text, p_id text, p_data jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
   select case
     when bs_is_crew() then
-         p_kind not in ('goal','plan')
-      or bs_is_manager()
-      or (p_kind = 'goal' and p_data->>'owner' = bs_my_id())
-      or (p_kind = 'plan' and p_id = bs_my_id())
+      case
+        when p_kind in ('goal','plan') then bs_is_manager()
+             or (p_kind = 'goal' and p_data->>'owner' = bs_my_id())
+             or (p_kind = 'plan' and p_id = bs_my_id())
+        when p_kind = 'circle' then bs_is_admin() or bs_leads_circle(p_data)
+        else true end
     when bs_is_camera() then p_kind in ('booking','artist','agenda','media','setting')
     else false end
 $$;
-/* Får jag SKRIVA posten? Crewet som förut. Kameran: sin egen agenda (och de
-   gemensamma uppgifterna, som alla får bocka av) och sina egna galleriposter. */
+/* Får jag SKRIVA posten?
+   Cirklar, läroplaner och kurser: bara admin. Cirkelpass: bara admin direkt — ledarna
+   bokar, flyttar och markerar via funktionerna (03), som kontrollerar tre timmar,
+   krockar och timbanken. Kameran: sin egen agenda och sina egna galleriposter. */
 create or replace function bs_can_write(p_kind text, p_id text, p_data jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
   select case
+    when bs_is_admin() then bs_can_read(p_kind, p_id, p_data)
     when bs_is_crew() then bs_can_read(p_kind, p_id, p_data)
+         and p_kind not in ('circle','curriculum','course')
+         and not (p_kind = 'booking' and coalesce(p_data->>'circleId','') <> '')
+         and not (p_kind = 'setting' and p_id = 'circles')
     when bs_is_camera() then
          (p_kind = 'agenda' and coalesce(p_data->>'who','') in ('', (bs_me()).name))
       or (p_kind = 'media'  and p_data->>'by' = bs_my_id())
@@ -76,11 +103,13 @@ create or replace function bs_can_record(p_kind text, p_id text, p_data jsonb) r
 language sql stable security definer set search_path = public as $$ select bs_can_write(p_kind, p_id, p_data) $$;
 
 -- ---------- konton ----------
-/* Crewet ser alla konton. Kameran ser bara teamet (crew + kamera), inte
-   deltagarnas eller kundernas kontaktuppgifter. Alla ser sig själva. */
+/* Admin ser alla konton. Producenter ser crewet, kamerateamet, kunderna och
+   ledarna — men cirkeldeltagare bara i cirklar de själva leder. Kameran ser bara
+   teamet (crew + kamera). Alla ser sig själva. */
 drop policy if exists members_read on members;
 create policy members_read on members for select to authenticated
-  using (bs_is_crew() or user_id = auth.uid()
+  using (bs_is_admin() or user_id = auth.uid()
+      or (bs_is_crew() and (role::text <> 'participant' or bs_leads_member(id)))
       or (bs_is_camera() and role::text in ('manager','admin','producer','camera')));
 
 drop policy if exists members_manager on members;
@@ -164,3 +193,12 @@ drop policy if exists records_update on records;
 create policy records_update on records for update to authenticated
   using (bs_can_write(kind, id, data)) with check (bs_can_write(kind, id, data));
 -- Ingen DELETE-policy: borttagning är del = true, så att synken kan sprida den.
+
+-- ---------- cirklarnas tabeller ----------
+drop policy if exists membership_read on circle_membership;
+create policy membership_read on circle_membership for select to authenticated using (bs_is_admin());
+drop policy if exists signups_read on circle_signups;
+create policy signups_read on circle_signups for select to authenticated using (bs_is_admin());
+-- (anmälningar kommer bara via circle_signup och hanteras via place_signup / reject_signup;
+--  bs_secrets har ingen policy alls)
+

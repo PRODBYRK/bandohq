@@ -130,14 +130,22 @@ end $$;
    Kör som anroparen (security invoker) — RLS gäller, och poster man inte
    får skriva (t.ex. någon annans mål) hoppas över i stället för att fälla
    hela omgången. */
+/* Får jag skriva över posten som redan ligger där (om någon)? Läser förbi RLS — annars
+   skulle en post man inte får se ge ett fel som stoppar hela synkomgången. */
+create or replace function bs_existing_writable(p_kind text, p_id text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select bs_can_write(kind, id, data) from records where kind = p_kind and id = p_id), true)
+$$;
 create or replace function push_records(rows jsonb) returns int
 language plpgsql security invoker set search_path = public as $$
 declare n int;
 begin
+  /* Poster man inte får skriva hoppas över tyst — resten av omgången går igenom. */
   insert into records (kind, id, data, up, del)
   select x->>'kind', x->>'id', x->'data', (x->>'up')::bigint, coalesce((x->>'del')::boolean, false)
     from jsonb_array_elements(rows) x
    where bs_can_write(x->>'kind', x->>'id', x->'data')
+     and bs_existing_writable(x->>'kind', x->>'id')
   on conflict (kind, id) do update
      set data = excluded.data, up = excluded.up, del = excluded.del
    where records.up < excluded.up;
@@ -326,13 +334,159 @@ language sql security definer set search_path = public as $$
 $$;
 
 -- =====================================================================
+--  CIRKLARNA — regler, timbank och krockar
+--  Siffrorna ligger i inställningen setting/circles, som admin ändrar i appen
+--  (Cirklar → Regler). Saknas ett värde gäller standardvärdet här.
+-- =====================================================================
+create or replace function bs_ccfg(p_key text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select data->p_key from records where kind = 'setting' and id = 'circles' and not del and data ? p_key),
+    jsonb_build_object('groupSize', 4, 'attendTarget', 3, 'startSessions', 3, 'sessionHours', 3,
+      'leaderYearMax', 480, 'leaderMaxFrom', 2027, 'participantMax', 480,
+      'warn', jsonb_build_array(400, 440, 470))->p_key)
+$$;
+/* 474 → "474", 2.5 → "2,5" */
+create or replace function bs_fmt_h(n numeric) returns text
+language sql immutable as $$ select replace(regexp_replace(to_char(n, 'FM99990.9'), '\.0?$', ''), '.', ',') $$;
+/* Passets längd i timmar. */
+create or replace function bs_len_h(d jsonb) returns numeric
+language sql immutable as $$ select (extract(epoch from upper(bs_span(d)) - lower(bs_span(d))) / 3600)::numeric $$;
+
+/* Ledarens timmar ett kalenderår: genomförda pass med sina registrerade timmar,
+   bokade pass med passets längd. Förfrågningar och avböjda räknas inte. */
+create or replace function bs_leader_hours(p_leader text, p_year int, p_ignore text default null)
+returns table(done numeric, planned numeric)
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(case when data->>'status' = 'done' then coalesce((data->>'hours')::numeric, 0) end), 0),
+         coalesce(sum(case when coalesce(data->>'status','') = '' then bs_len_h(data) end), 0)
+    from records
+   where kind = 'booking' and not del and coalesce(data->>'circleId','') <> ''
+     and data->>'leaderId' = p_leader and id <> coalesce(p_ignore, '')
+     and coalesce(data->>'status','') in ('', 'done')
+     and left(data->>'date', 4) = p_year::text
+$$;
+
+/* Krockar ett cirkelpass för ledaren eller någon av deltagarna? Svarar med en
+   förklaring, eller null. (Studion kollas för sig med bs_clash.) */
+create or replace function bs_circle_conflict(d jsonb, p_ignore text) returns text
+language plpgsql stable security definer set search_path = public as $$
+declare sp tsrange := bs_span(d); lid text := nullif(d->>'leaderId',''); lname text; mem jsonb; hit record;
+begin
+  select coalesce(data->'members','[]'::jsonb), nullif(data->>'leader','') into mem, lname
+    from records where kind = 'circle' and id = d->>'circleId';
+  /* ledaren: ett annat cirkelpass hen leder, eller ett studiopass där hen bokat eller är med */
+  select r.data->>'title' t, r.data->>'start' s, r.data->>'end' e into hit
+    from records r
+   where r.kind = 'booking' and not r.del and r.id <> coalesce(p_ignore,'')
+     and coalesce(r.data->>'status','') not in ('request','declined')
+     and bs_span(r.data) && sp
+     and ((lid is not null and r.data->>'leaderId' = lid)
+       or (lname is not null and coalesce(r.data->>'circleId','') = ''
+           and (r.data->>'who' = lname or coalesce(r.data->'with','[]'::jsonb) ? lname)))
+   limit 1;
+  if found then
+    return coalesce(lname, 'Ledaren') || ' har redan ' || coalesce(nullif(hit.t,''), 'ett pass') || ' ' || hit.s || '–' || hit.e;
+  end if;
+  /* deltagarna: ett annat cirkelpass samtidigt där någon av gruppens deltagare är med */
+  select r.data->>'title' t, r.data->>'start' s, r.data->>'end' e, m.name n into hit
+    from records r
+    join records c on c.kind = 'circle' and c.id = r.data->>'circleId' and not c.del
+    cross join lateral jsonb_array_elements_text(coalesce(c.data->'members','[]'::jsonb)) x(mid)
+    join members m on m.id = x.mid
+   where r.kind = 'booking' and not r.del and r.id <> coalesce(p_ignore,'')
+     and r.data->>'circleId' <> coalesce(d->>'circleId','')
+     and coalesce(r.data->>'status','') not in ('request','declined')
+     and bs_span(r.data) && sp
+     and mem ? x.mid
+   limit 1;
+  if found then
+    return hit.n || ' är med i ' || coalesce(nullif(hit.t,''), 'en annan cirkel') || ' ' || hit.s || '–' || hit.e;
+  end if;
+  return null;
+end $$;
+
+/* Allt som måste stämma innan ett cirkelpass bokas eller flyttas: passlängden, krockar
+   och ledarens timbank (från leaderMaxFrom, t.ex. 2027). p_extra = timmar som planeras
+   i samma omgång (återkommande pass). Kastar ett fel med förklaringen. */
+create or replace function bs_check_circle_session(d jsonb, p_ignore text, p_extra numeric default 0) returns void
+language plpgsql security definer set search_path = public as $$
+declare hrs numeric := bs_len_h(d); want numeric := (bs_ccfg('sessionHours'))::text::numeric;
+        yr int := left(d->>'date', 4)::int; mx numeric := (bs_ccfg('leaderYearMax'))::text::numeric;
+        y0 int := (bs_ccfg('leaderMaxFrom'))::text::int; u record; msg text;
+begin
+  if want > 0 and hrs <> want then raise exception 'Ett cirkelpass är % timmar', bs_fmt_h(want); end if;
+  msg := bs_circle_conflict(d, p_ignore);
+  if msg is not null then raise exception 'Krock: %', msg; end if;
+  if nullif(d->>'leaderId','') is not null and mx > 0 and yr >= y0 then
+    select * into u from bs_leader_hours(d->>'leaderId', yr, p_ignore);
+    if u.done + u.planned + coalesce(p_extra,0) + hrs > mx then
+      raise exception '% har % av % timmar % — passet skulle gå över gränsen',
+        coalesce((select name from members where id = d->>'leaderId'), 'Ledaren'),
+        bs_fmt_h(u.done + u.planned + coalesce(p_extra,0)), bs_fmt_h(mx), yr;
+    end if;
+  end if;
+end $$;
+
+/* Cirkelpass får ledarens id — stabil nyckel för timbanken (namnet kan bytas). */
+create or replace function bs_circle_booking_fill() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(new.data->>'circleId','') <> '' and coalesce(new.data->>'leaderId','') = '' then
+    new.data := new.data || jsonb_build_object('leaderId',
+      (select m.id from records c join members m on lower(m.name) = lower(c.data->>'leader')
+        where c.kind = 'circle' and c.id = new.data->>'circleId' and coalesce(c.data->>'leader','') <> '' limit 1));
+  end if;
+  return new;
+end $$;
+drop trigger if exists records_circle_fill on records;
+create trigger records_circle_fill before insert or update on records
+  for each row when (new.kind = 'booking') execute function bs_circle_booking_fill();
+
+/* Cirkeln ändras: medlemshistoriken skrivs (vem kom med, vem lämnade), och byts
+   ledaren följer kommande pass med till den nya. */
+create or replace function bs_circle_changed() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare oldm jsonb := case when tg_op = 'UPDATE' and not old.del then coalesce(old.data->'members','[]'::jsonb) else '[]'::jsonb end;
+        newm jsonb := case when new.del then '[]'::jsonb else coalesce(new.data->'members','[]'::jsonb) end;
+        x text; lid text; t bigint := now_ms();
+begin
+  for x in select jsonb_array_elements_text(newm) except select jsonb_array_elements_text(oldm) loop
+    insert into circle_membership(circle_id, member_id) values (new.id, x);
+  end loop;
+  for x in select jsonb_array_elements_text(oldm) except select jsonb_array_elements_text(newm) loop
+    update circle_membership set left_at = now() where circle_id = new.id and member_id = x and left_at is null;
+  end loop;
+  if tg_op = 'UPDATE' and coalesce(old.data->>'leader','') is distinct from coalesce(new.data->>'leader','') then
+    lid := (select id from members where lower(name) = lower(new.data->>'leader') limit 1);
+    update records set data = data || jsonb_build_object('leaderId', lid, 'who', coalesce(new.data->>'leader',''), 'up', t), up = t
+     where kind = 'booking' and not del and data->>'circleId' = new.id
+       and coalesce(data->>'status','') in ('', 'request') and data->>'date' >= to_char(current_date, 'YYYY-MM-DD');
+  end if;
+  return new;
+end $$;
+drop trigger if exists records_circle_changed on records;
+create trigger records_circle_changed after insert or update on records
+  for each row when (new.kind = 'circle') execute function bs_circle_changed();
+
+/* En gång: befintliga cirkelpass får ledar-id, och nuvarande medlemmar en startrad i historiken. */
+do $$ begin
+  update records set data = data where kind = 'booking' and coalesce(data->>'circleId','') <> '' and coalesce(data->>'leaderId','') = '';
+  insert into circle_membership(circle_id, member_id)
+  select c.id, x from records c cross join lateral jsonb_array_elements_text(coalesce(c.data->'members','[]'::jsonb)) x
+   where c.kind = 'circle' and not c.del
+     and not exists (select 1 from circle_membership cm where cm.circle_id = c.id and cm.member_id = x);
+end $$;
+
+-- =====================================================================
 --  LEDARE, DELTAGARE, KUND — det enda de når
 -- =====================================================================
+/* Admin, eller cirkelns ledare. (Producenter leder bara de cirklar de är ledare för.) */
 create or replace function bs_leads(p_circle text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select bs_is_crew() or exists (
+  select bs_is_admin() or exists (
     select 1 from records where kind = 'circle' and id = p_circle and not del
-       and data->>'leader' = (bs_me()).name)
+       and coalesce(data->>'leader','') <> '' and data->>'leader' = (bs_me()).name)
 $$;
 
 /* Allt en icke-crew-användare får se, i ett svar. */
@@ -386,6 +540,11 @@ begin
          group by p.pid) x), '{}'));
 
   if me.role = 'leader' then
+    /* timbanken: i år och nästa år, och reglerna appen visar dem mot */
+    res := res || jsonb_build_object('circleCfg', coalesce((select data from records where kind = 'setting' and id = 'circles' and not del), '{}'::jsonb),
+      'leaderHours', (select jsonb_object_agg(y::text, jsonb_build_object('done', h.done, 'planned', h.planned))
+         from generate_series(extract(year from now())::int, extract(year from now())::int + 1) y
+         cross join lateral bs_leader_hours(me.id, y, null) h));
     /* ledaren bokar studio och behöver se när den är upptagen — som kunden,
        utan namn och titel på andras pass */
     res := res || jsonb_build_object('busy', coalesce((select jsonb_agg(jsonb_build_object('id',id,
@@ -441,8 +600,10 @@ begin
   if p_start = p_end then raise exception 'Start och slut är samma tid'; end if;
   d := jsonb_build_object('id', bs_uid('b'), 'studio', p_studio, 'date', p_date::text, 'start', p_start,
     'end', p_end, 'who', c->>'leader', 'title', c->>'n', 'note','', 'circleId', p_circle, 'status','',
-    'hours', null, 'present','[]'::jsonb, 'paid', false, 'with','[]'::jsonb, 'artistId','');
+    'hours', null, 'present','[]'::jsonb, 'paid', false, 'with','[]'::jsonb, 'artistId','',
+    'leaderId', (select id from members where lower(name) = lower(c->>'leader') limit 1));
   if bs_clash(p_studio, bs_span(d), null) then raise exception 'Studion är upptagen den tiden'; end if;
+  perform bs_check_circle_session(d, null);
   return bs_put_booking(d);
 end $$;
 
@@ -452,11 +613,17 @@ declare d jsonb;
 begin
   select data into d from records where kind='booking' and id = p_booking and not del;
   if d is null or d->>'status' <> 'request' then raise exception 'Förfrågan finns inte längre'; end if;
-  if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan svara'; end if;
+  /* cirkelförfrågan: ledaren (eller admin). Kundförfrågan: admin eller kundens producent. */
+  if coalesce(d->>'circleId','') <> '' then
+    if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan svara'; end if;
+  elsif not (bs_is_admin() or exists (select 1 from members where id = d->>'reqBy' and producer = bs_my_id())) then
+    raise exception 'Bara admin och kundens producent kan svara';
+  end if;
   if not p_approve then return bs_put_booking(d || '{"status":"declined"}'); end if;
   if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
   /* kollas här, inte bara i appen — någon kan ha bokat tiden under tiden */
   if bs_clash(p_studio, bs_span(d), p_booking) then raise exception 'Studion hann bli upptagen'; end if;
+  if coalesce(d->>'circleId','') <> '' then perform bs_check_circle_session(d || jsonb_build_object('studio', p_studio), p_booking); end if;
   return bs_put_booking(d || jsonb_build_object('studio', p_studio, 'status', ''));
 end $$;
 
@@ -478,6 +645,156 @@ begin
   if bad > 0 then raise exception 'Någon av de närvarande är inte med i cirkeln'; end if;
   return bs_put_booking(d || jsonb_build_object('status','done','hours',p_hours,
     'present', coalesce(p_present,'[]'), 'completedBy', (bs_me()).name, 'completedAt', now_ms()));
+end $$;
+
+/* Flytta ett bokat cirkelpass (ledaren eller admin). Passet behåller sin längd från
+   reglerna — bara dag, starttid och studio väljs. */
+create or replace function update_circle_session(p_booking text, p_date date, p_start text, p_studio text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; n jsonb; want numeric := (bs_ccfg('sessionHours'))::text::numeric;
+begin
+  select data into d from records where kind = 'booking' and id = p_booking and not del;
+  if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
+  if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan flytta passet'; end if;
+  if d->>'status' = 'done' then raise exception 'Passet är redan genomfört — ångra det först'; end if;
+  if coalesce(d->>'status','') in ('request','declined') then raise exception 'Passet är inte bokat'; end if;
+  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if p_start !~ '^\d\d:\d\d$' then raise exception 'Välj en starttid'; end if;
+  n := d || jsonb_build_object('date', p_date::text, 'start', p_start, 'studio', p_studio,
+    'end', to_char(p_start::time + make_interval(mins => (want * 60)::int), 'HH24:MI'));
+  if bs_clash(p_studio, bs_span(n), p_booking) then raise exception 'Studion är upptagen den tiden'; end if;
+  perform bs_check_circle_session(n, p_booking);
+  return bs_put_booking(n);
+end $$;
+
+/* Ställa in ett bokat cirkelpass (ledaren eller admin). Genomförda pass ligger kvar —
+   de är underlag för timmarna. */
+create or replace function cancel_circle_session(p_booking text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare d jsonb;
+begin
+  select data into d from records where kind = 'booking' and id = p_booking and not del;
+  if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
+  if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan ställa in passet'; end if;
+  if d->>'status' = 'done' then raise exception 'Passet är genomfört — ångra det först om det inte blev av'; end if;
+  return bs_put_booking(d || '{"del":true}');
+end $$;
+
+/* Förhandsvisning innan återkommande pass bokas: för varje datum, går det — och om inte,
+   varför. Timbanken räknar in de pass som går tidigare i samma omgång. */
+create or replace function circle_plan_check(p_circle text, p_dates jsonb, p_start text, p_studio text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare c jsonb; d jsonb; dt text; out jsonb := '[]'; extra jsonb := '{}'; yr text; hrs numeric;
+        want numeric := (bs_ccfg('sessionHours'))::text::numeric; lid text;
+begin
+  if not bs_leads(p_circle) then raise exception 'Bara cirkelns ledare kan planera'; end if;
+  select data into c from records where kind = 'circle' and id = p_circle and not del;
+  lid := (select id from members where lower(name) = lower(c->>'leader') limit 1);
+  for dt in select jsonb_array_elements_text(p_dates) loop
+    d := jsonb_build_object('date', dt, 'start', p_start, 'circleId', p_circle, 'leaderId', lid,
+      'end', to_char(p_start::time + make_interval(mins => (want * 60)::int), 'HH24:MI'));
+    yr := left(dt, 4); hrs := bs_len_h(d);
+    begin
+      if p_studio in ('A','B') then
+        if bs_clash(p_studio, bs_span(d), null) then raise exception 'Studion är upptagen'; end if;
+      elsif not bs_any_free(bs_span(d), null) then raise exception 'Båda studiorna är upptagna';
+      end if;
+      perform bs_check_circle_session(d, null, coalesce((extra->>yr)::numeric, 0));
+      extra := extra || jsonb_build_object(yr, coalesce((extra->>yr)::numeric, 0) + hrs);
+      out := out || jsonb_build_object('date', dt, 'ok', true);
+    exception when others then
+      out := out || jsonb_build_object('date', dt, 'ok', false, 'reason', sqlerrm);
+    end;
+  end loop;
+  return out;
+end $$;
+
+/* Finns personen redan? Samma e-post, samma telefonnummer eller samma namn. */
+create or replace function find_duplicates(p_name text, p_email text, p_phone text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not bs_is_crew() then '[]'::jsonb else coalesce(jsonb_agg(jsonb_build_object(
+      'id', m.id, 'name', m.name, 'role', m.role,
+      'why', case when nullif(lower(trim(p_email)),'') = lower(m.email) then 'samma e-post'
+                  when bs_phone(p_phone) is not null and bs_phone(p_phone) = bs_phone(m.phone) then 'samma telefonnummer'
+                  else 'samma namn' end) order by m.name), '[]'::jsonb) end
+    from members m
+   where m.active and (
+         (nullif(lower(trim(p_email)),'') is not null and lower(m.email) = lower(trim(p_email)))
+      or (bs_phone(p_phone) is not null and bs_phone(m.phone) = bs_phone(p_phone))
+      or (length(trim(coalesce(p_name,''))) >= 2
+          and lower(regexp_replace(trim(m.name), '\s+', ' ', 'g')) = lower(regexp_replace(trim(p_name), '\s+', ' ', 'g'))))
+$$;
+
+/* Lägg en deltagare i en cirkel — admin, eller ledaren för just den cirkeln. */
+create or replace function add_circle_member(p_circle text, p_member text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare c jsonb; t bigint := now_ms();
+begin
+  if not bs_leads(p_circle) then raise exception 'Bara admin eller cirkelns ledare kan lägga till deltagare'; end if;
+  if not exists (select 1 from members where id = p_member and role::text = 'participant') then
+    raise exception 'Personen är inte cirkeldeltagare';
+  end if;
+  select data into c from records where kind = 'circle' and id = p_circle and not del;
+  if c is null then raise exception 'Cirkeln finns inte'; end if;
+  if coalesce(c->'members','[]'::jsonb) ? p_member then return c; end if;
+  c := jsonb_set(c, '{members}', coalesce(c->'members','[]'::jsonb) || to_jsonb(p_member)) || jsonb_build_object('up', t);
+  update records set data = c, up = t where kind = 'circle' and id = p_circle;
+  return c;
+end $$;
+
+/* Anmälan från foundation-sajten (Vercel-funktionen skickar med en hemlig nyckel).
+   Inget personnummer — det stannar i kalkylarket. */
+create or replace function circle_signup(p_secret text, p_name text, p_email text, p_phone text,
+  p_subject text default '', p_note text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare want text := (select value from bs_secrets where name = 'signup'); nm text := trim(coalesce(p_name,''));
+        em text := nullif(lower(trim(coalesce(p_email,''))),''); ph text := bs_phone(nullif(trim(coalesce(p_phone,'')),''));
+        ex text; id text;
+begin
+  if want is null or coalesce(p_secret,'') <> want then raise exception 'Obehörig'; end if;
+  if length(nm) < 2 then raise exception 'Fyll i namn'; end if;
+  if em is null and ph is null then raise exception 'Fyll i telefonnummer eller e-post'; end if;
+  if (select count(*) from circle_signups where created_at > now() - interval '1 day') >= 200 then
+    raise exception 'Många anmälningar just nu — försök igen imorgon';
+  end if;
+  /* samma person som redan väntar: ingen ny rad */
+  select s.id into ex from circle_signups s where s.status = 'new'
+     and ((em is not null and lower(s.email) = em) or (ph is not null and s.phone = ph)) limit 1;
+  if ex is not null then return jsonb_build_object('ok', true, 'id', ex, 'again', true); end if;
+  id := bs_uid('s_');
+  insert into circle_signups(id, name, email, phone, subject, note)
+  values (id, left(nm, 60), left(em, 120), ph, left(nullif(trim(coalesce(p_subject,'')),''), 40), left(coalesce(p_note,''), 300));
+  return jsonb_build_object('ok', true, 'id', id);
+end $$;
+
+/* Admin placerar en anmälan: en ny deltagare (eller en som redan finns, p_member) läggs
+   in och, om en cirkel väljs, i den. */
+create or replace function place_signup(p_signup text, p_circle text default null, p_member text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare sg circle_signups; mid text := p_member;
+begin
+  if not bs_is_admin() then raise exception 'Bara admin placerar anmälningar'; end if;
+  select * into sg from circle_signups where id = p_signup for update;
+  if sg.id is null or sg.status <> 'new' then raise exception 'Anmälan finns inte längre'; end if;
+  if mid is null then
+    if exists (select 1 from members where lower(name) = lower(sg.name)) then
+      raise exception 'Det finns redan en person som heter % — koppla anmälan till den i stället', sg.name;
+    end if;
+    mid := bs_uid('m_');
+    insert into members(id, role, name, email, phone, up) values (mid, 'participant', sg.name, sg.email, sg.phone, now_ms());
+  elsif not exists (select 1 from members where id = mid and role::text = 'participant') then
+    raise exception 'Personen är inte cirkeldeltagare';
+  end if;
+  if p_circle is not null then perform add_circle_member(p_circle, mid); end if;
+  update circle_signups set status = 'placed', member_id = mid, circle_id = p_circle, handled_by = bs_my_id() where id = sg.id;
+  return jsonb_build_object('member', mid, 'circle', p_circle);
+end $$;
+create or replace function reject_signup(p_signup text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar anmälningar'; end if;
+  update circle_signups set status = 'rejected', handled_by = bs_my_id() where id = p_signup and status = 'new';
+  if not found then raise exception 'Anmälan finns inte längre'; end if;
 end $$;
 
 /* Kunden bokar inte själv längre — hen skickar en förfrågan (request_customer_slot).
@@ -711,6 +1028,26 @@ grant execute on function username_free(text) to anon, authenticated;
 -- inloggning med användarnamn: bara servern (edge-funktionen auth-login)
 revoke all on function bs_login_lookup(text) from public, anon, authenticated;
 revoke all on function bs_erase_member(members) from public, anon, authenticated;
+revoke all on function bs_ccfg(text) from public, anon, authenticated;
+revoke all on function bs_fmt_h(numeric) from public, anon, authenticated;
+revoke all on function bs_len_h(jsonb) from public, anon, authenticated;
+revoke all on function bs_leader_hours(text, int, text) from public, anon, authenticated;
+revoke all on function bs_circle_conflict(jsonb, text) from public, anon, authenticated;
+revoke all on function bs_check_circle_session(jsonb, text, numeric) from public, anon, authenticated;
+revoke all on function bs_circle_booking_fill() from public, anon, authenticated;
+revoke all on function bs_circle_changed() from public, anon, authenticated;
+revoke all on function circle_signup(text,text,text,text,text,text) from public;
+grant execute on function circle_signup(text,text,text,text,text,text) to anon, authenticated;
+revoke all on function update_circle_session(text,date,text,text) from public, anon;
+revoke all on function cancel_circle_session(text) from public, anon;
+revoke all on function circle_plan_check(text,jsonb,text,text) from public, anon;
+revoke all on function find_duplicates(text,text,text) from public, anon;
+revoke all on function add_circle_member(text,text) from public, anon;
+revoke all on function place_signup(text,text,text) from public, anon;
+revoke all on function reject_signup(text) from public, anon;
+grant execute on function update_circle_session(text,date,text,text), cancel_circle_session(text),
+  circle_plan_check(text,jsonb,text,text), find_duplicates(text,text,text), add_circle_member(text,text),
+  place_signup(text,text,text), reject_signup(text) to authenticated;
 revoke all on function delete_my_account() from public, anon;
 grant execute on function delete_my_account() to authenticated;
 revoke all on function bs_login_fail(text) from public, anon, authenticated;

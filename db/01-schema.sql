@@ -190,7 +190,7 @@ create table if not exists records (
 -- v8: media = galleriet. Regeln byts ut så att en äldre installation får det nya värdet.
 alter table records drop constraint if exists records_kind_check;
 alter table records add constraint records_kind_check check (kind in ('booking','circle','curriculum',
-  'artist','release','beat','agenda','goal','plan','file','setting','media'));
+  'artist','release','beat','agenda','goal','plan','file','setting','media','course'));
 create index if not exists records_up_idx on records (up);
 create index if not exists records_ts_idx on records (ts);
 create or replace function bs_touch() returns trigger language plpgsql as $$
@@ -206,3 +206,41 @@ language sql immutable as $$
   from (select ((d->>'date')||' '||(d->>'start'))::timestamp as s,
                ((d->>'date')||' '||(d->>'end'))::timestamp   as e) x
 $$;
+
+-- ---------------------------------------------------------------------
+--  CIRKLARNA SOM VERKSAMHETSSYSTEM (2026-10)
+-- ---------------------------------------------------------------------
+/* Vem som varit med i vilken grupp och när. Fylls av en trigger på cirkelposten
+   (03-funktioner.sql) — ingen skriver hit för hand. */
+create table if not exists circle_membership (
+  id         bigserial primary key,
+  circle_id  text not null,
+  member_id  text not null,
+  joined     timestamptz not null default now(),
+  left_at    timestamptz
+);
+create index if not exists circle_membership_idx on circle_membership (circle_id, member_id);
+
+/* Anmälningar till studiecirklarna från foundation-formuläret (utan personnummer —
+   de stannar i kalkylarket). Admin placerar dem i en grupp. */
+create table if not exists circle_signups (
+  id         text primary key,
+  name       text not null,
+  email      text,
+  phone      text,
+  subject    text,
+  note       text,
+  status     text not null default 'new' check (status in ('new','placed','rejected')),
+  member_id  text,
+  circle_id  text,
+  handled_by text,
+  created_at timestamptz not null default now()
+);
+
+/* Hemligheter som bara databasfunktionerna läser (t.ex. nyckeln foundation-sajten
+   skickar anmälningar med). Ingen policy: ingen inloggad eller anonym når tabellen. */
+create table if not exists bs_secrets (
+  name  text primary key,
+  value text not null
+);
+

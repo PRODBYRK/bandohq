@@ -51,16 +51,29 @@ ok('producent ser sitt eget mål', (await as(db,U.rkay,()=>q(`select 1 from reco
 ok('producent ser INTE andras mål', (await as(db,U.rkay,()=>q(`select 1 from records where id='g2'`))).length===0);
 ok('producent ser INTE andras plan', (await as(db,U.rkay,()=>q(`select 1 from records where kind='plan'`))).length===0);
 ok('managern ser allas mål och planer', (await as(db,U.az,()=>q(`select 1 from records where kind in ('goal','plan')`))).length===3);
+await R('booking','cp1',{id:'cp1',studio:'A',date:'2026-11-20',start:'10:00',end:'13:00',who:'RKAY',title:'x',circleId:'',status:''});
 const n1 = await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([
-  {kind:'booking',id:'s1',data:{id:'s1',title:'ÄLDRE'},up:0},
-  {kind:'booking',id:'s2',data:{id:'s2',title:'NYARE',studio:'B',date:'2026-11-10',start:'18:00',end:'21:00'},up:99},
+  {kind:'booking',id:'cp1',data:{id:'cp1',title:'ÄLDRE'},up:0},
+  {kind:'agenda',id:'offline',data:{id:'offline',text:'NYARE'},up:99},
   {kind:'goal',id:'g2',data:{id:'g2',owner:'adrey',text:'kapat'},up:99},
   {kind:'artist',id:'a1',data:{id:'a1',n:'Nova'},up:5}])}));
 ok('push: äldre post skriver inte över, okänd post läggs till', n1===2, n1);
-ok('push: titeln på s1 orörd', (await one(`select data->>'title' t from records where id='s1'`)).t==='x');
-ok('push: nyare post vinner', (await one(`select data->>'title' t from records where id='s2'`)).t==='NYARE');
+ok('push: titeln på cp1 orörd', (await one(`select data->>'title' t from records where id='cp1'`)).t==='x');
+ok('push: nyare post vinner', (await one(`select data->>'text' t from records where id='offline'`)).t==='NYARE');
+const n2 = await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([
+  {kind:'booking',id:'s2',data:{id:'s2',title:'KAPAT',studio:'B',date:'2026-11-10',start:'18:00',end:'21:00',circleId:'c2'},up:999},
+  {kind:'booking',id:'s1',data:{id:'s1',title:'KAPAT'},up:999},
+  {kind:'circle',id:'c2',data:{id:'c2',n:'Kapad',leader:'RKAY',members:[]},up:999},
+  {kind:'agenda',id:'offline2',data:{id:'offline2',text:'går igenom'},up:1}])}));
+ok('cirkelpass, cirklar och pass som var cirkelpass går inte att skriva direkt — resten av omgången går igenom', n2===1
+   && (await one(`select data->>'title' t from records where id='s2'`)).t!=='KAPAT' && (await one(`select data->>'title' t from records where id='s1'`)).t==='x'
+   && (await one(`select data->>'n' n from records where id='c2'`)).n==='Grupp 2', n2);
 ok('push: någon annans mål hoppas över, inte kapas', (await one(`select data->>'text' t from records where id='g2'`)).t==='ADREYs hemliga mål');
-ok('crewet ser allas kontaktuppgifter', (await as(db,U.rkay,()=>q(`select phone from members`))).length===7);
+const rkSees = (await as(db,U.rkay,()=>q(`select id from members`))).map(r=>r.id).sort();
+ok('producenten ser crewet, kunderna och deltagarna i cirkeln hen leder — inte andras deltagare',
+   JSON.stringify(rkSees)===JSON.stringify(['adrey','az','kund','nora','rkay','sofia']), rkSees);
+ok('admin ser alla', (await as(db,U.az,()=>q(`select id from members`))).length===7);
+ok('producenten ser bara cirklar hen leder', JSON.stringify((await as(db,U.rkay,()=>q(`select id from records where kind='circle'`))).map(r=>r.id))==='["c2"]');
 
 /* ============ ICKE-CREW HAR INGEN TABELLÅTKOMST ============ */
 head('ledare, deltagare, kund — ingen tabellåtkomst');
@@ -153,7 +166,7 @@ await bk('busy',{date:'2026-12-01',start:'17:00',end:'22:00',studio:'A',circleId
 ok('godkännande mot upptagen studio nekas', /hann bli upptagen/.test(await boom(()=>as(db,U.sofia,()=>rpc('answer_request',{p_booking:req.id,p_approve:true,p_studio:'A'})))||''));
 const ap = await as(db,U.sofia,()=>rpc('answer_request',{p_booking:req.id,p_approve:true,p_studio:'B'}));
 ok('ledaren godkänner mot ledig studio', ap.status==='' && ap.studio==='B', ap);
-ok('ledaren bokar ett pass själv', (await as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-08',p_start:'18:00',p_end:'21:00',p_studio:'A'}))).status==='');
+ok('ledaren bokar ett pass själv', (await as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-15',p_start:'18:00',p_end:'21:00',p_studio:'A'}))).status==='');
 ok('men inte i en krockande tid', /upptagen/.test(await boom(()=>as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-01',p_start:'19:00',p_end:'20:00',p_studio:'A'})))||''));
 ok('närvaro för någon utanför cirkeln nekas', /inte med i cirkeln/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['nora'])})))||''));
 ok('orimliga timmar nekas', /0,5 och 24/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:40,p_present:JSON.stringify(['will'])})))||''));
@@ -370,7 +383,7 @@ const krc = await one(`select * from outbox where dedupe_key=$1`,['rcv:'+kr.id])
 ok('kunden får ett kvitto', krc && krc.member_id==='kund' && krc.email==='kund@b.se' && /Vi har tagit emot/.test(krc.subject), krc);
 ok('kundens vy visar producenten', (await as(db,U.kund,()=>rpc('my_view',{}))).producer==='RKAY');
 ok('och förfrågan', (await as(db,U.kund,()=>rpc('my_view',{}))).bookings.some(b=>b.id===kr.id && b.status==='request'));
-ok('kunden kan inte svara själv', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
+ok('kunden kan inte svara själv', /Bara admin och kundens producent/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
 await as(db,U.rkay,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'}));
 const kbk = await q(`select * from outbox where kind='booked' and member_id='kund'`);
 ok('producenten godkänner → kunden får orderbekräftelsen', kbk.length===1 && /tor 10 dec 12:00-15:00 · THE BOOTH/.test(kbk[0].body), kbk);
@@ -568,6 +581,98 @@ ok('kunden raderar sitt eget konto', dk.deleted==='Studio Nord AB', dk);
 ok('kontot, inloggningen och telefonen är borta', !(await one(`select 1 from members where id='kund'`)) && !(await one(`select 1 from auth.users where id=$1`,[U.kund]))
    && !(await one(`select 1 from push_subs where endpoint=$1`,['apns:'+T64])));
 ok('namnet är borta ur passen', (await one(`select data from records where id='kdel'`)).data.who==='Raderad person');
+
+/* ============ CIRKLARNA · ETAPP 1: LEDARE, KROCKAR, TIMBANK, HISTORIK, ANMÄLNINGAR ============ */
+head('cirklarna: ledar-id, krockar, timbank, historik och anmälningar');
+U.lea = await user('lea@b.se'); U.lars = await user('lars@b.se');
+await M('lea', U.lea, 'leader', 'Lea Ström', 'lea@b.se', null);
+await M('lars', U.lars, 'leader', 'Lars Berg', 'lars@b.se', null);
+for (const [id,n] of [['pa','Pia Ask'],['pb','Per Bo'],['pc','Pål Ceder'],['pd','Pim Dahl']]) await M(id, null, 'participant', n, id+'@b.se', null);
+await C(()=>rpc('push_records',{rows:JSON.stringify([
+  {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pb']},up:1},
+  {kind:'circle',id:'k2',data:{id:'k2',n:'Art 1',subject:'Artistutveckling',leader:'Lars Berg',members:['pb','pc']},up:1}])}));
+const mem0 = await q(`select circle_id, member_id from circle_membership where circle_id in ('k1','k2') and left_at is null order by 1,2`);
+ok('medlemshistoriken får en rad per deltagare när cirkeln skapas', mem0.length===4, mem0);
+
+const b1 = await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-23',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+ok('cirkelpasset får ledarens id', b1.leaderId==='lea', b1);
+ok('ett cirkelpass är 3 timmar', /cirkelpass är 3 timmar/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-24',p_start:'10:00',p_end:'12:00',p_studio:'A'})))||''));
+ok('ledaren kan inte ha två pass samtidigt', /Krock: Lea Ström har redan Prod 1 10:00–13:00/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-23',p_start:'11:00',p_end:'14:00',p_studio:'B'})))||''));
+ok('en deltagare kan inte vara i två cirklar samtidigt', /Krock: Per Bo är med i Prod 1 10:00–13:00/.test(await boom(()=>as(db,U.lars,()=>rpc('book_circle_session',{p_circle:'k2',p_date:'2026-11-23',p_start:'12:00',p_end:'15:00',p_studio:'B'})))||''));
+ok('men utan gemensamma deltagare går det', (await as(db,U.lars,()=>rpc('book_circle_session',{p_circle:'k2',p_date:'2026-11-23',p_start:'13:00',p_end:'16:00',p_studio:'B'}))).status==='');
+await R('booking','rkS',{id:'rkS',studio:'A',date:'2026-11-26',start:'10:00',end:'13:00',who:'RKAY',title:'Mix',circleId:'',status:''});
+ok('en producent som leder krockar också med sina egna studiopass', /Krock: RKAY har redan Mix 10:00–13:00/.test(await boom(()=>as(db,U.rkay,()=>rpc('book_circle_session',{p_circle:'c2',p_date:'2026-11-26',p_start:'11:00',p_end:'14:00',p_studio:'B'})))||''));
+ok('producenten kan inte boka i en cirkel hen inte leder', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.rkay,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-27',p_start:'10:00',p_end:'13:00',p_studio:'A'})))||''));
+ok('admin kan', (await C(()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-27',p_start:'10:00',p_end:'13:00',p_studio:'A'}))).leaderId==='lea');
+
+/* timbanken: gränsen gäller från leaderMaxFrom — här 6 timmar från 2027 */
+await C(()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'circles',data:{leaderYearMax:6,leaderMaxFrom:2027,warn:[3]},up:5}])}));
+ok('producenter kan inte ändra cirkelreglerna', (await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'circles',data:{leaderYearMax:9999},up:99}])})))===0);
+await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-12-01',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-12-02',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+ok('2026 har ingen gräns (fler än 6 timmar går)', true);
+await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2027-01-11',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2027-01-12',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+const lh = await q(`select member_id, subject, body from outbox where dedupe_key like 'lhours:lea:2027:%' order by member_id`);
+ok('ledaren och admins får veta när timbanken är full', lh.some(r=>r.member_id==='lea' && /Timbanken är full/.test(r.subject) && /Du har 6 av 6 timmar 2027/.test(r.body))
+   && lh.some(r=>r.member_id==='az' && /Lea Ström har 6 av 6/.test(r.body)) && !lh.some(r=>r.member_id==='rkay'), lh);
+ok('2026 ger ingen timbanksnotis (gränsen gäller från 2027)', !(await one(`select 1 from outbox where dedupe_key like 'lhours:lea:2026:%'`)));
+ok('2027: timbanken stoppar pass som går över gränsen', /Lea Ström har 6 av 6 timmar 2027/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2027-01-13',p_start:'10:00',p_end:'13:00',p_studio:'A'})))||''));
+const plan = await as(db,U.lars,()=>rpc('circle_plan_check',{p_circle:'k2',p_dates:JSON.stringify(['2027-02-01','2027-02-08','2027-02-15']),p_start:'10:00',p_studio:'A'}));
+ok('förhandsvisning av återkommande pass räknar in de tidigare i omgången', plan.length===3 && plan[0].ok && plan[1].ok && !plan[2].ok && /6 av 6 timmar 2027/.test(plan[2].reason), plan);
+const lv2 = await as(db,U.lea,()=>rpc('my_view',{}));
+ok('ledaren ser sin timbank och reglerna', lv2.leaderHours && +lv2.leaderHours['2027'].planned===6 && lv2.circleCfg.leaderYearMax===6, [lv2.leaderHours, lv2.circleCfg]);
+await C(()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'circles',data:{},up:6}])}));
+
+/* flytta och ställa in */
+const mv = await as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-24',p_start:'14:30',p_studio:'A'}));
+ok('ledaren flyttar passet — slutet räknas ut (3 timmar)', mv.start==='14:30' && mv.end==='17:30' && mv.studio==='A', mv);
+ok('inte till en krockande tid', /Krock/.test(await boom(()=>as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-27',p_start:'11:00',p_studio:'B'})))||''));
+ok('någon annan ledare kan inte flytta det', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.lars,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-23',p_start:'09:00',p_studio:'B'})))||''));
+await as(db,U.lea,()=>rpc('complete_session',{p_booking:b1.id,p_hours:3,p_present:JSON.stringify(['pa','pb'])}));
+ok('ett genomfört pass går inte att flytta', /redan genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-24',p_start:'10:00',p_studio:'A'})))||''));
+ok('eller ställa in', /genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('cancel_circle_session',{p_booking:b1.id})))||''));
+const b2 = await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-12-03',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+ok('ett bokat pass går att ställa in', (await as(db,U.lea,()=>rpc('cancel_circle_session',{p_booking:b2.id}))).del===true);
+ok('producenten som inte leder kan inte markera andras pass genomförda', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.rkay,()=>rpc('complete_session',{p_booking:b1.id,p_hours:3,p_present:'[]'})))||''));
+
+/* ledarbyte och medlemshistorik */
+const fut = await as(db,U.lars,()=>rpc('book_circle_session',{p_circle:'k2',p_date:'2026-12-20',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
+await C(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'k2',data:{id:'k2',n:'Art 1',subject:'Artistutveckling',leader:'Lea Ström',members:['pc','pd']},up:10}])}));
+const fd = (await one(`select data from records where id=$1`,[fut.id])).data;
+ok('ny ledare: kommande pass följer med', fd.leaderId==='lea' && fd.who==='Lea Ström', fd);
+const hist = await q(`select member_id, left_at is not null as left from circle_membership where circle_id='k2' order by member_id`);
+ok('historiken visar vem som lämnade och vem som kom', JSON.stringify(hist)===JSON.stringify([{member_id:'pb',left:true},{member_id:'pc',left:false},{member_id:'pd',left:false}]), hist);
+ok('bara admin ser historiken', (await as(db,U.lea,()=>q(`select 1 from circle_membership`))).length===0 && (await C(()=>q(`select 1 from circle_membership`))).length>0);
+
+/* dubbletter och att lägga till deltagare */
+const dup = await C(()=>rpc('find_duplicates',{p_name:'pia  ask',p_email:'',p_phone:''}));
+ok('dubblettkontrollen hittar samma namn (oavsett stora bokstäver och mellanslag)', dup.length===1 && dup[0].id==='pa' && dup[0].why==='samma namn', dup);
+ok('och samma e-post', (await C(()=>rpc('find_duplicates',{p_name:'Någon Annan',p_email:'PB@b.se',p_phone:''})))[0].why==='samma e-post');
+ok('en deltagare får inget svar', (await as(db,U.lea,()=>rpc('find_duplicates',{p_name:'Pia Ask',p_email:'',p_phone:''}))).length===0);
+ok('ledaren lägger till en deltagare i sin cirkel', (await as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pc'}))).members.includes('pc'));
+ok('men inte i någon annans', /Bara admin eller cirkelns ledare/.test(await boom(()=>as(db,U.lars,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pd'})))||''));
+ok('och bara cirkeldeltagare', /inte cirkeldeltagare/.test(await boom(()=>as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'rkay'})))||''));
+
+/* anmälningar från foundation-sajten */
+ok('utan nyckel tas ingen anmälan emot', /Obehörig/.test(await boom(()=>asAnon(db,()=>rpc('circle_signup',{p_secret:'x',p_name:'Ny Person',p_email:'ny@x.se',p_phone:'',p_subject:'',p_note:''})))||''));
+await q(`insert into bs_secrets(name,value) values('signup','hemlig-123') on conflict (name) do update set value = excluded.value`);
+ok('ingen kan läsa nyckeln', (await asAnon(db,()=>boom(()=>q(`select value from bs_secrets`))))!==null || (await as(db,U.az,()=>q(`select value from bs_secrets`))).length===0);
+const su = await asAnon(db,()=>rpc('circle_signup',{p_secret:'hemlig-123',p_name:'Ny Person',p_email:'NY@x.se',p_phone:'070-111 22 33',p_subject:'Musikproduktion',p_note:''}));
+ok('anmälan med rätt nyckel tas emot', su.ok===true && /^s_/.test(su.id), su);
+ok('samma person igen blir ingen ny rad', (await asAnon(db,()=>rpc('circle_signup',{p_secret:'hemlig-123',p_name:'Ny Person',p_email:'ny@x.se',p_phone:'',p_subject:'',p_note:''}))).again===true);
+ok('admin ser anmälningarna, producenter inte', (await C(()=>q(`select * from circle_signups`))).length===1 && (await as(db,U.rkay,()=>q(`select * from circle_signups`))).length===0);
+const pl = await C(()=>rpc('place_signup',{p_signup:su.id,p_circle:'k1',p_member:null}));
+const npm = await one(`select role, email, phone from members where id=$1`,[pl.member]);
+ok('admin placerar anmälan: en ny deltagare i gruppen', npm.role==='participant' && npm.email==='ny@x.se' && npm.phone==='+46701112233'
+   && (await one(`select data->'members' m from records where id='k1'`)).m.includes(pl.member), [pl, npm]);
+const su2 = await asAnon(db,()=>rpc('circle_signup',{p_secret:'hemlig-123',p_name:'Pia Ask',p_email:'pia2@x.se',p_phone:'',p_subject:'',p_note:''}));
+ok('en anmälan med ett namn som redan finns måste kopplas till personen', /redan en person som heter Pia Ask/.test(await boom(()=>C(()=>rpc('place_signup',{p_signup:su2.id,p_circle:null,p_member:null})))||''));
+ok('och kan kopplas', (await C(()=>rpc('place_signup',{p_signup:su2.id,p_circle:null,p_member:'pa'}))).member==='pa');
+const su3 = await asAnon(db,()=>rpc('circle_signup',{p_secret:'hemlig-123',p_name:'Spam Spamsson',p_email:'s@x.se',p_phone:'',p_subject:'',p_note:''}));
+await C(()=>rpc('reject_signup',{p_signup:su3.id}));
+ok('admin kan avvisa en anmälan', (await one(`select status from circle_signups where id=$1`,[su3.id])).status==='rejected');
+ok('producenter kan inte placera', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('place_signup',{p_signup:su3.id,p_circle:null,p_member:null})))||''));
 
 }
 console.log('\n══════════════════════════════');

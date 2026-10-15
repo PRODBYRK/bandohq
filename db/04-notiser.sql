@@ -61,7 +61,7 @@ declare
   o jsonb := case when tg_op = 'UPDATE' then old.data else null end;
   actor text := bs_my_id();
   who text; rq text; rqname text; circ text; pid text; h numeric; th int; m record; win bigint;
-  ids text[]; mid text; line text;
+  ids text[]; mid text; line text; lid text; yr int; tot numeric; mx numeric; lh record;
 begin
   /* avbokning: en kund eller deltagare tar själv bort ett bokat pass (cancel_my_booking).
      De som fick orderbekräftelsen får veta det — och kundens producent (eller admins),
@@ -170,6 +170,30 @@ begin
           end if;
         end if;
       end loop;
+    end if;
+
+    /* ledarens timbank (från leaderMaxFrom): bokade + genomförda timmar i år. Ledaren och
+       admins får veta när en gräns passeras — en gång per gräns och år. */
+    lid := nullif(d->>'leaderId','');
+    if lid is not null and coalesce(d->>'status','') in ('','done') and coalesce(d->>'date','') ~ '^\d{4}-' then
+      yr := left(d->>'date',4)::int; mx := (bs_ccfg('leaderMaxFrom'))::text::numeric;
+      if yr >= mx then
+        mx := (bs_ccfg('leaderYearMax'))::text::numeric;
+        select * into lh from bs_leader_hours(lid, yr, null);
+        tot := lh.done + lh.planned;
+        select max(x::numeric) into h from (select jsonb_array_elements_text(bs_ccfg('warn')) x
+                                              union all select mx::text) g where x::numeric <= tot;
+        if h is not null then
+          line := (select name from members where id = lid);
+          for mid in select id from members where active and (id = lid or role::text in ('manager','admin')) loop
+            perform bs_notify(mid, null, case when h >= mx then 'Timbanken är full' else 'Timbanken närmar sig gränsen' end,
+              case when mid = lid then 'Du har ' else coalesce(line,'Ledaren') || ' har ' end
+              || bs_fmt_h(tot) || ' av ' || bs_fmt_h(mx) || ' timmar ' || yr || ' bokade eller genomförda i studiecirklarna.'
+              || case when h >= mx then ' Inga fler pass kan planeras i år.' else '' end,
+              'hours', 'lhours:' || lid || ':' || yr || ':' || h || ':' || mid);
+          end loop;
+        end if;
+      end if;
     end if;
 
   elsif new.kind = 'agenda' then

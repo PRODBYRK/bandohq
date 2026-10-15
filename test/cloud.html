@@ -151,10 +151,10 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     leaderTab='members'; render(); const mem = document.getElementById('view').innerHTML; leaderTab='pass';
     const busy = S.bookings.filter(b=>b.busy).map(b=>b.title+'|'+b.who);
     const req = S.bookings.find(b=>b.status==='request');
-    await saveBookingRemote({circleId:'c1',date:'${D(3)}',start:'19:00',end:'20:00',studio:'A'},1);
+    await saveBookingRemote({circleId:'c1',date:'${D(3)}',start:'19:00',end:'22:00',studio:'A'},1);
     const clashMsg = document.getElementById('toast').textContent;
     const n0 = S.bookings.filter(b=>!b.busy && b.status==='').length;
-    await saveBookingRemote({circleId:'c1',date:'${D(3)}',start:'19:00',end:'20:00',studio:'B'},1);
+    await saveBookingRemote({circleId:'c1',date:'${D(3)}',start:'19:00',end:'22:00',studio:'B'},1);
     const booked = S.bookings.filter(b=>!b.busy && b.status==='').length - n0;
     await doApprove(req.id,'A');
     const approved = S.bookings.find(b=>b.id===req.id);
@@ -532,21 +532,34 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
 
   /* ============ v10 · PRODUCENTEN LÄGGER TILL KUNDER OCH DELTAGARE ============ */
   log('\n── v10: producenten lägger till en kund och en deltagare ──');
+  /* admin ger RKAY en egen grupp — producenter lägger bara till deltagare i grupper de leder */
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(200)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    S.circles.push(bump({id:'c9', n:'Grupp 9', subject:'Musikproduktion', leader:'RKAY', members:[], active:true, del:false})); save();
+    await sync(true);
+    return (await sb('/records?select=id&kind=eq.circle&id=eq.c9')).length;`);
+  ok('admin skapar en grupp som RKAY leder', r===1, r);
+  w = await boot();
   r = await ev(w,`
-    ${wait(200)}
+    ${LOGIN('rkay','rkay12345')} ${wait(400)} await sync(true);
+    const own = lcircle().map(c=>c.id).join(',');
+    openAddPerson('participant'); const choices = [...document.querySelectorAll('#apC option')].map(o=>o.value).join(',');
     openAddPerson('customer'); addDraft.name='Kalle Kund'; addDraft.email='kalle@x.se'; await saveAddPerson();
     const kOut = document.getElementById('apOut').textContent;
-    openAddPerson('participant'); addDraft.name='Dina Deltagare'; addDraft.email='dina@x.se'; addDraft.circle='c1'; await saveAddPerson();
+    openAddPerson('participant'); addDraft.name='Dina Deltagare'; addDraft.email='dina@x.se'; addDraft.circle='c9'; await saveAddPerson();
     for(let i=0; i<30 && syncing; i++) await new Promise(r=>setTimeout(r,100));
     await sync(true);
     const k = (await sb('/members?select=id,role,producer,email,user_id&name=eq.Kalle%20Kund'))[0];
     const d = (await sb('/members?select=id,role&name=eq.Dina%20Deltagare'))[0];
-    const circ = (await sb('/records?select=data&kind=eq.circle&id=eq.c1'))[0];
+    const circ = (await sb('/records?select=data&kind=eq.circle&id=eq.c9'))[0];
+    const seesC1 = (await sb('/records?select=id&kind=eq.circle&id=eq.c1')).length;
     let crew = ''; try{ await sbRpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:1,p_member:k.id,p_url:appUrl()}); }catch(e){ crew = e.message; }
     let ins = ''; try{ await sb('/members',{method:'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify([{id:'x_hack',role:'admin',name:'Hack'}])}); }catch(e){ ins = e.message; }
-    return {kOut, k, d, inCircle: !!circ && (circ.data.members||[]).includes(d && d.id), crew, ins};`);
+    return {kOut, k, d, inCircle: !!circ && (circ.data.members||[]).includes(d && d.id), crew, ins, own, choices, seesC1};`);
+  ok('producenten ser bara sin egen grupp — och kan bara välja den för nya deltagare', r.own==='c9' && r.choices==='c9' && r.seesC1===0, r);
   ok('producenten lägger in en kund på servern — som sin egen kund', r.k && r.k.role==='customer' && r.k.producer==='rkay' && r.k.email==='kalle@x.se' && !r.k.user_id && /Klart/.test(r.kOut), r);
-  ok('och en deltagare i cirkeln', r.d && r.d.role==='participant' && r.inCircle===true, r);
+  ok('och en deltagare i sin grupp', r.d && r.d.role==='participant' && r.inCircle===true, r);
   ok('men kan inte skapa en admin eller bjuda in någon som producent', /Bara admin/.test(r.crew) && !!r.ins, r);
   box = await outbox();
   ok('kunden och deltagaren får sina inbjudningar på mejlen', box.some(m=>m.kind==='invite' && m.email==='kalle@x.se') && box.some(m=>m.kind==='invite' && m.email==='dina@x.se'),
@@ -583,6 +596,47 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   await new Promise(r=>setTimeout(r,1800));
   r = await ev(fr.contentWindow,`return {preview:PREVIEW_LOGIN, form:!!document.getElementById('gE')};`);
   ok('avslutat demoläge: tillbaka till den riktiga inloggningen', r.preview===false && r.form===true, r);
+
+  /* ============ CIRKLARNA · ETAPP 1 MOT SERVERN ============ */
+  log('\n── cirklarna mot servern: regler, återkommande pass, timbank, genomförd ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(200)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    const Y = new Date().getFullYear();
+    S.circleCfg = {leaderYearMax:9, leaderMaxFrom:Y, warn:[3], up:Date.now()}; save(); await sync(true);
+    return (await sb('/records?select=data&kind=eq.setting&id=eq.circles'))[0].data;`);
+  ok('admin sätter reglerna — de ligger på servern', r.leaderYearMax===9, r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('sofia@b.se','sofia1234')} ${wait(300)}
+    const dd = n => iso(addDays(new Date(), n)), c = myCirclesAsLeader()[0];
+    const cfg = ccfg().leaderYearMax, bank0 = JSON.stringify(S.leaderHours);
+    openForm(null, dd(30), c.id); document.getElementById('fStart').value='09:00'; shiftEnd(); pickStudio('A');
+    document.getElementById('fRep').value='4'; checkForm();
+    await saveBooking(); await new Promise(r=>setTimeout(r,50));
+    const preview = document.getElementById('clash').textContent, btn = document.getElementById('saveBtn').textContent;
+    await saveCircleBooking(circlePlan.f, 4, true);
+    const mine = S.bookings.filter(b=>b.circleId===c.id && b.start==='09:00').map(b=>b.date+':'+(b.leaderId||'')).sort();
+    render(); const html = document.getElementById('view').innerHTML;
+    let direct = ''; try{ await sbRpc('book_circle_session', {p_circle:c.id, p_date:dd(60), p_start:'09:00', p_end:'12:00', p_studio:'B'}); }catch(e){ direct = e.message; }
+    return {cfg, bank0, preview, btn, mine, html:/DIN TIMBANK/.test(html) && /av 9 h/.test(html), direct, id:c.id};`);
+  ok('ledaren får reglerna från servern', r.cfg===9, r.cfg);
+  const okN = (r.preview.match(/✓/g)||[]).length;
+  ok('förhandsvisningen kommer från servern: det som går över timbanken stoppas', okN>=1 && /✗[\s\S]*av 9 timmar/.test(r.preview) && r.btn==='BOKA '+okN+' PASS', [r.preview, r.btn]);
+  ok('bara de som går bokas — med ledarens id', r.mine.length===okN && r.mine.every(x=>/:[a-z0-9_]+$/.test(x)), r.mine);
+  ok('ledaren ser sin timbank', r.html===true);
+  ok('servern stoppar ett pass över gränsen även om appen kringgås', /av 9 timmar/.test(r.direct), r.direct);
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true);
+    const b = S.bookings.filter(x=>x.circleId==='${r.id}' && !x.del && x.status==='' && x.start==='09:00').sort((a,b)=>a.date<b.date?-1:1)[0];
+    openComplete(b.id); document.getElementById('cmpH').value='3'; await saveComplete(b.id);
+    const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.'+b.id))[0].data;
+    circTab='groups'; go('circles'); const g = document.getElementById('view').innerHTML;
+    S.circleCfg = {up:Date.now()}; save(); await sync(true);
+    return {st:srv.status, by:srv.completedBy, g:/TIMBANK PER LEDARE/.test(g) && /Sofia Marks/.test(g)};`);
+  ok('admin markerar ett cirkelpass genomfört — via servern', r.st==='done' && r.by==='AZ', r);
+  ok('admin ser alla ledares timbank', r.g===true);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

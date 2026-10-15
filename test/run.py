@@ -80,6 +80,8 @@ def page(name, timeout=900):
     fails = [l for l in text.splitlines() if l.startswith('FAIL') or 'KRASCH' in l]
     summary = [l for l in text.splitlines() if ' PASS · ' in l]
     for l in fails: print('  ' + l)
+    if not summary:   # kraschade — visa var
+        print('  … sista raderna före kraschen:'); [print('    ' + l) for l in text.splitlines()[-12:]]
     print(f'{"✓" if not fails and summary else "✗"} {name}: {summary[-1] if summary else "ingen summering"}')
     return not fails and bool(summary)
 

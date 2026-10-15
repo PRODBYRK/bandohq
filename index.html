@@ -578,6 +578,18 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .tl-key .k-free{background:rgba(52,211,153,.12);box-shadow:inset 0 0 0 1px rgba(52,211,153,.35)}
 .tl-key .k-b{background:rgba(124,58,237,.5);box-shadow:inset 0 0 0 1px rgba(192,132,252,.5)}
 .tl-key .k-own{background:var(--pur)}
+.bankhead{display:flex;align-items:center;gap:9px;margin-top:12px}
+.bankhead:first-child{margin-top:0}
+.bankhead b{font-size:14px}
+.bankrow{margin-top:7px}
+.bankrow .bar{margin-top:5px}
+.calfilters{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.calfilters select{padding:9px 10px;font-size:13px}
+.calday{margin-bottom:12px}
+.calday-h{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--mut);margin:0 2px 6px}
+.calday.today .calday-h{color:var(--pur3)}
+.distrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line3)}
+.distrow select{flex:none;width:52%;padding:9px 10px;font-size:13px}
 .slot-end{display:flex;align-items:center;font-size:14px;color:var(--mut);padding-left:2px}
 .slot-end b{color:var(--txt);margin:0 4px;font-variant-numeric:tabular-nums}
 /* samarbeten */
@@ -794,6 +806,8 @@ function blank(){
     dropbox:{appKey:'', sharedId:'', setupAt:0, up:0},   /* delas via synken; token per enhet */
     pushCfg:{publicKey:'', up:0},                          /* push-nyckelns publika del (den privata bor på servern) */
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
+    circleCfg:{up:0},                                      /* cirklarnas regler (setting/circles) — tomt = standard */
+    signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
     invites:[],                                         /* bara förhandsvisningen — annars i databasen */
     rates:{currency:'SEK', default:0, per:{}}};
@@ -831,6 +845,8 @@ function heal(s){
   s.dropbox = Object.assign(blank().dropbox, s.dropbox||{});
   s.pushCfg = Object.assign(blank().pushCfg, s.pushCfg||{});
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
+  s.circleCfg = Object.assign(blank().circleCfg, s.circleCfg||{});
+  if(!Array.isArray(s.signups)) s.signups = [];
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
   if(!Array.isArray(s.invites)) s.invites = [];
   delete s.drive;                                   /* Google Drive är borttaget */
@@ -906,6 +922,80 @@ function myCircles(){
   return can('manageCircles') ? lcircle() : lcircle().filter(c => c.leader === m.n);
 }
 function currFor(c){ return c && c.curriculumId ? S.curricula.find(x=>x.id===c.curriculumId) : null; }
+
+/* ===================== CIRKLARNAS REGLER =====================
+   Samma regler som databasen (03-funktioner.sql: bs_check_circle_session m.fl.).
+   Servern avgör när den är inkopplad; här används de i förhandsläget och för att
+   visa varningar innan något skickas. Siffrorna ändras under Cirklar → Regler. */
+const CCFG = {groupSize:4, attendTarget:3, startSessions:3, sessionHours:3, leaderYearMax:480, leaderMaxFrom:2027,
+  warn:[400,440,470]};
+const ccfg = () => { const c = Object.assign({}, CCFG, S.circleCfg||{}); delete c.up; return c; };
+const fmtH = n => hh(n).replace('.', ',');
+/* ledaren som id — passet bär det (servern sätter det), annars cirkelns nuvarande ledare */
+function leaderIdOf(b){
+  if(b.leaderId) return b.leaderId;
+  const c = circleById(b.circleId), a = c && c.leader ? byName(c.leader) : null;
+  return a ? a.id : '';
+}
+/* Ledarens timmar ett kalenderår: genomförda med sina timmar, bokade med passets längd. */
+function leaderYear(lid, year, ignoreId){
+  if(S.leaderHours && me() && lid===me().id && S.leaderHours[year] && !ignoreId)
+    return {done:+S.leaderHours[year].done||0, planned:+S.leaderHours[year].planned||0};
+  let done = 0, planned = 0;
+  booked().forEach(b=>{
+    if(!b.circleId || b.id===ignoreId || String(b.date).slice(0,4)!==String(year) || leaderIdOf(b)!==lid) return;
+    if(b.status==='done') done += +b.hours||0; else if(!b.status) planned += dur(b);
+  });
+  return {done, planned};
+}
+/* Krockar passet för ledaren eller någon av deltagarna? '' om inte. */
+function circleConflict(d, ignoreId){
+  const c = circleById(d.circleId); if(!c) return '';
+  const lid = d.leaderId || leaderIdOf(d), lname = c.leader || '';
+  const s0 = startAt(d), e0 = endAt(d), over = x => x.id!==ignoreId && startAt(x) < e0 && endAt(x) > s0;
+  const L = booked().find(x => over(x) && ((lid && x.circleId && leaderIdOf(x)===lid)
+    || (lname && !x.circleId && (x.who===lname || (x.with||[]).includes(lname)))));
+  if(L) return `${lname || 'Ledaren'} har redan ${L.title || 'ett pass'} ${L.start}–${L.end}`;
+  const mem = c.members || [];
+  for(const x of booked()){
+    if(!x.circleId || x.circleId===d.circleId || !over(x)) continue;
+    const oc = circleById(x.circleId), p = oc && (oc.members||[]).find(id=>mem.includes(id));
+    if(p) return `${(byId(p)||{}).n || 'En deltagare'} är med i ${x.title || oc.n} ${x.start}–${x.end}`;
+  }
+  return '';
+}
+/* Allt som måste stämma för ett cirkelpass. extra = timmar som planeras i samma omgång. */
+function circleSessionError(d, ignoreId, extra){
+  const cf = ccfg(), hrs = dur(d);
+  if(cf.sessionHours > 0 && Math.abs(hrs - cf.sessionHours) > 1e-6) return `Ett cirkelpass är ${fmtH(cf.sessionHours)} timmar`;
+  const k = circleConflict(d, ignoreId); if(k) return 'Krock: ' + k;
+  const yr = +String(d.date).slice(0,4), lid = d.leaderId || leaderIdOf(d);
+  if(lid && cf.leaderYearMax > 0 && yr >= cf.leaderMaxFrom){
+    const u = leaderYear(lid, yr, ignoreId), used = u.done + u.planned + (extra||0);
+    if(used + hrs > cf.leaderYearMax + 1e-6)
+      return `${(byId(lid)||{}).n || 'Ledaren'} har ${fmtH(used)} av ${fmtH(cf.leaderYearMax)} timmar ${yr} — passet skulle gå över gränsen`;
+  }
+  return '';
+}
+const plusH = (t, h) => toHm((toMin(t) + Math.round(h*60)) % 1440);
+/* Förhandsvisning av en omgång pass: för varje datum, går det och varför inte. */
+function circlePlanLocal(cid, dates, start, studio){
+  const c = circleById(cid), lid = c && c.leader ? (byName(c.leader)||{}).id || '' : '', extra = {};
+  const end = plusH(start, ccfg().sessionHours);
+  return dates.map(date=>{
+    const d = {circleId:cid, leaderId:lid, date, start, end, studio}, yr = date.slice(0,4);
+    if(studio ? !freeAt(studio, date, start, end, null) : !['A','B'].some(st=>freeAt(st, date, start, end, null)))
+      return {date, ok:false, reason: studio ? 'Studion är upptagen' : 'Båda studiorna är upptagna'};
+    const err = circleSessionError(d, null, extra[yr]||0);
+    if(err) return {date, ok:false, reason:err};
+    extra[yr] = (extra[yr]||0) + dur(d);
+    return {date, ok:true};
+  });
+}
+async function circlePlanCheck(cid, dates, start, studio){
+  if(PREVIEW_LOGIN) return circlePlanLocal(cid, dates, start, studio);
+  return sbRpc('circle_plan_check', {p_circle:cid, p_dates:dates, p_start:start, p_studio:studio||null});
+}
 
 /* ===================== v5: ARBETSYTAN ===================== */
 const lartists  = () => S.artists.filter(a => !a.del && a.active !== false);
@@ -1597,6 +1687,7 @@ async function cloudPush(){
   const setting = (id, data, up) => { if((up||0) > since) rows.push({kind:'setting', id, data, up, del:false}); };
   setting('studios', S.studios, S.studiosUp);
   setting('rates', S.rates, S.rates.up);
+  if(can('manageCircles')){ const {up:cu, ...cfg} = S.circleCfg; setting('circles', cfg, cu); }
   setting('dropbox', {appKey:S.dropbox.appKey||'', sharedId:S.dropbox.sharedId||'', setupAt:S.dropbox.setupAt||0}, S.dropbox.up);
   setting('push', {publicKey:S.pushCfg.publicKey||''}, S.pushCfg.up);
   setting('backup', {at:S.backupCfg.at||0, by:S.backupCfg.by||''}, S.backupCfg.up);
@@ -1630,6 +1721,7 @@ function applyRecord(r){
     if(r.id==='dropbox' && up > (S.dropbox.up||0)) S.dropbox = Object.assign({}, S.dropbox, r.data, {up});
     if(r.id==='push'    && up > (S.pushCfg.up||0)) S.pushCfg = Object.assign({}, S.pushCfg, r.data, {up});
     if(r.id==='backup'  && up > (S.backupCfg.up||0)) S.backupCfg = Object.assign({}, S.backupCfg, r.data, {up});
+    if(r.id==='circles' && up > (S.circleCfg.up||0)) S.circleCfg = Object.assign({}, r.data, {up});
     return;
   }
   const coll = KINDS[r.kind]; if(!coll) return;
@@ -1671,6 +1763,8 @@ async function cloudView(){
   if(v.rates) S.rates = Object.assign({}, S.rates, v.rates);
   S.hoursOverride = v.hours || {};
   S.myProducer = v.producer || '';
+  if(v.circleCfg) S.circleCfg = Object.assign({up:0}, v.circleCfg);
+  S.leaderHours = v.leaderHours || null;    /* ledarens timbank (i år och nästa år), räknad på servern */
   S.contact = v.contact || null;          /* kundens producent — för avbokning med kort varsel */
   save();
 }
@@ -1686,6 +1780,19 @@ async function act(fn, args, local){
   catch(e){ toast(e.message); return false; }
 }
 
+/* Cirkelpass och deras närvaro går alltid via serverns funktioner när den är inkopplad
+   — även för admin och producenter — så att tre timmar, krockar, timbanken och vem som
+   leder vad kontrolleras på ett ställe. I förhandsläget sker ändringen lokalt; local()
+   kan svara med ett felmeddelande. */
+async function circleAct(fn, args, local){
+  if(PREVIEW_LOGIN){ const err = local(); if(err){ toast(err); return false; } return true; }
+  try{
+    await sbRpc(fn, args);
+    if(remoteRole()) await cloudView(); else await cloudPull();
+    render(); return true;
+  }catch(e){ toast(e.message); return false; }
+}
+
 /* ---------- synken ---------- */
 let syncing = false, syncState = 'off', syncMsg = '', lastBeatScan = 0;
 async function sync(silent){
@@ -1694,7 +1801,11 @@ async function sync(silent){
   if(!c && !d){ syncState = 'off'; paintSync(); if(!silent) toast('Servern är inte kopplad än — allt sparas på den här enheten'); return; }
   syncing = true; syncState = 'busy'; paintSync();
   try{
-    if(c){ if(roleView()==='full'){ await cloudPush(); await cloudPull();
+    if(c){ if(roleView()==='full'){ await cloudPush();
+             /* v11: producenter ser bara cirklar de själva leder — hämta om allt en gång,
+                så att cirklar som inte längre syns försvinner från enheten */
+             if((S.cloud.v||0) < 11){ S.circles = []; S.cloud.pulledTs = 0; S.cloud.v = 11; }
+             await cloudPull();
              if(can('answerLeads')) S.leads = (await sb('/leads?select=*&status=eq.new&order=created_at.asc')) || []; }
            else await cloudView(); }
     if(d && Date.now() - lastBeatScan > 120000){ await scanBeats(); await scanMedia(); }
@@ -4229,7 +4340,7 @@ function openAddPerson(role, existingId){
     main: start==='leader' ? null : (INVITE_ROLES[start] ? start : 'producer'),
     lead: start==='leader' || led.length > 0,
     leads: led.length ? led : start==='leader' ? [(lcircle()[0]||{}).id].filter(Boolean) : [],
-    circle: (ex && ex.r==='participant' && inviteCircleFor(ex)) || (lcircle()[0]||{}).id || '',
+    circle: (ex && ex.r==='participant' && inviteCircleFor(ex)) || (lcircle().find(c=>adm || c.leader===me().n)||{}).id || '',
     team: ex ? ex.team||'' : '',
     /* en producent som lägger till en kund blir kundens producent */
     producer: ex ? ex.producer||'' : me().r==='producer' ? me().id : ''};
@@ -4278,7 +4389,7 @@ function paintAddPerson(){
         data-c="${c.id}" onclick="toggleLeadCircle('${c.id}')">${esc(c.n)}</button>`).join('')}</div>`
         : `<div class="warn" style="margin-top:0">Det finns inga cirklar än — skapa en under Cirklar först.</div>`}` : ''}
     ${role==='participant' ? `<label class="lbl" for="apC">DELTAGARE I</label>
-      <select id="apC" onchange="addDraft.circle=this.value">${lcircle().map(c=>
+      <select id="apC" onchange="addDraft.circle=this.value">${lcircle().filter(c=>adm || c.leader===me().n).map(c=>
         `<option value="${c.id}" ${d.circle===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>` : ''}
     ${role==='camera' ? `<label class="lbl" for="apT">TEAM</label>
       <input id="apT" list="teamList2" value="${esc(d.team||'')}" placeholder="t.ex. D2L — lämna tomt om personen är ett eget team" oninput="addDraft.team=this.value.trim()">
@@ -4312,7 +4423,7 @@ async function saveAddPerson(){
   if(em && !EMAIL_RE.test(em)) return toast('E-postadressen ser fel ut');
   if(!ex && accounts().some(a=>a.n.toLowerCase()===name.toLowerCase())) return toast('Namnet finns redan');
   const partCircle = role==='participant' ? (d.circle || (document.getElementById('apC')||{}).value) : null;
-  if(role==='participant' && !partCircle) return toast('Skapa en cirkel först');
+  if(role==='participant' && !partCircle) return toast(can('manageCircles') ? 'Skapa en cirkel först' : 'Du kan bara lägga till deltagare i grupper du leder');
   const leads = d.lead ? d.leads.filter(id=>circleById(id)) : [];
   if(d.lead && !leads.length) return toast(lcircle().length ? 'Välj vilken cirkel hen ska leda' : 'Skapa en cirkel först');
   const team = role==='camera' ? (d.team||'') : '', producer = role==='customer' ? (d.producer||'') : '';
@@ -4341,6 +4452,9 @@ async function saveAddPerson(){
       /* admin sparar personen direkt; en producent lägger bara in nya rader (e-posten
          på en befintlig person sätts av create_invite) */
       if(can('manageCrew')) await pushMember(acc); else if(!ex) await insertMember(acc);
+      /* producenten lägger deltagaren i en cirkel hen leder — via servern (cirklar skriver bara admin) */
+      if(!can('manageCircles') && role==='participant' && partCircle && !ex)
+        await sbRpc('add_circle_member', {p_circle:partCircle, p_member:acc.id});
       if(changed.length) await sbRpc('push_records', {rows: changed.map(c=>({kind:'circle', id:String(c.id), data:c, up:c.up||0, del:!!c.del}))});
     }
     const tok = await createInvite(role, role==='participant' ? partCircle : role==='leader' ? leads[0] : null, 14, 1,
@@ -4771,66 +4885,294 @@ function hoursBar(hrs){
         box-shadow:0 0 10px ${full?'var(--warn)':'rgba(168,85,247,.8)'}"></i></div></div>`;
 }
 
+/* ---------- CIRKLAR ----------
+   Flikar: Grupper (fyllnad och ledarnas timbank), Deltagare (programmet, anmälningar,
+   dubbletter) och Kalender (veckans pass med filter). Admin ser allt; en producent som
+   leder ser bara sina egna grupper — servern skickar inte de andra. */
+let circTab = 'groups', calWeek = null, calFilter = {leader:'', circle:'', person:''};
+let signupList = null, signupAt = 0, distPlan = null;
+function circleTabs(){
+  return can('manageCircles') ? [['groups','Grupper'],['people','Deltagare'],['calendar','Kalender']]
+                              : [['groups','Grupper'],['calendar','Kalender']];
+}
+/* anmälningar som väntar (foundation-formuläret) */
+function newSignups(){
+  if(PREVIEW_LOGIN) return (S.signups||[]).filter(x=>x.status==='new');
+  if(can('manageCircles') && Date.now() - signupAt > 60000){
+    signupAt = Date.now();
+    sb('/circle_signups?select=*&status=eq.new&order=created_at.asc')
+      .then(r=>{ signupList = r || []; if(view==='circles') render(); }).catch(()=>{});
+  }
+  return signupList || [];
+}
 function vCircles(){
-  const mgr = can('manageCircles');
-  const cs = myCircles();
-  const now = new Date();
-  const all = lpeople();
-  const atMax = all.filter(p=>hoursFor(p.id) >= MAX_HOURS);
+  const tabs = circleTabs(); if(!tabs.some(t=>t[0]===circTab)) circTab = 'groups';
+  const ns = can('manageCircles') ? newSignups().length : 0;
+  return `
+    <div class="h1">Cirklar</div>
+    <div class="sub">${can('manageCircles') ? 'Hela programmet.' : 'Cirklarna du leder.'}</div>
+    <div class="seg" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${circTab===k}"
+      class="${circTab===k?'on':''}" onclick="circTab='${k}';render()">${n}${k==='people'&&ns?` <span class="dot-n">${ns}</span>`:''}</button>`).join('')}</div>
+    ${circTab==='people' ? vCirclePeople() : circTab==='calendar' ? vCircleCal() : vCircleGroups()}`;
+}
 
+/* gruppens fyllnad mot gruppstorleken i reglerna */
+const fillOf = c => { const n = membersOf(c.id).length, g = ccfg().groupSize; return {n, g, need:Math.max(0, g-n), over:Math.max(0, n-g)}; };
+function fillPill(c){
+  const f = fillOf(c);
+  return f.need ? `<span class="pill" style="background:rgba(250,178,25,.14);color:var(--warn)">BEHÖVER ${f.need}</span>`
+    : f.over ? `<span class="pill" style="background:rgba(250,178,25,.14);color:var(--warn)">${f.over} FÖR MÅNGA</span>`
+    : `<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">FULL GRUPP</span>`;
+}
+/* Ledarens timbank: genomförda + bokade timmar per kalenderår mot gränsen. Före året
+   gränsen börjar gälla visas också det året — det är dit planeringen sträcker sig. */
+function leaderBank(lid){
+  const cf = ccfg(), y = new Date().getFullYear(), years = y < cf.leaderMaxFrom ? [y, cf.leaderMaxFrom] : [y];
+  return years.map(yr=>{
+    const u = leaderYear(lid, yr), tot = u.done + u.planned, capped = yr >= cf.leaderMaxFrom, mx = cf.leaderYearMax;
+    const warn = capped && cf.warn.some(w=>tot >= w), full = capped && tot >= mx;
+    return `<div class="bankrow">
+      <div class="row" style="justify-content:space-between"><span class="tiny muted">${yr}</span>
+        <span class="tiny" style="color:${full?'var(--bad2)':warn?'var(--warn)':'var(--mut)'}"><b class="nums" style="color:var(--txt)">${fmtH(tot)}</b>${
+          capped ? ` av ${fmtH(mx)} h` : ' h · ingen gräns än'}${u.planned ? ` · ${fmtH(u.planned)} bokade` : ''}</span></div>
+      ${capped ? `<div class="bar thin"><i style="width:${Math.min(100, tot/mx*100)}%;${full?'background:var(--bad2)':warn?'background:var(--warn)':''}"></i></div>` : ''}
+    </div>`; }).join('');
+}
+function vCircleGroups(){
+  const mgr = can('manageCircles'), cs = myCircles(), now = new Date();
+  const atMax = lpeople().filter(p=>hoursFor(p.id) >= MAX_HOURS);
+  const needy = cs.filter(c=>fillOf(c).need);
+  const leaders = [...new Set(cs.map(c=>c.leader).filter(Boolean))].map(n=>byName(n)).filter(Boolean)
+    .sort((a,b)=>a.n.localeCompare(b.n,'sv'));
+  const cand = mgr ? distributeCandidates().length : 0;
   const rows = cs.map((c,i)=>{
-    const mem = membersOf(c.id);
-    const up = circleSessions(c.id).filter(b=>b.status!=='done' && endAt(b)>now).length;
+    const f = fillOf(c), up = circleSessions(c.id).filter(b=>b.status!=='done' && b.status!=='request' && endAt(b)>now).length;
     return `<button class="member" style="animation-delay:${i*45}ms" onclick="openCircleView('${c.id}')">
       <div class="av" style="background:linear-gradient(150deg,${col(c.leader)||'#7c3aed'},#241a3f)">
         ${esc((c.n.match(/\d+/)||[''])[0] || c.n.slice(0,2))}</div>
       <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(c.n)}</div>
-        <div class="mrole">${c.leader?'Ledare: '+esc(c.leader):'Ingen ledare satt'} · ${mem.length}
-          ${mem.length===1?'deltagare':'deltagare'}</div></div>
-      ${up?`<span class="pill" style="background:rgba(168,85,247,.14);color:var(--pur3)">${up} BOKADE</span>`:''}
+        <div class="mrole">${c.leader?esc(c.leader):'Ingen ledare satt'} · ${f.n} av ${f.g} deltagare${up?` · ${up} bokade`:''}</div></div>
+      ${fillPill(c)}
       <span style="color:var(--mut2);font-size:18px">›</span>
     </button>`;
   }).join('');
-
   return `
-    <div class="h1">Cirklar</div>
-    <div class="sub">${mgr ? 'Hela programmet.' : 'Cirklarna du leder.'}
-      ${cs.length} ${cs.length===1?'cirkel':'cirklar'} · ${all.length} deltagare i programmet</div>
-    ${mgr?`<button class="btn" onclick="openCircleEdit()">+ NY CIRKEL</button>`:''}
-    ${atMax.length?`<div class="warn" style="margin-top:14px"><b>${atMax.length}
-      ${atMax.length===1?'deltagare har':'deltagare har'} nått ${MAX_HOURS} timmar:</b><br>
+    ${mgr?`<div class="row" style="gap:9px;margin-bottom:var(--s2)">
+      <button class="btn" style="flex:1" onclick="openCircleEdit()">+ NY CIRKEL</button>
+      <button class="btn ghost" style="flex:1" onclick="openDistribute()">FÖRDELA${cand?` (${cand})`:''}</button></div>
+      <button class="btn ghost slim" onclick="openCircleRules()">REGLER FÖR CIRKLARNA</button>`:''}
+    ${needy.length?`<div class="note" style="margin-top:14px">${nt(needy.length,'grupp behöver','grupper behöver')} fler deltagare
+      (${ccfg().groupSize} per grupp).${mgr && cand?` ${nt(cand,'person väntar','personer väntar')} på en plats — tryck <b>Fördela</b>.`:''}</div>`:''}
+    ${atMax.length?`<div class="warn" style="margin-top:14px"><b>${nt(atMax.length,'deltagare har','deltagare har')} nått ${MAX_HOURS} timmar:</b><br>
       ${atMax.map(p=>esc(p.n)).join(', ')}.</div>`:''}
-    <div class="eyebrow" style="margin-top:22px">${mgr?'ALLA CIRKLAR':'MINA CIRKLAR'}<span class="ln"></span></div>
-    <div class="stagger">${rows || `<div class="empty">${mgr
-      ? 'Inga cirklar än. Skapa den första.'
+    <div class="eyebrow" style="margin-top:22px">${mgr?'ALLA GRUPPER':'MINA GRUPPER'}<span class="ln"></span><span style="color:var(--mut2)">${cs.length}</span></div>
+    <div class="stagger">${rows || `<div class="empty">${mgr ? 'Inga cirklar än. Skapa den första.'
       : 'Du leder ingen cirkel än. AZ kopplar dig till en grupp.'}</div>`}</div>
-    ${mgr?`
-      <div class="eyebrow">DELTAGARE I PROGRAMMET<span class="ln"></span>
-        <span style="color:var(--mut2)">${all.length}</span></div>
-      <button class="btn ghost" onclick="openPersonEdit()">+ LÄGG TILL DELTAGARE</button>
-      <div style="margin-top:12px">${all.length ? all.slice().sort((a,b)=>a.n.localeCompare(b.n,'sv'))
-        .map(p=>{
-          const hrs = hoursFor(p.id);
-          const inC = lcircle().filter(c=>(c.members||[]).includes(p.id)).length;
-          return `<button class="member" onclick="openPersonEdit('${p.id}')">
-            ${pav(p)}
-            <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(p.n)}</div>
-              <div class="mrole">${inC} ${inC===1?'cirkel':'cirklar'}${p.email?' · '+esc(p.email):''}</div></div>
-            ${hoursBar(hrs)}</button>`;
-        }).join('') : `<div class="empty">Inga deltagare inlagda än.</div>`}</div>
-      <div class="eyebrow">LÄROPLANER<span class="ln"></span></div>
+    ${leaders.length?`<div class="eyebrow">TIMBANK PER LEDARE<span class="ln"></span></div>
+      <div class="card">${leaders.map(a=>`<div class="bankhead">${pav(a, 28)}<b>${esc(a.n)}</b></div>${leaderBank(a.id)}`).join('')}
+        <div class="tiny muted" style="margin-top:10px;line-height:1.5">Genomförda och bokade cirkeltimmar per kalenderår.
+          Från ${ccfg().leaderMaxFrom} högst ${fmtH(ccfg().leaderYearMax)} timmar per ledare — pass som skulle gå över går inte att boka.</div></div>`:''}
+    ${mgr?`<div class="eyebrow">LÄROPLANER<span class="ln"></span></div>
       <button class="btn ghost" onclick="openCurrEdit()">+ NY LÄROPLAN</button>
       <div style="margin-top:12px">${lcurr().map(c=>`
         <button class="member" onclick="openCurrEdit('${c.id}')">
           <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(c.title)}</div>
             <div class="mrole">${esc(c.subject)}${c.from?' · gäller från '+esc(c.from):''}</div></div>
           <span style="color:var(--mut2);font-size:18px">›</span></button>`).join('')
-        || `<div class="empty">Inga läroplaner än.</div>`}</div>`:''}
-    ${mgr?`<div class="note">Programdeltagarna har inga inloggningar — de är poster som crewet
-      sköter. <b>Personnummer lagras inte här</b>; rapporteringsunderlaget hör hemma i ert
-      studieförbundssystem, inte i en app som ligger i telefonen.</div>`:''}
-  `;
+        || `<div class="empty">Inga läroplaner än.</div>`}</div>`:''}`;
 }
+
+function vCirclePeople(){
+  const all = lpeople(), sg = newSignups();
+  return `
+    ${sg.length?`<div class="eyebrow" style="margin-top:0">NYA ANMÄLNINGAR<span class="ln"></span><span style="color:var(--warn)">${sg.length}</span></div>
+      ${sg.map(x=>`<div class="member" style="cursor:default">
+        <div class="grow" style="min-width:0"><div class="mname">${esc(x.name)} <span class="badge warn" style="margin-left:4px">ANMÄLAN</span></div>
+          <div class="mrole">${[x.subject, x.email, x.phone].filter(Boolean).map(esc).join(' · ')||'—'}</div></div>
+        <button class="btn slim" style="width:auto;flex:none;padding:9px 12px" onclick="openPlace('${x.id}')">PLACERA</button></div>`).join('')}`:''}
+    <div class="eyebrow"${sg.length?'':' style="margin-top:0"'}>DELTAGARE I PROGRAMMET<span class="ln"></span><span style="color:var(--mut2)">${all.length}</span></div>
+    <button class="btn ghost" onclick="openPersonEdit()">+ LÄGG TILL DELTAGARE</button>
+    <div style="margin-top:12px">${all.length ? all.slice().sort((a,b)=>a.n.localeCompare(b.n,'sv')).map(p=>{
+      const hrs = hoursFor(p.id), inC = lcircle().filter(c=>(c.members||[]).includes(p.id));
+      return `<button class="member" onclick="openPersonEdit('${p.id}')">
+        ${pav(p)}
+        <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(p.n)}</div>
+          <div class="mrole">${inC.length ? inC.map(c=>esc(c.n)).join(', ') : '<span style="color:var(--warn)">ingen grupp</span>'}${p.email?' · '+esc(p.email):''}</div></div>
+        ${hoursBar(hrs)}</button>`;
+    }).join('') : `<div class="empty">Inga deltagare inlagda än.</div>`}</div>
+    <div class="note">Programdeltagarna sköts här. <b>Personnummer lagras inte i appen</b> — de finns i kalkylarket
+      från anmälningsformuläret och fylls i där när underlaget rapporteras.</div>`;
+}
+
+/* ---------- kalendern: veckans cirkelpass med filter ---------- */
+function vCircleCal(){
+  if(!calWeek) calWeek = monday(new Date());
+  const days = [...Array(7)].map((_,i)=>iso(addDays(calWeek, i)));
+  const cs = myCircles(), ids = new Set(cs.map(c=>c.id)), f = calFilter;
+  const leaders = [...new Set(cs.map(c=>c.leader).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'sv'));
+  const people = [...new Set(cs.flatMap(c=>c.members||[]))].map(byId).filter(Boolean).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
+  const list = live().filter(b=>b.circleId && ids.has(b.circleId) && b.status!=='declined' && b.date>=days[0] && b.date<=days[6])
+    .filter(b=>{ const c = circleById(b.circleId);
+      return (!f.leader || (c && c.leader===f.leader) || b.who===f.leader) && (!f.circle || b.circleId===f.circle)
+        && (!f.person || (c && (c.members||[]).includes(f.person))); })
+    .sort((a,b)=>startAt(a)-startAt(b));
+  const sel = (k, opts, label) => `<select onchange="calFilter.${k}=this.value;render()" aria-label="${label}">
+    <option value="">${label}</option>${opts.map(([v,n])=>`<option value="${esc(v)}" ${f[k]===v?'selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  const st = b => b.status==='done' ? '<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">GENOMFÖRT</span>'
+    : b.status==='request' ? '<span class="pill" style="background:rgba(250,178,25,.15);color:var(--warn)">FÖRSLAG</span>'
+    : '<span class="pill" style="background:rgba(168,85,247,.14);color:var(--pur3)">PLANERAT</span>';
+  return `
+    <div class="row" style="gap:8px;margin-bottom:10px">
+      <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="calWeek=addDays(calWeek,-7);render()" aria-label="Förra veckan">‹</button>
+      <div class="grow" style="text-align:center;font-weight:650">Vecka ${weekNo(calWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
+      <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="calWeek=addDays(calWeek,7);render()" aria-label="Nästa vecka">›</button>
+    </div>
+    ${cs.length > 1 ? `<div class="calfilters">${leaders.length>1?sel('leader', leaders.map(n=>[n,n]), 'Alla ledare'):''}
+      ${sel('circle', cs.map(c=>[c.id, c.n]), 'Alla grupper')}${people.length?sel('person', people.map(p=>[p.id, p.n]), 'Alla deltagare'):''}</div>` : ''}
+    ${days.map(d=>{ const day = list.filter(b=>b.date===d);
+      return `<div class="calday ${d===iso(new Date())?'today':''}">
+        <div class="calday-h">${DAY[fromIso(d).getDay()]} ${fromIso(d).getDate()} ${MON[fromIso(d).getMonth()]}</div>
+        ${day.length ? day.map(b=>{ const c = circleById(b.circleId), n = c ? membersOf(c.id).length : 0;
+          return `<button class="bk" style="--k:${col(b.who)||'#7c3aed'};--kg:${glow(b.who)||'#a855f7'};width:100%;text-align:left" onclick="openDetail('${b.id}')">
+            <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
+            <div class="grow" style="min-width:0"><div class="bk-title">${esc(c ? c.n : b.title)}</div>
+              <div class="bk-sub">${esc(b.who||'Ingen ledare')} · ${b.studio?esc(S.studios[b.studio]):'studio ej vald'} · ${
+                b.status==='done' ? `${(b.present||[]).length} av ${n} deltog` : `${n} deltagare`} ${st(b)}</div></div></button>`; }).join('')
+          : '<div class="tiny muted" style="padding:4px 2px 2px">—</div>'}</div>`; }).join('')}`;
+}
+
+/* ---------- regler ---------- */
+function openCircleRules(){
+  if(!can('manageCircles')) return;
+  const c = ccfg();
+  const f = (id, label, v, hint) => `<label class="lbl" for="${id}">${label}</label>
+    <input id="${id}" inputmode="decimal" value="${esc(String(v))}">${hint?`<div class="tiny muted" style="margin-top:5px">${hint}</div>`:''}`;
+  openSheet(`${X}<h2>Regler för cirklarna</h2>
+    <div class="sub">Gäller direkt för alla — även kontrollerna på servern.</div>
+    ${f('rgG','DELTAGARE PER GRUPP', c.groupSize)}
+    ${f('rgS','STARTPASS', c.startSessions, 'Alla i gruppen ska ha varit med på minst ett av de första passen.')}
+    ${f('rgA','NÄRVARANDE PER PASS EFTER START', c.attendTarget)}
+    ${f('rgH','TIMMAR PER PASS', c.sessionHours)}
+    ${f('rgM','MAX TIMMAR PER LEDARE OCH KALENDERÅR', c.leaderYearMax)}
+    ${f('rgY','GRÄNSEN GÄLLER FRÅN ÅR', c.leaderMaxFrom)}
+    ${f('rgW','VARNA LEDAREN VID (TIMMAR)', c.warn.join(', '), 'Kommaseparerat, t.ex. 400, 440, 470.')}
+    <div id="rgMsg"></div>
+    <button class="btn" style="margin-top:22px" onclick="saveCircleRules()">SPARA REGLERNA</button>`);
+}
+function saveCircleRules(){
+  const n = id => Number(String(document.getElementById(id).value).replace(',', '.'));
+  const v = {groupSize:n('rgG'), startSessions:n('rgS'), attendTarget:n('rgA'), sessionHours:n('rgH'),
+    leaderYearMax:n('rgM'), leaderMaxFrom:n('rgY'),
+    warn:String(document.getElementById('rgW').value).split(/[,\s]+/).filter(Boolean).map(Number).sort((a,b)=>a-b)};
+  const bad = Object.entries(v).find(([k,x])=> k==='warn' ? x.some(y=>!(y>0)) : !(x>0) || (k!=='sessionHours' && x%1));
+  if(bad || v.leaderMaxFrom < 2000 || v.sessionHours > 12)
+    return document.getElementById('rgMsg').innerHTML = '<div class="warn">Kontrollera siffrorna — hela, positiva tal (timmar per pass högst 12).</div>';
+  S.circleCfg = Object.assign({}, v, {up:Date.now()});
+  save(); closeSheet(); render(); toast('Reglerna sparade'); sync(true);
+}
+
+/* ---------- fördela: anmälningar och deltagare utan grupp ---------- */
+function distributeCandidates(){
+  const inAny = new Set(lcircle().flatMap(c=>c.members||[]));
+  return newSignups().map(x=>({kind:'signup', id:x.id, n:x.name, subject:x.subject||''}))
+    .concat(lpeople().filter(p=>!inAny.has(p.id)).map(p=>({kind:'person', id:p.id, n:p.n, subject:''})));
+}
+/* samma ämne först, sedan gruppen med flest lediga platser */
+function suggestCircle(cand, load){
+  const g = ccfg().groupSize, open = lcircle().filter(c=>(load[c.id]||0) < g);
+  const same = open.filter(c=>cand.subject && String(c.subject||'').toLowerCase()===String(cand.subject).toLowerCase());
+  return (same.length ? same : open).sort((a,b)=>(load[a.id]||0)-(load[b.id]||0) || a.n.localeCompare(b.n,'sv'))[0] || null;
+}
+function openDistribute(){
+  if(!can('manageCircles')) return;
+  const load = {}; lcircle().forEach(c=>load[c.id] = membersOf(c.id).length);
+  distPlan = distributeCandidates().map(x=>{ const c = suggestCircle(x, load); if(c) load[c.id]++; return Object.assign(x, {circle: c ? c.id : ''}); });
+  const opts = sel => `<option value="">Ingen grupp än</option>${lcircle().map(c=>
+    `<option value="${c.id}" ${sel===c.id?'selected':''}>${esc(c.n)} (${membersOf(c.id).length}/${ccfg().groupSize})</option>`).join('')}`;
+  openSheet(`${X}<h2>Fördela deltagare</h2>
+    <div class="sub">Förslag: samma ämne först, sedan gruppen med flest lediga platser. Ändra där det behövs.</div>
+    ${distPlan.length ? distPlan.map((x,i)=>`<div class="distrow">
+      <div class="grow" style="min-width:0"><div class="mname" style="font-size:14px">${esc(x.n)}${x.kind==='signup'?' <span class="badge warn">ANMÄLAN</span>':''}</div>
+        ${x.subject?`<div class="mrole">${esc(x.subject)}</div>`:''}</div>
+      <select onchange="distPlan[${i}].circle=this.value" aria-label="Grupp för ${esc(x.n)}">${opts(x.circle)}</select></div>`).join('')
+      + `<button class="btn" style="margin-top:20px" onclick="doDistribute()">PLACERA</button>`
+      : `<div class="empty">Ingen väntar på en plats.</div>`}`);
+}
+async function doDistribute(){
+  const todo = (distPlan||[]).filter(x=>x.circle); if(!todo.length) return toast('Välj en grupp för någon först');
+  let n = 0, err = '';
+  for(const x of todo){
+    try{ if(x.kind==='signup') await placeSignup(x.id, x.circle, null); else await addToCircle(x.circle, x.id); n++; }
+    catch(e){ err = x.n + ': ' + e.message; }
+  }
+  distPlan = null; closeSheet(); render();
+  toast(`${nt(n,'person placerad','personer placerade')}${err?' · '+err:''}`);
+  if(!PREVIEW_LOGIN) sync(true);
+}
+async function addToCircle(cid, pid){
+  const c = circleById(cid); if(!c) throw new Error('Gruppen finns inte');
+  if((c.members||[]).includes(pid)) return;
+  if(PREVIEW_LOGIN || can('manageCircles')){ c.members = (c.members||[]).concat(pid); touch(c); save(); if(!PREVIEW_LOGIN) await cloudPush(); return; }
+  await sbRpc('add_circle_member', {p_circle:cid, p_member:pid}); await cloudPull();
+}
+/* En anmälan blir en deltagare (eller kopplas till en som redan finns) och, om vald, i en grupp. */
+async function placeSignup(sid, cid, memberId){
+  if(PREVIEW_LOGIN){
+    const x = (S.signups||[]).find(y=>y.id===sid); if(!x || x.status!=='new') throw new Error('Anmälan finns inte längre');
+    let pid = memberId;
+    if(!pid){
+      if(accounts().some(a=>a.n.toLowerCase()===x.name.toLowerCase())) throw new Error(`Det finns redan en person som heter ${x.name} — koppla anmälan till den i stället`);
+      pid = 'm_' + uid();
+      S.accounts.push(bump({id:pid, n:x.name, r:'participant', email:x.email||'', phone:x.phone||'', c:'#6633b8', g:'#9d5cf5', active:true, del:false}));
+    }
+    if(cid) await addToCircle(cid, pid);
+    Object.assign(x, {status:'placed', member_id:pid, circle_id:cid||null}); save(); return pid;
+  }
+  const r = await sbRpc('place_signup', {p_signup:sid, p_circle:cid||null, p_member:memberId||null});
+  signupList = (signupList||[]).filter(y=>y.id!==sid); signupAt = 0;
+  await cloudPull(); return r && r.member;
+}
+/* Finns personen redan? Samma regler som find_duplicates på servern. */
+async function findDuplicates(name, email, phone){
+  if(!PREVIEW_LOGIN) return (await sbRpc('find_duplicates', {p_name:name||'', p_email:email||'', p_phone:phone||''})) || [];
+  const nn = s => String(s||'').trim().replace(/\s+/g,' ').toLowerCase(), em = nn(email), ph = normPhone(phone);
+  return accounts().filter(a=>a.active!==false && !a.del).map(a=>({id:a.id, name:a.n, role:a.r,
+    why: em && nn(a.email)===em ? 'samma e-post' : ph && normPhone(a.phone)===ph ? 'samma telefonnummer'
+       : nn(name).length>=2 && nn(a.n)===nn(name) ? 'samma namn' : ''})).filter(x=>x.why);
+}
+async function openPlace(sid){
+  const x = newSignups().find(y=>y.id===sid); if(!x) return;
+  const load = {}; lcircle().forEach(c=>load[c.id] = membersOf(c.id).length);
+  const sug = suggestCircle({subject:x.subject}, load);
+  let dups = []; try{ dups = await findDuplicates(x.name, x.email, x.phone); }catch(_){}
+  openSheet(`${X}<h2>${esc(x.name)}</h2>
+    <div class="sub">Anmälan${x.created_at?' '+esc(new Date(x.created_at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'})):''}</div>
+    <div style="margin-top:12px">
+      ${x.subject?`<div class="kv"><span>ÄMNE</span><b>${esc(x.subject)}</b></div>`:''}
+      ${x.phone?`<div class="kv"><span>TELEFON</span><b><a href="${telHref(x.phone)}" style="color:var(--txt)">${esc(x.phone)}</a></b></div>`:''}
+      ${x.email?`<div class="kv"><span>E-POST</span><b><a href="mailto:${esc(x.email)}" style="color:var(--txt)">${esc(x.email)}</a></b></div>`:''}
+      ${x.note?`<div class="kv" style="border:0"><span>MEDDELANDE</span><b style="font-weight:500">${esc(x.note)}</b></div>`:''}</div>
+    ${dups.length?`<div class="warn"><b>Finns kanske redan:</b> ${dups.map(d=>`${esc(d.name)} (${esc(ROLE_NAME[d.role]||d.role)}, ${esc(d.why)})`).join(', ')}.</div>
+      ${dups.filter(d=>d.role==='participant').map(d=>`<button class="btn ghost slim" style="margin-top:8px" onclick="placeFromSheet('${sid}','${d.id}')">KOPPLA TILL ${esc(d.name.toUpperCase())}</button>`).join('')}`:''}
+    <label class="lbl" for="plC">GRUPP</label>
+    <select id="plC"><option value="">Ingen grupp än</option>${lcircle().map(c=>
+      `<option value="${c.id}" ${sug&&sug.id===c.id?'selected':''}>${esc(c.n)} (${membersOf(c.id).length}/${ccfg().groupSize})</option>`).join('')}</select>
+    <button class="btn" style="margin-top:20px" onclick="placeFromSheet('${sid}','')">LÄGG IN SOM NY DELTAGARE</button>
+    <button class="btn ghost" style="margin-top:9px" onclick="rejectSignup('${sid}')">AVVISA</button>`);
+}
+async function placeFromSheet(sid, memberId){
+  try{ await placeSignup(sid, document.getElementById('plC').value, memberId || null); closeSheet(); render(); toast('Placerad'); if(!PREVIEW_LOGIN) sync(true); }
+  catch(e){ toast(e.message); }
+}
+async function rejectSignup(sid){
+  if(!confirm('Avvisa anmälan?')) return;
+  try{
+    if(PREVIEW_LOGIN){ const x = (S.signups||[]).find(y=>y.id===sid); if(x) x.status = 'rejected'; save(); }
+    else { await sbRpc('reject_signup', {p_signup:sid}); signupList = (signupList||[]).filter(y=>y.id!==sid); }
+    closeSheet(); render(); toast('Avvisad');
+  }catch(e){ toast(e.message); }
+}
+
 function openCircleView(id){ openCircle = id; render(); window.scrollTo(0,0); }
 
 function vCircle(){
@@ -5086,6 +5428,7 @@ function vLeader(){
   const sm = (label, js, ghost) => `<button class="btn slim ${ghost?'ghost':''}" style="width:auto;flex:none;padding:9px 13px" onclick="${js}">${label}</button>`;
 
   return head + `
+    <div class="card" style="margin-bottom:12px"><div class="studio-name">DIN TIMBANK</div>${leaderBank(m.id)}</div>
     <button class="btn" onclick="openForm(null,null,'${c.id}')">+ BOKA PASS</button>
     ${pend.length?`<div class="eyebrow">VÄNTAR PÅ DIG<span class="ln"></span><span style="color:var(--warn)">${pend.length}</span></div>
       ${pend.map(b=>row(b, sm('Godkänn',`openApprove('${b.id}')`) + sm('Avböj',`declineRequest('${b.id}')`,1), 'req')).join('')}`:''}
@@ -5529,7 +5872,9 @@ async function doApprove(id, studio){
   /* Kollas igen vid godkännandet — någon kan ha bokat tiden under tiden. */
   if(!freeAt(studio, b.date, b.start, b.end, b.id))
     return toast(S.studios[studio] + ' hann bli upptagen');
-  if(!await act('answer_request', {p_booking:id, p_approve:true, p_studio:studio}, ()=>{
+  const doit = b.circleId ? circleAct : act;
+  if(!await doit('answer_request', {p_booking:id, p_approve:true, p_studio:studio}, ()=>{
+    if(b.circleId){ const err = circleSessionError(Object.assign({}, b, {studio}), b.id); if(err) return err; }
     Object.assign(b, {studio, status:'', up:Date.now()}); save(); })) return;
   closeSheet(); render();
   toast('Godkänd · ' + S.studios[studio] + ' bokad'); sync(true);
@@ -5538,7 +5883,7 @@ async function declineRequest(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(!mayAnswer(b)) return toast('Bara cirkelns ledare kan svara');
   if(!confirm('Avböj förfrågan?')) return;
-  if(!await act('answer_request', {p_booking:id, p_approve:false, p_studio:null}, ()=>{
+  if(!await (b.circleId ? circleAct : act)('answer_request', {p_booking:id, p_approve:false, p_studio:null}, ()=>{
     Object.assign(b, {status:'declined', up:Date.now()}); save(); })) return;
   closeSheet(); render(); toast('Avböjd'); sync(true);
 }
@@ -6128,7 +6473,8 @@ function openForm(id, date, circleId, asCustomer){
 
     <label class="lbl">TID</label>
     <div class="two"><input type="time" id="fStart" value="${v.start}" data-prev="${v.start}" onchange="shiftEnd()">
-      <input type="time" id="fEnd" value="${v.end}" onchange="checkForm()"></div>
+      <input type="time" id="fEnd" value="${circ ? plusH(v.start, ccfg().sessionHours) : v.end}" onchange="checkForm()" ${circ?'readonly title="Ett cirkelpass har fast längd"':''}></div>
+    ${circ ? `<div class="tiny muted" style="margin-top:6px">Ett cirkelpass är ${fmtH(ccfg().sessionHours)} timmar — välj starttiden.</div>` : ''}
     <div class="chips" style="margin-top:8px">
       ${pr.map(p=>`<button class="chip" onclick="setTime('${p[0]}','${p[1]}')">${p[0]}–${p[1]}</button>`).join('')}
     </div>
@@ -6164,7 +6510,8 @@ function openForm(id, date, circleId, asCustomer){
     <input type="hidden" id="fPaid" value="${v.paid?'1':''}">
 
     ${b?'':`<label class="lbl">UPPREPA VARJE VECKA</label>
-    <select id="fRep">${[1,2,3,4,6,8,12].map(n=>`<option value="${n}">${n===1?'Nej, bara en gång':n+' veckor i rad'}</option>`).join('')}</select>`}
+    <select id="fRep" onchange="checkForm()">${(circ?[1,2,3,4,6,8,10,12,16,20]:[1,2,3,4,6,8,12]).map(n=>`<option value="${n}">${n===1?'Nej, bara en gång':n+' veckor i rad'}</option>`).join('')}</select>
+    ${circ ? `<div class="tiny muted" style="margin-top:6px">Varje datum kontrolleras först — studio, krockar för ledaren och deltagarna, och timbanken.</div>` : ''}`}
 
     <div id="clash"></div>
     <button class="btn" id="saveBtn" style="margin-top:20px" onclick="saveBooking()">${b?'SPARA ÄNDRING':'BOKA PASSET'}</button>
@@ -6197,6 +6544,8 @@ function setTime(a,b){ const s = document.getElementById('fStart'); s.value = s.
 /* Flyttar man starttiden följer sluttiden med — passet behåller sin längd (tre timmar som förval). */
 function shiftEnd(){
   const s = document.getElementById('fStart'), e = document.getElementById('fEnd'), ok = t => /^\d\d:\d\d$/.test(t||'');
+  /* cirkelpass har fast längd (Cirklar → Regler) */
+  if((document.getElementById('fCircle')||{}).value && ok(s.value)){ e.value = plusH(s.value, ccfg().sessionHours); s.dataset.prev = s.value; return checkForm(); }
   if(ok(s.value) && ok(s.dataset.prev) && ok(e.value)){
     const len = (toMin(e.value) - toMin(s.dataset.prev) + 1440) % 1440 || SLOT;
     e.value = toHm((toMin(s.value) + len) % 1440);
@@ -6241,18 +6590,22 @@ function checkForm(){
     btn.disabled = true;
   } else {
     const h = dur(f);
-    box.innerHTML = `<div class="okbox">Ledigt ✓ ${esc(S.studios[f.studio])} · ${hh(h)} h${
+    /* cirkelpass: tre timmar, krockar för ledare och deltagare, timbanken */
+    const ce = f.circleId ? circleSessionError(Object.assign({}, f, {leaderId:editId ? leaderIdOf(S.bookings.find(x=>x.id===editId)||f) : ''}), editId) : '';
+    box.innerHTML = ce ? `<div class="warn">${esc(ce)}</div>` : `<div class="okbox">Ledigt ✓ ${esc(S.studios[f.studio])} · ${hh(h)} h${
       h>0&&endAt(f).getDate()!==startAt(f).getDate()?' (över midnatt)':''}</div>`;
-    btn.disabled = false;
+    btn.disabled = !!ce;
   }
+  if(f.circleId){ btn.onclick = saveBooking; btn.textContent = editId ? 'FLYTTA PASSET' : 'BOKA PASSET'; }
 }
 function saveBooking(){
   const f = readForm();
   if(!f.date||!f.start||!f.end) return toast('Fyll i datum och tid');
   if(f.start===f.end) return toast('Start och slut är samma tid');
   if(clash(f, editId).length) return toast('Tiden krockar');
-  if(!can('dashboard') && f.who!==me().n) return toast('Du kan bara boka åt dig själv');
   const rep = document.getElementById('fRep') ? +document.getElementById('fRep').value : 1;
+  if(f.circleId) return saveCircleBooking(f, rep);
+  if(!can('dashboard') && f.who!==me().n) return toast('Du kan bara boka åt dig själv');
   if(remoteRole() && !editId) return saveBookingRemote(f, rep);
   if(editId){
     const b = S.bookings.find(x=>x.id===editId);
@@ -6280,6 +6633,58 @@ function saveBooking(){
 
 /* Ledaren bokar sin cirkel, kunden bokar studiotid — servern krockkollar och
    sätter vem passet gäller, så ingen kan boka i någon annans namn. */
+/* Cirkelpass: en omgång (upprepa varje vecka) kontrolleras först — tre timmar, studio,
+   krockar för ledare och deltagare, timbanken — och visas datum för datum. Bara de
+   som går bokas. Ett flyttat pass (editId) går via update_circle_session. */
+let circlePlan = null;
+async function saveCircleBooking(f, rep, go){
+  const box = document.getElementById('clash'), btn = document.getElementById('saveBtn');
+  if(editId){
+    const b = S.bookings.find(x=>x.id===editId); if(!b) return;
+    const ok = await circleAct('update_circle_session', {p_booking:editId, p_date:f.date, p_start:f.start, p_studio:f.studio}, ()=>{
+      const n = Object.assign({}, b, {date:f.date, start:f.start, end:plusH(f.start, ccfg().sessionHours), studio:f.studio});
+      if(!freeAt(n.studio, n.date, n.start, n.end, b.id)) return 'Studion är upptagen den tiden';
+      const err = circleSessionError(n, b.id); if(err) return err;
+      Object.assign(b, n, {up:Date.now()}); save(); });
+    if(!ok) return;
+    closeSheet(); render(); toast('Passet är flyttat'); if(PREVIEW_LOGIN) sync(true); return;
+  }
+  const dates = [...Array(Math.max(1, rep))].map((_,i)=>iso(addDays(fromIso(f.date), i*7)));
+  if(!go){
+    let res;
+    try{ res = await circlePlanCheck(f.circleId, dates, f.start, f.studio); }catch(e){ return toast(e.message); }
+    const okN = res.filter(r=>r.ok).length;
+    circlePlan = {f, dates: res.filter(r=>r.ok).map(r=>r.date)};
+    if(rep===1 && okN===1) return saveCircleBooking(f, rep, true);
+    if(box) box.innerHTML = `<div class="${okN===res.length?'okbox':'warn'}" style="line-height:1.6">${res.map(r=>
+      `<div>${r.ok?'✓':'✗'} <b>${esc(longDate(r.date))}</b>${r.ok?'':' — '+esc(r.reason)}</div>`).join('')}</div>`;
+    if(btn){ btn.disabled = !okN; btn.textContent = okN ? `BOKA ${nt(okN,'PASS','PASS')}` : 'INGET GÅR ATT BOKA';
+      btn.onclick = () => saveCircleBooking(circlePlan.f, rep, true); }
+    return;
+  }
+  const todo = (circlePlan && circlePlan.f === f ? circlePlan.dates : dates);
+  let made = 0, err = '';
+  const c = circleById(f.circleId), lid = c && c.leader ? (byName(c.leader)||{}).id || '' : '';
+  const end = plusH(f.start, ccfg().sessionHours);
+  for(const d of todo){
+    if(PREVIEW_LOGIN){
+      const nb = Object.assign({}, f, {id:uid(), date:d, end, leaderId:lid, who:c ? c.leader : f.who, up:Date.now(), del:false,
+        status:'', hours:null, present:[], with:[], artistId:'', paid:false});
+      const e2 = !freeAt(nb.studio, d, nb.start, nb.end, null) ? 'Studion är upptagen' : circleSessionError(nb, null);
+      if(e2){ err = e2; continue; }
+      S.bookings.push(nb); made++;
+    } else {
+      try{ await sbRpc('book_circle_session', {p_circle:f.circleId, p_date:d, p_start:f.start, p_end:end, p_studio:f.studio}); made++; }
+      catch(e){ err = e.message; }
+    }
+  }
+  circlePlan = null;
+  if(!made) return toast(err || 'Gick inte att boka');
+  if(PREVIEW_LOGIN){ save(); sync(true); }
+  else { try{ if(remoteRole()) await cloudView(); else await cloudPull(); }catch(_){} }
+  closeSheet(); selDate = f.date; weekStart = monday(fromIso(f.date)); render();
+  toast(made>1 ? `${made} pass bokade${todo.length>made?` · ${todo.length-made} gick inte`:''}` : 'Passet är bokat');
+}
 async function saveBookingRemote(f, rep){
   let made = 0, skipped = 0, err = '';
   for(let i=0; i<rep; i++){
@@ -6322,7 +6727,12 @@ function openDetail(id){
 async function del(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(!can('delBooking',b)) return toast('Du kan bara ta bort dina egna pass');
-  if(!confirm('Ta bort passet?')) return;
+  if(!confirm(b.circleId ? 'Ställa in cirkelpasset?' : 'Ta bort passet?')) return;
+  if(b.circleId){
+    if(b.status==='done') return toast('Passet är genomfört — ångra det först om det inte blev av');
+    if(!await circleAct('cancel_circle_session', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
+    closeSheet(); render(); toast('Passet är inställt'); if(PREVIEW_LOGIN) sync(true); return;
+  }
   if(!await act('cancel_my_booking', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
   closeSheet(); render(); toast('Passet borttaget'); sync(true);
 }
@@ -6393,11 +6803,16 @@ function openPersonEdit(id){
     <div class="note">Inget personnummer här. Deltagaren får ingen inloggning —
       det är crewet som sköter cirklarna i den här appen.</div>`);
 }
-function savePerson(id){
+async function savePerson(id, sure){
   const n = document.getElementById('peN').value.trim();
   if(!n) return toast('Fyll i namn');
   const patch = {n, phone:document.getElementById('peP').value.trim(),
     email:document.getElementById('peE').value.trim()};
+  /* dubblettkontroll för nya: samma e-post, telefon eller namn */
+  if(!id && !sure){
+    let d = []; try{ d = await findDuplicates(patch.n, patch.email, patch.phone); }catch(_){}
+    if(d.length && !confirm(`${d.map(x=>`${x.name} (${ROLE_NAME[x.role]||x.role}, ${x.why})`).join('\n')}\n\nFinns redan — lägg till ändå?`)) return;
+  }
   if(id){ const p = personById(id); Object.assign(p, patch); touch(p); }
   else S.accounts.push(Object.assign({id:uid(), r:'participant', c:'#6633b8', g:'#9d5cf5',
     active:true, del:false, up:Date.now()}, patch));
@@ -6525,7 +6940,7 @@ async function saveComplete(bid){
     return;
   }
   const present = [...document.querySelectorAll('.member.att.on')].map(el=>el.dataset.p);
-  if(!await act('complete_session', {p_booking:bid, p_hours:hrs, p_present:present}, ()=>{
+  if(!await circleAct('complete_session', {p_booking:bid, p_hours:hrs, p_present:present}, ()=>{
     Object.assign(b, {status:'done', hours:hrs, present,
       completedBy: me().n, completedAt: Date.now(), up: Date.now()}); save(); })) return;
   closeSheet(); render();
@@ -6535,7 +6950,7 @@ async function saveComplete(bid){
 async function undoComplete(bid){
   const b = S.bookings.find(x=>x.id===bid); if(!b) return;
   if(!confirm('Ångra? Timmarna tas bort från deltagarna igen.')) return;
-  if(!await act('complete_session', {p_booking:bid, p_hours:null, p_present:null}, ()=>{
+  if(!await circleAct('complete_session', {p_booking:bid, p_hours:null, p_present:null}, ()=>{
     Object.assign(b, {status:'', hours:null, present:[], completedBy:'', completedAt:null, up:Date.now()}); save(); })) return;
   closeSheet(); render(); toast('Tillbaka till bokad'); sync(true);
 }

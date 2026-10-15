@@ -131,19 +131,28 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
 
   r = await ev(w,`
     /* upptagen tid ska nekas vid godkännandet */
-    S.bookings.push({id:'rq2',studio:'',date:'2026-11-10',start:'19:00',end:'22:00',
+    S.bookings.push({id:'aA',studio:'A',date:'2026-11-11',start:'18:00',end:'22:00',
+      who:'ADREY',title:'Mix',note:'',circleId:'',status:'',hours:null,present:[],up:Date.now(),del:false,paid:false});
+    S.bookings.push({id:'rq2',studio:'',date:'2026-11-11',start:'19:00',end:'22:00',
       who:'RKAY',title:'x',note:'',circleId:'c1',status:'request',reqBy:'p1',
       hours:null,present:[],up:Date.now(),del:false,paid:false});
     save();
-    const free = ['A','B'].filter(st=>freeAt(st,'2026-11-10','19:00','22:00','rq2'));
-    doApprove('rq2','A');
+    const free = ['A','B'].filter(st=>freeAt(st,'2026-11-11','19:00','22:00','rq2'));
+    await doApprove('rq2','A');
     const blockedStays = S.bookings.find(x=>x.id==='rq2').status;   /* läs NU */
-    doApprove('rq2','B');
+    await doApprove('rq2','B');
     const b2 = S.bookings.find(x=>x.id==='rq2');
-    return {free, blockedStays, otherWorks:b2.status, studio:b2.studio};`);
+    /* samma ledare kan inte ha två pass samtidigt: rq1 (RKAY 18–21 den 10/11) */
+    S.bookings.push({id:'rq3',studio:'',date:'2026-11-10',start:'19:00',end:'22:00',
+      who:'RKAY',title:'x',note:'',circleId:'c1',status:'request',reqBy:'p1',
+      hours:null,present:[],up:Date.now(),del:false,paid:false});
+    await doApprove('rq3','B');
+    return {free, blockedStays, otherWorks:b2.status, studio:b2.studio, leaderClash:S.bookings.find(x=>x.id==='rq3').status,
+      toast:document.getElementById('toast').textContent};`);
   ok('upptagen studio erbjuds inte', JSON.stringify(r.free)==='["B"]', r.free);
   ok('godkännande mot upptagen tid nekas', r.blockedStays==='request', r.blockedStays);
   ok('den lediga studion går att godkänna mot', r.otherWorks==='' && r.studio==='B', r);
+  ok('men inte när ledaren redan har ett pass då', r.leaderClash==='request' && /Krock: RKAY har redan/.test(r.toast), r);
 
   r = await ev(w,`
     S.bookings.push({id:'rq3',studio:'',date:'2026-12-01',start:'18:00',end:'21:00',
@@ -1421,6 +1430,82 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
       self:(()=>{ openAccount('az'); return /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML); })()};`);
   ok('bara managern kan radera, inte sig själv', r.mgrBtn===true && r.self===false, r);
   ok('raderad person: kontot borta, namnet borta ur pass och agenda', r.gone && r.withs==='[]' && r.agenda===true, r);
+
+  /* ============ CIRKLARNA · ETAPP 1 ============ */
+  log('\n── cirklarna: grupper, regler, timbank, återkommande pass, kalender, fördelning ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    const Y = new Date().getFullYear();
+    /* gränsen gäller i år, och är låg — så timbanken syns i testet */
+    S.circleCfg = {leaderYearMax:6, leaderMaxFrom:Y, warn:[3], up:Date.now()}; save();
+    go('circles'); circTab='groups'; render();
+    const g = document.getElementById('view').innerHTML;
+    const dd = n => iso(addDays(new Date(), n));
+    /* tre veckor i rad, en krockar med RKAY:s eget studiopass */
+    S.bookings.push(bump({id:'own',studio:'B',date:dd(14),start:'18:00',end:'21:00',who:'RKAY',title:'Mix',note:'',circleId:'',status:'',hours:null,present:[],with:[],artistId:'',paid:false,del:false}));
+    const plan = circlePlanLocal('c1', [dd(7), dd(14), dd(21), dd(28)], '18:00', 'A');
+    openForm(null, dd(7), 'c1'); document.getElementById('fStart').value='18:00'; shiftEnd();
+    const endLocked = document.getElementById('fEnd').value==='21:00' && document.getElementById('fEnd').readOnly;
+    document.getElementById('fRep').value='4'; checkForm();
+    await saveBooking(); await new Promise(r=>setTimeout(r,20));
+    const preview = document.getElementById('clash').textContent, btn = document.getElementById('saveBtn').textContent;
+    await saveCircleBooking(circlePlan.f, 4, true);
+    const made = S.bookings.filter(b=>b.circleId==='c1' && b.start==='18:00' && !b.del).map(b=>b.date).sort();
+    const lid = S.bookings.find(b=>b.circleId==='c1' && b.date===dd(7)).leaderId;
+    go('circles'); circTab='groups'; render(); const g2 = document.getElementById('view').innerHTML;
+    return {g, plan, endLocked, preview, btn, made, lid, dd:[dd(7),dd(14),dd(21),dd(28)], g2, Y};`);
+  ok('grupperna visar fyllnad mot gruppstorleken (2 av 4 → behöver 2)', /2 av 4 deltagare/.test(r.g) && /BEHÖVER 2/.test(r.g) && /1 grupp behöver/.test(r.g), r.g.slice(0,300));
+  ok('ett cirkelpass har fast längd: slutet räknas ut och är låst', r.endLocked===true);
+  ok('förhandsvisningen kontrollerar varje datum (krock med ledarens studiopass, timbanken)', r.plan[0].ok && !r.plan[1].ok && /Krock: RKAY har redan Mix/.test(r.plan[1].reason)
+     && r.plan[2].ok && !r.plan[3].ok && /RKAY har 6 av 6 timmar/.test(r.plan[3].reason), r.plan);
+  ok('och visas innan något bokas', /✗/.test(r.preview) && /✓/.test(r.preview) && /BOKA 2 PASS/.test(r.btn), [r.preview, r.btn]);
+  ok('bara de som går bokas, med ledarens id', JSON.stringify(r.made)===JSON.stringify([r.dd[0], r.dd[2]]) && r.lid==='rkay', r.made);
+  ok('timbanken per ledare visas med gränsen', /TIMBANK PER LEDARE/.test(r.g2) && /6<\/b> av 6 h/.test(r.g2), r.g2.match(/TIMBANK[\s\S]{0,400}/));
+
+  r = await ev(w,`
+    window.confirm = () => true;
+    const dd = n => iso(addDays(new Date(), n));
+    const b = S.bookings.find(x=>x.circleId==='c1' && x.date===dd(7));
+    openForm(b.id); document.getElementById('fStart').value='10:00'; shiftEnd(); await saveBooking();
+    const moved = S.bookings.find(x=>x.id===b.id), mv = moved.start+'-'+moved.end;
+    await del(b.id); const cancelled = S.bookings.find(x=>x.id===b.id).del;
+    openCircleRules(); document.getElementById('rgG').value='3'; document.getElementById('rgM').value='480'; saveCircleRules();
+    const cfg = JSON.stringify([ccfg().groupSize, ccfg().leaderYearMax]);
+    calWeek = monday(fromIso(dd(21))); circTab='calendar'; go('circles'); const cal = document.getElementById('view').innerHTML;
+    calFilter.person = 'p1'; render(); const calP = document.getElementById('view').innerHTML; calFilter = {leader:'',circle:'',person:''};
+    return {mv, cancelled, cfg, cal, calP, d21:dd(21)};`);
+  ok('ett pass flyttas med samma längd', r.mv==='10:00-13:00', r.mv);
+  ok('och kan ställas in', r.cancelled===true);
+  ok('admin ändrar reglerna', r.cfg==='[3,480]', r.cfg);
+  ok('kalendern visar veckans cirkelpass med ledare och deltagare', /Musikproduktion – Grupp 1/.test(r.cal) && /RKAY/.test(r.cal) && /2 deltagare/.test(r.cal) && /PLANERAT/.test(r.cal), r.cal.slice(0,200));
+  ok('och går att filtrera på deltagare', /Musikproduktion – Grupp 1/.test(r.calP));
+
+  r = await ev(w,`
+    window.confirm = () => true;
+    S.accounts.push(bump({id:'p9',n:'Utan Grupp',r:'participant',email:'u@b.se',phone:'',c:'#6633b8',g:'#9d5cf5',active:true,del:false}));
+    S.signups = [{id:'s1',name:'Sara Ny',email:'sara@b.se',phone:'',subject:'Musikproduktion',note:'',status:'new',created_at:new Date().toISOString()},
+                 {id:'s2',name:'William Ek',email:'annan@b.se',phone:'',subject:'',note:'',status:'new',created_at:new Date().toISOString()}];
+    save(); circTab='people'; go('circles'); const people = document.getElementById('view').innerHTML;
+    const cand = distributeCandidates().map(x=>x.n).join(',');
+    openDistribute(); const plan = distPlan.map(x=>x.n+':'+(x.circle||'-')).join(',');
+    await doDistribute();
+    const c1 = circleById('c1').members.slice().sort().join(',');
+    const sara = accounts().find(a=>a.n==='Sara Ny');
+    const dup = await findDuplicates('william  ek','','');
+    await openPlace('s2'); const sheet = document.getElementById('sheetBody').innerHTML;
+    await placeFromSheet('s2', 'p1'); const s2 = S.signups.find(x=>x.id==='s2');
+    openPersonEdit(); document.getElementById('peN').value='Nora Lind'; let asked = '';
+    window.confirm = m => { asked = m; return false; }; await savePerson(''); window.confirm = () => true;
+    const noDup = accounts().filter(a=>a.n==='Nora Lind').length;
+    return {people, cand, plan, c1, sara:sara&&sara.r, dup:dup.map(d=>d.id+':'+d.why), sheet, s2:s2.status+':'+s2.member_id, asked, noDup};`);
+  ok('nya anmälningar syns under Deltagare', /NYA ANMÄLNINGAR/.test(r.people) && /Sara Ny/.test(r.people));
+  ok('fördela: anmälningar och deltagare utan grupp', r.cand==='Sara Ny,William Ek,Utan Grupp', r.cand);
+  ok('förslaget fyller gruppen till gruppstorleken (3) — resten får vänta', r.plan==='Sara Ny:c1,William Ek:-,Utan Grupp:-', r.plan);
+  ok('en anmälan blir en deltagare i gruppen', r.c1.split(',').length===3 && r.c1.split(',').some(x=>x.startsWith('m_')) && r.sara==='participant', r.c1);
+  ok('dubbletter hittas (samma namn)', JSON.stringify(r.dup)==='["p1:samma namn"]', r.dup);
+  ok('en anmälan med samma namn kan kopplas till personen som finns', /Finns kanske redan/.test(r.sheet) && /KOPPLA TILL WILLIAM EK/.test(r.sheet) && r.s2==='placed:p1', r.s2);
+  ok('ny deltagare med ett namn som finns: frågar först', /Nora Lind/.test(r.asked) && /samma namn/.test(r.asked) && r.noDup===1, r.asked);
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');

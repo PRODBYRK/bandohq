@@ -370,13 +370,51 @@ managern raderar någon. Den enda managern kan inte radera sig själv.
 
 ---
 
+## Cirklarna (verksamhetssystemet)
+
+**Cirklar** har flikarna **Grupper**, **Deltagare** och **Kalender**. Admin ser allt, och en producent
+eller cirkelledare ser bara sina egna grupper.
+
+- **Regler** (Cirklar → Grupper → *Regler för cirklarna*), med standardvärdena inom parentes:
+  - deltagare per grupp (4)
+  - startpass där alla ska ha varit med (3)
+  - närvarande per pass därefter (3)
+  - timmar per pass (3)
+  - max timmar per ledare och kalenderår (480)
+  - från vilket år gränsen gäller (2027)
+  - vid vilka timmar ledaren varnas (400, 440, 470)
+
+  Ändringar gäller direkt, även på servern.
+- **Varje cirkelpass är exakt så långt som reglerna säger.** Det går inte att boka om:
+  - ledaren redan har ett pass då, i en cirkel eller ett eget studiopass
+  - någon av deltagarna är med i en annan grupp samtidigt
+  - ledarens timbank skulle gå över gränsen
+- **Upprepa varje vecka:** varje datum kontrolleras först och visas med ✓ eller ✗ och anledningen.
+  Sedan bokas bara de som går.
+- **Timbanken** står under Grupper för admin och överst i ledarens vy. Den visar genomförda och bokade
+  timmar per år. Ledaren och admins får en notis vid varningsgränserna och när banken är full.
+- **Grupper** visar hur många deltagare varje grupp har mot gruppstorleken. **Fördela** föreslår var nya
+  anmälningar och deltagare utan grupp ska hamna: samma ämne först, sedan flest lediga platser.
+- **Deltagare:** nya anmälningar och alla i programmet. Lägger man till någon som redan finns (samma
+  e-post, telefon eller namn) frågar appen först.
+- **Anmälningar från foundation-sidan** (`/studiecirkel/…`): när kalkylarket är kopplat skickar
+  formuläret namn, telefon och e-post, **aldrig personnumret**, till BANDOHQ:s kö. Det kräver tre
+  variabler i Vercel:
+  - `BANDOHQ_URL` och `BANDOHQ_KEY`, samma som i appen
+  - `BANDOHQ_SECRET`, samma värde som raden `signup` i tabellen `bs_secrets`. Den sätts med:
+
+    ```
+    insert into bs_secrets(name, value) values ('signup', '<lång slumpsträng>')
+      on conflict (name) do update set value = excluded.value;
+    ```
+
 ## Rollerna
 
 | Roll | Ser och gör |
 |---|---|
 | **Manager** (du) | Allt — även statistiken och allas mål och planer |
 | **Admin** (Costa, Nabbe) | Konton, inbjudningar, nya kunder, cirklar, schemat, artister, priser, Dropbox. Inte statistiken eller andras mål. |
-| **Producent** | Hela schemat, agenda, beats, artister, galleriet, sina egna mål och siffror, och de cirklar hen leder |
+| **Producent** | Hela schemat, agenda, beats, artister, galleriet, sina egna mål och siffror. Cirklar: **bara de hen leder** — andras grupper och deltagare syns inte |
 | **Kamerateam** (Moez, D2L) | Schemat, sin agenda och galleriet — laddar upp bilder och film |
 | **Cirkelledare** | Två saker: **boka pass** för sina cirklar (godkänna förfrågningar, markera genomförda) och **medlemmarna** med e-post (och telefon om den finns) |
 | **Deltagare** | Bara bokning: föreslå pass i sin cirkel och avboka sina egna, senast en timme innan |
@@ -558,7 +596,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 369 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 388 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -566,7 +604,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 248 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 293 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 55 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
@@ -575,6 +613,6 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
 användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
-från förhandsvisningen, 130 testfall.
+från förhandsvisningen, 140 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.
