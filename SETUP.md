@@ -463,6 +463,40 @@ så att en ny regel blir en ny rad. Servern kontrollerar de viktigaste igen när
       on conflict (name) do update set value = excluded.value;
     ```
 
+## Bando Rewards och artistprofilen
+
+Artisten är **kundkontot**. Allt går via databasfunktioner som kontrollerar behörigheten. Tabellerna
+saknar egna policys, så ingen läser dem direkt.
+
+- **Avsluta passet:** efter ett kundpass trycker kundens producent, en producent som var med eller
+  admin på **Avsluta passet** (passdetaljen eller artistprofilen).
+  - *Betalt* ger poäng enligt **poängtrappan**: 3 h = 100, 6 h = 500, eller det högsta steget passet
+    når. Ett pass ger aldrig poäng två gånger, och avmarkeras *betalt* dras poängen tillbaka.
+  - Det interna **omdömet** skrivs i samma steg: hur det gick, vad som skapades, styrkor,
+    utvecklingsområden, nästa gång och övrigt. Det är daterat och visar producenten.
+- **Kunden** ser sina poäng, sin nivå och belöningarna i sin vy, och löser in själv. Poängen dras
+  direkt och admins får en notis.
+- **Mer → Rewards** (admin, och den som fått behörigheten *Artist Intelligence* under
+  Crew → Hantera konton):
+
+  | Flik | Innehåll |
+  |---|---|
+  | Inlösen | lämna ut eller makulera; makulerat ger tillbaka poängen |
+  | Belöningar | skapa, ändra och ta bort |
+  | Nivåer | Member, Silver, Gold och Platinum med exempelgränser — ändra dem |
+  | Poäng | trappan och gränserna för återkommande och inaktiv |
+  | Intelligence | alla artister med filter och sortering |
+
+- **Nivån räknas fram automatiskt**: den högsta nivån vars krav uppfylls (intjänade poäng, betalda pass
+  och timmar senaste året). Vid en högre nivå får artisten en notis.
+- **Artistprofilen** öppnas från *Kunder* i Crew, eller från ett pass. Flikarna är **Bokningar**,
+  **Rewards**, **Nivå**, **Anteckningar** och **Intelligence**:
+  - Producenter ser Bokningar och Anteckningar för sina egna kunder.
+  - Admin och den med behörigheten ser allt.
+  - Under Rewards kan admin justera saldot (med anledning) och lösa in åt kunden.
+- **Cirkelledare, deltagare och kamerateam** ser ingenting av Rewards, omdömena eller Artist
+  Intelligence. **Kunden** ser aldrig omdömen eller uppföljning.
+
 ## Rollerna
 
 | Roll | Ser och gör |
@@ -651,7 +685,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 416 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 429 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -659,7 +693,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 320 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 359 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 55 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
@@ -668,6 +702,6 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
 användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
-från förhandsvisningen, 150 testfall.
+från förhandsvisningen, 158 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.

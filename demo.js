@@ -75,6 +75,8 @@ window.bandohqDemo = function(o){
     reqBy:reqBy||'',up:Date.now()-1e5,del:false,paid:!!paid});
   B('k1b','A',D(0),'14:00','17:00','ADREY','Vocals — Nova','','',null,[],true);
   B('k2b','B',D(1),'19:00','22:00','Studio Nord AB','Studiotid','','',null,[],true);
+  B('k0b','A',D(-6),'14:00','17:00','Studio Nord AB','Studiotid','','',null,[],true);
+  Object.assign(bookings[bookings.length-1], {closed:true, closedBy:'RKAY', closedAt:Date.now()-5*864e5});
   let n=0;
   for(let w=1;w<=14;w++){
     B('g'+(n++),'A',D(-7*w),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1','done',3,['p1','p2','p3']);
@@ -143,6 +145,16 @@ window.bandohqDemo = function(o){
     invites: o.join ? [{token:o.join, role:o.jrole||'participant', circle_id:o.jrole==='producer'?null:'c1',
       expires_at:Date.now()+7*864e5, max_uses:null, uses:2, closed:false, created:Date.now()}] : [],
     courses,
+    /* Bando Rewards (förhandslägets "server", se rwLocal i index.html) */
+    rw:{seq:20, levelHist:[], redemptions:[],
+      levels:[{id:'lv_member',name:'Member',rank:0,criteria:{},perks:'',active:true},{id:'lv_silver',name:'Silver',rank:1,criteria:{minEarned:1000},perks:'10 % rabatt på studiotid',active:true},
+              {id:'lv_gold',name:'Gold',rank:2,criteria:{minEarned:3000,minSessions12:10},perks:'',active:true},{id:'lv_platinum',name:'Platinum',rank:3,criteria:{minEarned:6000,minSessions12:20},perks:'',active:true}],
+      rewards:[{id:'rw1',title:'Bando-hoodie',description:'Hämtas i studion',cost:500,active:true},{id:'rw2',title:'Gratis mixpass',description:'3 timmar med en producent',cost:2000,active:true}],
+      points:[{id:1,member_id:'k1',booking_id:'k0b',kind:'earn',points:100,note:'Studiotid',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
+              {id:2,member_id:'k1',kind:'adjust',points:500,note:'Välkomstbonus',by_id:'az',at:new Date(Date.now()-30*864e5).toISOString()}],
+      notes:[{id:3,member_id:'k1',booking_id:'k0b',author_id:'rkay',created_at:new Date(Date.now()-5*864e5).toISOString(),went:'Fokuserad session — två tagningar räckte',
+              created:'Vers 1 och refrängen',strengths:'Melodier och röstkontroll',develop:'Detaljer i texten',next:'Mixa refrängen och spela in vers 2',other:''}],
+      crm:{k1:{projects:'EP till våren',goals:'Första egna spelningen',followup:D(10),followup_note:'Boka mixpass'}}},
     rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1}};
     return S;
 };

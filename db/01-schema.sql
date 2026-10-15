@@ -270,3 +270,88 @@ create table if not exists record_history (
 );
 create index if not exists record_history_idx on record_history (kind, rec_id, at);
 
+-- ---------------------------------------------------------------------
+--  BANDO REWARDS — artisten är kundkontot. Inga policys: allt går via
+--  funktionerna i 03-funktioner.sql (de kontrollerar vem som får vad).
+-- ---------------------------------------------------------------------
+/* Behörigheter utöver rollen, t.ex. 'artist_intel' (Rewards, omdömen och CRM utan att vara admin). */
+alter table members add column if not exists perms text[] not null default '{}';
+
+/* Poängloggen: rader skrivs, ändras aldrig. Saldot är summan. */
+create table if not exists points (
+  id            bigserial primary key,
+  member_id     text not null,
+  booking_id    text,
+  redemption_id bigint,
+  kind          text not null check (kind in ('earn','reversal','redeem','refund','adjust')),
+  points        int not null,
+  note          text,
+  by_id         text,
+  at            timestamptz not null default now()
+);
+create index if not exists points_member_idx on points (member_id, at);
+create index if not exists points_booking_idx on points (booking_id);
+
+create table if not exists rewards (
+  id          text primary key,
+  title       text not null,
+  description text,
+  cost        int not null check (cost > 0),
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+create table if not exists redemptions (
+  id         bigserial primary key,
+  member_id  text not null,
+  reward_id  text,
+  title      text not null,
+  cost       int not null,
+  status     text not null default 'waiting' check (status in ('waiting','delivered','cancelled')),
+  by_id      text,
+  at         timestamptz not null default now(),
+  handled_by text,
+  handled_at timestamptz
+);
+/* Nivåerna: kriterier i jsonb (minEarned, minSessions12, minHours12) — fler går att lägga till. */
+create table if not exists levels (
+  id       text primary key,
+  name     text not null,
+  rank     int not null,
+  criteria jsonb not null default '{}',
+  perks    text,
+  active   boolean not null default true
+);
+create table if not exists level_history (
+  id         bigserial primary key,
+  member_id  text not null,
+  level_id   text,
+  level_name text,
+  rank       int,
+  at         timestamptz not null default now()
+);
+/* Producenternas interna omdömen efter ett pass — artisten ser dem aldrig. */
+create table if not exists artist_notes (
+  id         bigserial primary key,
+  member_id  text not null,
+  booking_id text,
+  author_id  text,
+  went       text,
+  created    text,
+  strengths  text,
+  develop    text,
+  next       text,
+  other      text,
+  created_at timestamptz not null default now()
+);
+create index if not exists artist_notes_idx on artist_notes (member_id, created_at);
+/* Intern uppföljning per artist (CRM). */
+create table if not exists artist_crm (
+  member_id     text primary key,
+  projects      text,
+  goals         text,
+  followup      date,
+  followup_note text,
+  updated_by    text,
+  updated_at    timestamptz not null default now()
+);
+

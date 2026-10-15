@@ -578,6 +578,12 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .tl-key .k-free{background:rgba(52,211,153,.12);box-shadow:inset 0 0 0 1px rgba(52,211,153,.35)}
 .tl-key .k-b{background:rgba(124,58,237,.5);box-shadow:inset 0 0 0 1px rgba(192,132,252,.5)}
 .tl-key .k-own{background:var(--pur)}
+.rwcard .rwpts,.rwpts{font-family:var(--disp);font-size:34px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.pill.rwlevel{background:linear-gradient(150deg,rgba(168,85,247,.35),rgba(124,58,237,.2));color:#fff;letter-spacing:.12em}
+.notecard{margin-bottom:9px}.notecard p{margin:4px 0 0;line-height:1.55;font-size:14px}
+.notecard .lsub,.card .lsub{font-size:10.5px;font-weight:700;letter-spacing:.1em;color:var(--mut);margin-top:10px;text-transform:uppercase}
+.spark{display:flex;align-items:flex-end;gap:5px;height:40px;margin-top:6px}
+.spark i{flex:1;background:linear-gradient(180deg,var(--pur),var(--pur2));border-radius:3px 3px 0 0;min-height:4px}
 .lesson{margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(168,85,247,.07);border:1px solid rgba(168,85,247,.22)}
 .lesson p{margin:8px 0 0;line-height:1.6;color:var(--txt);font-size:14px}
 .lesson ul{margin:6px 0 0;padding-left:18px;line-height:1.55;font-size:14px}
@@ -838,6 +844,7 @@ function blank(){
     pushCfg:{publicKey:'', up:0},                          /* push-nyckelns publika del (den privata bor på servern) */
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
     circleCfg:{up:0},                                      /* cirklarnas regler (setting/circles) — tomt = standard */
+    rewardsCfg:{up:0},                                     /* poängtrappan m.m. (setting/rewards) — tomt = standard */
     signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
     reports:{},                                            /* kontrollerade/rapporterade cirkelpass (session_reports) */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
@@ -878,6 +885,7 @@ function heal(s){
   s.pushCfg = Object.assign(blank().pushCfg, s.pushCfg||{});
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
   s.circleCfg = Object.assign(blank().circleCfg, s.circleCfg||{});
+  s.rewardsCfg = Object.assign(blank().rewardsCfg, s.rewardsCfg||{});
   if(!Array.isArray(s.signups)) s.signups = [];
   if(!s.reports || typeof s.reports !== 'object') s.reports = {};
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
@@ -1473,6 +1481,449 @@ function vCircleOverview(){
           <div class="mrole">${p ? (p.finished ? `${esc(p.course.subject)} · kursen klar` : `Nivå ${p.level} · ${esc(p.next.title)}`) : 'ingen kurs'} · ${f.n}/${f.g} deltagare</div>
           ${p?`<div class="bar thin" style="margin-top:6px"><i style="width:${p.all.length ? p.count/p.all.length*100 : 0}%"></i></div>`:''}</div>
         ${fillPill(c)}</button>`; }).join('') : `<div class="empty">Inga grupper.</div>`}`;
+}
+
+/* ===================== BANDO REWARDS =====================
+   Artisten är kundkontot. Poäng för avslutade och betalda pass (trappan i setting/rewards),
+   belöningar att lösa in, nivåer, producenternas omdömen och en intern CRM. På servern går
+   allt via funktioner som kontrollerar behörigheten (03-funktioner.sql: BANDO REWARDS); i
+   förhandsläget spelar rwLocal samma roll med samma regler. */
+const RCFG = {tiers:[{hours:3, points:100}, {hours:6, points:500}], activeDays:60, recurringMin:3, recurringWindow:90};
+const rcfg = () => { const c = Object.assign({}, RCFG, S.rewardsCfg||{}); delete c.up; return c; };
+const pointsFor = h => Math.max(0, ...rcfg().tiers.filter(t=>+t.hours <= h + 1e-4).map(t=>+t.points||0));
+const NOTE_FIELDS = [['went','Hur sessionen gick'],['created','Vad som skapades eller blev klart'],['strengths','Artistens styrkor'],
+  ['develop','Utvecklingsområden'],['next','Rekommendation till nästa session'],['other','Övrigt']];
+const fmtP = n => Math.round(+n||0).toLocaleString('sv-SE');
+const customerOf = b => b && !b.circleId ? accounts().find(a=>a.r==='customer' && a.n.toLowerCase()===String(b.who||'').toLowerCase()) || null : null;
+/* Får jag avsluta passet och skriva omdöme? Samma regel som bs_may_close. */
+function mayClose(b){
+  const m = me(), cu = customerOf(b); if(!m || !cu) return false;
+  return isAdminRole(m.r) || (isCrewRole(m.r) && (cu.producer===m.id || (b.with||[]).includes(m.n) || b.closedBy===m.n));
+}
+const canIntel = () => { const m = me(); return !!m && (isAdminRole(m.r) || (m.perms||[]).includes('artist_intel')); };
+async function rw(fn, args){ return PREVIEW_LOGIN ? rwLocal[fn](args||{}) : sbRpc(fn, args||{}); }
+
+/* ---------- förhandslägets "server" ---------- */
+function rwState(){
+  if(!S.rw) S.rw = {points:[], rewards:[], redemptions:[], notes:[], crm:{}, levelHist:[], seq:1,
+    levels:[{id:'lv_member',name:'Member',rank:0,criteria:{},perks:'',active:true},{id:'lv_silver',name:'Silver',rank:1,criteria:{minEarned:1000},perks:'',active:true},
+            {id:'lv_gold',name:'Gold',rank:2,criteria:{minEarned:3000,minSessions12:10},perks:'',active:true},{id:'lv_platinum',name:'Platinum',rank:3,criteria:{minEarned:6000,minSessions12:20},perks:'',active:true}]};
+  return S.rw;
+}
+const rwFail = t => { throw new Error(t); };
+const rwLocal = {
+  _bal(mid){ const ps = rwState().points.filter(p=>p.member_id===mid), sum = k => ps.filter(p=>k.includes(p.kind)).reduce((a,p)=>a+p.points,0);
+    return {earned:sum(['earn','reversal','adjust']), spent:-sum(['redeem','refund']), available:ps.reduce((a,p)=>a+p.points,0)}; },
+  _stats(mid){ const a = byId(mid), y = iso(addDays(new Date(), -365));
+    const bs = live().filter(b=>!b.circleId && a && b.who===a.n && b.closed && b.paid && b.date >= y);
+    return {earned:this._bal(mid).earned, sessions12:bs.length, hours12:bs.reduce((s,b)=>s+dur(b),0)}; },
+  _level(mid){ const st = this._stats(mid), c = (l,k,v) => (+((l.criteria||{})[k])||0) <= v;
+    return rwState().levels.filter(l=>l.active!==false && c(l,'minEarned',st.earned) && c(l,'minSessions12',st.sessions12) && c(l,'minHours12',st.hours12))
+      .sort((x,y)=>y.rank-x.rank)[0] || null; },
+  _upd(mid){ const S2 = rwState(), lv = this._level(mid), prev = S2.levelHist.filter(h=>h.member_id===mid).pop();
+    if((prev ? prev.level_id : '') === (lv ? lv.id : '')) return;
+    S2.levelHist.push({member_id:mid, level_id:lv ? lv.id : '', level_name:lv ? lv.name : '', rank:lv ? lv.rank : null, at:new Date().toISOString()}); },
+  _add(row){ rwState().points.push(Object.assign({id:rwState().seq++, at:new Date().toISOString()}, row)); },
+  close_session({p_booking, p_paid, p_note}){
+    const b = S.bookings.find(x=>x.id===p_booking && !x.del) || rwFail('Passet finns inte');
+    if(b.circleId) rwFail('Cirkelpass avslutas med närvaron');
+    if(b.status) rwFail('Passet är inte bokat');
+    if(startAt(b) > new Date()) rwFail('Passet har inte börjat än');
+    const cu = customerOf(b) || rwFail('Passet är inte bokat av en kund');
+    if(!mayClose(b)) rwFail('Bara kundens producent, en producent som var med eller admin kan avsluta passet');
+    const pts = p_paid ? pointsFor(dur(b)) : 0;
+    const net = rwState().points.filter(p=>p.booking_id===b.id && ['earn','reversal'].includes(p.kind)).reduce((a,p)=>a+p.points,0);
+    if(pts - net) this._add({member_id:cu.id, booking_id:b.id, kind:pts-net>0?'earn':'reversal', points:pts-net, note:`${longDate(b.date).toLowerCase()} ${b.start}-${b.end}`, by_id:me().id});
+    Object.assign(b, {closed:true, paid:!!p_paid, closedBy:b.closedBy||me().n, closedAt:Date.now()}); bump(b);
+    if(p_note && NOTE_FIELDS.some(([k])=>String(p_note[k]||'').trim())) this.add_artist_note({p_booking, p_note, _ok:true});
+    this._upd(cu.id); save();
+    return {points:pts, available:this._bal(cu.id).available};
+  },
+  add_artist_note({p_booking, p_note, _ok}){
+    const b = S.bookings.find(x=>x.id===p_booking) || rwFail('Passet finns inte'), cu = customerOf(b) || rwFail('Passet är inte bokat av en kund');
+    if(!_ok && !mayClose(b)) rwFail('Bara producenter som var med på passet kan skriva omdöme');
+    if(!NOTE_FIELDS.some(([k])=>String(p_note[k]||'').trim())) rwFail('Skriv något först');
+    rwState().notes.push(Object.assign({id:rwState().seq++, member_id:cu.id, booking_id:b.id, author_id:me().id, created_at:new Date().toISOString()},
+      Object.fromEntries(NOTE_FIELDS.map(([k])=>[k, String(p_note[k]||'').trim()])))); save();
+  },
+  artist_notes_for({p_member}){
+    const m = me(); if(!m || !isCrewRole(m.r)) return [];
+    const cu = byId(p_member);
+    return rwState().notes.filter(n=>n.member_id===p_member).filter(n=>{ const b = S.bookings.find(x=>x.id===n.booking_id)||{};
+        return canIntel() || n.author_id===m.id || (cu && cu.producer===m.id) || (b.with||[]).includes(m.n) || b.closedBy===m.n; })
+      .slice().reverse().map(n=>{ const b = S.bookings.find(x=>x.id===n.booking_id)||{};
+        return Object.assign({}, n, {at:n.created_at, author:(byId(n.author_id)||{}).n||'', mine:n.author_id===m.id, date:b.date, start:b.start, end:b.end}); });
+  },
+  rewards_catalog(){ const all = canIntel();
+    return {rewards:rwState().rewards.filter(w=>all || w.active!==false).slice().sort((a,b)=>a.cost-b.cost),
+      levels:rwState().levels.filter(l=>all || l.active!==false).slice().sort((a,b)=>a.rank-b.rank), tiers:rcfg().tiers}; },
+  points_summary({p_member}){
+    const mid = p_member || me().id; if(mid!==me().id && !canIntel()) rwFail('Inte behörig');
+    const lv = this._level(mid), nx = rwState().levels.filter(l=>l.active!==false && l.rank > (lv ? lv.rank : -1)).sort((a,b)=>a.rank-b.rank)[0] || null;
+    return Object.assign(this._bal(mid), {stats:this._stats(mid), level:lv, next:nx,
+      history:rwState().points.filter(p=>p.member_id===mid).slice().reverse().slice(0,50),
+      redemptions:rwState().redemptions.filter(r=>r.member_id===mid).slice().reverse()});
+  },
+  redeem_reward({p_reward, p_member}){
+    let mid;
+    if(!p_member){ if(me().r!=='customer') rwFail('Bara kunder löser in poäng'); mid = me().id; }
+    else { if(!isAdminRole(me().r)) rwFail('Bara admin löser in åt en kund'); mid = p_member; }
+    const w = rwState().rewards.find(x=>x.id===p_reward && x.active!==false) || rwFail('Belöningen finns inte');
+    const bal = this._bal(mid).available; if(bal < w.cost) rwFail(`För få poäng — ${bal} av ${w.cost}`);
+    const r = {id:rwState().seq++, member_id:mid, reward_id:w.id, title:w.title, cost:w.cost, status:'waiting', by_id:me().id, at:new Date().toISOString()};
+    rwState().redemptions.push(r); this._add({member_id:mid, redemption_id:r.id, kind:'redeem', points:-w.cost, note:w.title, by_id:me().id}); save();
+    return {redemption:r.id, available:bal - w.cost};
+  },
+  handle_redemption({p_id, p_status}){
+    if(!isAdminRole(me().r)) rwFail('Bara admin hanterar inlösningar');
+    const r = rwState().redemptions.find(x=>x.id===p_id); if(!r || r.status!=='waiting') rwFail('Inlösningen är redan hanterad');
+    Object.assign(r, {status:p_status, handled_by:me().id, handled_at:new Date().toISOString()});
+    if(p_status==='cancelled') this._add({member_id:r.member_id, redemption_id:r.id, kind:'refund', points:r.cost, note:'Makulerad: '+r.title, by_id:me().id});
+    save();
+  },
+  pending_redemptions(){ return canIntel() ? rwState().redemptions.filter(r=>r.status==='waiting').map(r=>Object.assign({name:(byId(r.member_id)||{}).n||''}, r)) : []; },
+  adjust_points({p_member, p_points, p_note}){
+    if(!isAdminRole(me().r)) rwFail('Bara admin justerar saldon');
+    if(!+p_points) rwFail('Ange hur många poäng');
+    if(String(p_note||'').trim().length < 3) rwFail('Skriv varför saldot justeras');
+    if(this._bal(p_member).available + +p_points < 0) rwFail('Saldot kan inte bli negativt');
+    this._add({member_id:p_member, kind:'adjust', points:+p_points, note:String(p_note).trim(), by_id:me().id}); this._upd(p_member); save();
+    return {available:this._bal(p_member).available};
+  },
+  save_reward({p}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar belöningar');
+    if(String(p.title||'').trim().length < 2) rwFail('Belöningen behöver ett namn'); if(!(+p.cost > 0)) rwFail('Poängkravet måste vara större än 0');
+    const id = p.id || 'rw_' + uid(), ex = rwState().rewards.find(x=>x.id===id), v = {id, title:String(p.title).trim(), description:p.description||'', cost:+p.cost, active:p.active!==false};
+    if(ex) Object.assign(ex, v); else rwState().rewards.push(v); save(); return id; },
+  delete_reward({p_id}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar belöningar'); rwState().rewards = rwState().rewards.filter(x=>x.id!==p_id); save(); },
+  save_level({p}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar nivåer'); if(String(p.name||'').trim().length < 2) rwFail('Nivån behöver ett namn');
+    const id = p.id || 'lv_' + uid(), ex = rwState().levels.find(x=>x.id===id), v = {id, name:String(p.name).trim(), rank:+p.rank||0, criteria:p.criteria||{}, perks:p.perks||'', active:p.active!==false};
+    if(ex) Object.assign(ex, v); else rwState().levels.push(v); save(); return id; },
+  delete_level({p_id}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar nivåer'); rwState().levels = rwState().levels.filter(x=>x.id!==p_id); save(); },
+  save_artist_crm({p_member, p}){ if(!canIntel()) rwFail('Inte behörig');
+    rwState().crm[p_member] = Object.assign({}, p, {updated_by:me().id, updated_at:new Date().toISOString()}); save(); },
+  set_member_perms({p_member, p_perms}){ if(!isAdminRole(me().r)) rwFail('Bara admin delar ut behörigheter');
+    const a = byId(p_member); if(a){ a.perms = p_perms.slice(); bump(a); save(); } },
+  artist_intel(){
+    if(!canIntel()) return [];
+    const today = iso(new Date()), cf = rcfg();
+    return accounts().filter(a=>a.r==='customer' && a.active!==false && !a.del).map(a=>{
+      const bs = live().filter(b=>!b.circleId && b.who===a.n && !['request','declined'].includes(b.status));
+      const past = bs.filter(b=>b.date<=today), fut = bs.filter(b=>b.date>today);
+      const recent = past.filter(b=>b.date >= iso(addDays(new Date(), -cf.recurringWindow))).length;
+      const active = bs.some(b=>b.date >= iso(addDays(new Date(), -cf.activeDays)));
+      const months = [...Array(6)].map((_,i)=>{ const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-(5-i)); const k = iso(d).slice(0,7);
+        return past.filter(b=>b.date.slice(0,7)===k).length; });
+      const prods = [...new Set(bs.flatMap(b=>(b.with||[]).concat(b.closedBy?[b.closedBy]:[])).concat(byId(a.producer)?[byId(a.producer).n]:[]))];
+      const bal = this._bal(a.id), lv = this._level(a.id);
+      return {id:a.id, name:a.n, email:a.email, phone:a.phone, producer:(byId(a.producer)||{}).n||'', bookings:past.length, hours:past.reduce((s,b)=>s+dur(b),0),
+        last:past.map(b=>b.date).sort().pop()||null, next:fut.map(b=>b.date).sort()[0]||null, months, recent, producers:prods,
+        available:bal.available, earned:bal.earned, level:lv?lv.name:null, notes:rwState().notes.filter(n=>n.member_id===a.id).length,
+        crm:rwState().crm[a.id]||null, status: past.length<=1 ? 'ny' : !active ? 'inaktiv' : recent >= cf.recurringMin ? 'återkommande' : 'aktiv'};
+    }).sort((x,y)=>x.name.localeCompare(y.name,'sv'));
+  }
+};
+
+/* ---------- avsluta pass (crewet) ---------- */
+function openClose(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  if(!mayClose(b)) return toast('Bara kundens producent, en producent som var med eller admin kan avsluta passet');
+  const cu = customerOf(b), paid = b.closed ? !!b.paid : true;
+  openSheet(`${X}<h2>${b.closed ? 'Avslutat pass' : 'Avsluta passet'}</h2>
+    <div class="sub">${esc(cu.n)} · ${esc(longDate(b.date))} ${b.start}–${b.end} · ${fmtH(dur(b))} h</div>
+    <label class="consent" style="margin-top:16px"><input type="checkbox" id="clP" ${paid?'checked':''} onchange="document.getElementById('clPts').textContent=this.checked?'${fmtP(pointsFor(dur(b)))} poäng':'inga poäng'">
+      <span>Genomfört och <b>betalt</b> — ger <b id="clPts">${paid?fmtP(pointsFor(dur(b)))+' poäng':'inga poäng'}</b></span></label>
+    <div class="eyebrow">OMDÖME <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— internt, artisten ser det aldrig</span><span class="ln"></span></div>
+    ${NOTE_FIELDS.map(([k,l])=>`<label class="lbl" for="cl_${k}">${l.toUpperCase()}</label><textarea id="cl_${k}" style="min-height:56px"></textarea>`).join('')}
+    <button class="btn" style="margin-top:20px" onclick="saveClose('${b.id}')">${b.closed ? 'SPARA' : 'AVSLUTA PASSET'}</button>`);
+}
+async function saveClose(id){
+  const note = Object.fromEntries(NOTE_FIELDS.map(([k])=>[k, (document.getElementById('cl_'+k)||{value:''}).value.trim()]));
+  try{
+    const r = await rw('close_session', {p_booking:id, p_paid:document.getElementById('clP').checked, p_note:note});
+    if(!PREVIEW_LOGIN){ if(remoteRole()) await cloudView(); else await cloudPull(); }
+    closeSheet(); render(); toast(r.points ? `Avslutat · ${fmtP(r.points)} poäng till artisten` : 'Avslutat');
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- kundens egen vy: poäng, nivå, belöningar ---------- */
+let rwMine = null, rwMineAt = 0, rwCat = null;
+function loadMyRewards(force){
+  if(!force && Date.now() - rwMineAt < 30000) return;
+  rwMineAt = Date.now();
+  Promise.all([rw('points_summary', {}), rw('rewards_catalog', {})])
+    .then(([s1, c1])=>{ rwMine = s1; rwCat = c1; render(); }).catch(()=>{});
+}
+function rewardsCard(){
+  loadMyRewards();
+  const s1 = rwMine, cat = rwCat; if(!s1 || !cat) return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div><div class="skel" style="height:120px"></div>`;
+  const nx = s1.next, need = nx && (nx.criteria||{}).minEarned ? Math.max(0, +nx.criteria.minEarned - s1.earned) : null;
+  const waiting = (s1.redemptions||[]).filter(r=>r.status==='waiting');
+  return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div>
+    <div class="card rwcard">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div><div class="rwpts">${fmtP(s1.available)}</div><div class="tiny muted">poäng att använda</div></div>
+        ${s1.level ? `<span class="pill rwlevel">${esc(s1.level.name.toUpperCase())}</span>` : ''}</div>
+      ${nx ? `<div class="tiny muted" style="margin-top:12px">${need!=null ? `${fmtP(need)} poäng till <b style="color:var(--txt)">${esc(nx.name)}</b>` : `Nästa nivå: <b style="color:var(--txt)">${esc(nx.name)}</b>`}</div>
+        ${need!=null ? `<div class="bar thin"><i style="width:${Math.min(100, s1.earned / +nx.criteria.minEarned * 100)}%"></i></div>` : ''}` : ''}
+      <div class="tiny muted" style="margin-top:10px">Du får ${cat.tiers.map(t=>`${fmtP(t.points)} poäng för ${fmtH(t.hours)} h`).join(' och ')} när passet är betalt.</div>
+    </div>
+    ${waiting.length ? `<div class="note">Väntar på att lämnas ut: ${waiting.map(r=>esc(r.title)).join(', ')}.</div>` : ''}
+    ${cat.rewards.length ? cat.rewards.map(w=>`<div class="member" style="cursor:default">
+      <div class="grow" style="min-width:0"><div class="mname">${esc(w.title)}</div><div class="mrole">${fmtP(w.cost)} poäng${w.description?' · '+esc(w.description):''}</div></div>
+      <button class="btn slim ${s1.available>=w.cost?'':'ghost'}" style="width:auto;flex:none;padding:9px 13px" ${s1.available>=w.cost?'':'disabled'} onclick="redeemMine('${w.id}')">LÖS IN</button></div>`).join('')
+      : `<div class="empty">Belöningarna kommer snart.</div>`}
+    ${(s1.history||[]).length ? `<button class="linkbtn" onclick="openPointsHistory()">Poänghistorik</button>` : ''}`;
+}
+async function redeemMine(id){
+  const w = (rwCat.rewards||[]).find(x=>x.id===id); if(!w || !confirm(`Lösa in ${w.title} för ${fmtP(w.cost)} poäng?`)) return;
+  try{ await rw('redeem_reward', {p_reward:id}); loadMyRewards(true); toast('Inlöst — vi hör av oss när den kan hämtas'); }catch(e){ toast(e.message); }
+}
+const PKIND = {earn:'Pass', reversal:'Tillbakadraget', redeem:'Inlöst', refund:'Tillbaka', adjust:'Justering'};
+function pointsRows(h){
+  return (h||[]).map(p=>`<div class="kv"><span>${esc(new Date(p.at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'}))} · ${PKIND[p.kind]||p.kind}</span>
+    <b style="color:${p.points>0?'var(--ok2)':'var(--txt)'}">${p.points>0?'+':''}${fmtP(p.points)}${p.note?` <span class="muted" style="font-weight:500">${esc(p.note)}</span>`:''}</b></div>`).join('') || '<div class="empty">Inga poäng än.</div>';
+}
+function openPointsHistory(){ openSheet(`${X}<h2>Poänghistorik</h2><div style="margin-top:12px">${pointsRows((rwMine||{}).history)}</div>`); }
+
+/* ---------- artistprofilen (crewet) ---------- */
+let apId = null, apTab = 'bookings', apData = {};
+function artistTabs(){
+  return canIntel() ? [['bookings','Bokningar'],['rewards','Rewards'],['level','Nivå'],['notes','Anteckningar'],['intel','Intelligence']]
+                    : [['bookings','Bokningar'],['notes','Anteckningar']];
+}
+async function openArtistProfile(id, tab){
+  apId = id; apTab = tab || 'bookings'; apData = {};
+  paintArtist();
+  try{
+    const jobs = [rw('artist_notes_for', {p_member:id}).then(x=>apData.notes = x)];
+    if(canIntel()) jobs.push(rw('points_summary', {p_member:id}).then(x=>apData.sum = x), rw('artist_intel', {}).then(x=>apData.intel = (x||[]).find(r=>r.id===id)||null),
+      rw('rewards_catalog', {}).then(x=>apData.cat = x));
+    await Promise.all(jobs);
+  }catch(e){ apData.err = e.message; }
+  if(apId===id) paintArtist();
+}
+function paintArtist(){
+  const a = byId(apId); if(!a) return;
+  const tabs = artistTabs(), t = apTab, d = apData, today = new Date();
+  const bs = live().filter(b=>!b.circleId && b.who===a.n && !['declined'].includes(b.status)).sort((x,y)=>startAt(y)-startAt(x));
+  const body = t==='bookings' ? (bs.length ? bs.map(b=>`<div class="srow ${b.status==='request'?'req':''}">
+        <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
+        <div class="grow" style="min-width:0"><div class="srow-t">${b.start}–${b.end}${b.studio?' · '+esc(S.studios[b.studio]):''}</div>
+          <div class="srow-m">${b.status==='request' ? 'förfrågan' : b.closed ? (b.paid ? `avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'avslutat, ej betalt') : startAt(b) < today ? 'inte avslutat' : 'kommande'}</div></div>
+        ${!b.status && startAt(b) < today && mayClose(b) ? `<button class="btn slim ${b.closed?'ghost':''}" style="width:auto;flex:none;padding:8px 12px" onclick="openClose('${b.id}')">${b.closed?'ÄNDRA':'AVSLUTA'}</button>` : ''}</div>`).join('')
+      : '<div class="empty">Inga bokningar än.</div>')
+    : t==='rewards' ? (d.sum ? `<div class="card"><div class="rwpts">${fmtP(d.sum.available)}</div><div class="tiny muted">tillgängliga · ${fmtP(d.sum.earned)} intjänade · ${fmtP(d.sum.spent)} förbrukade</div></div>
+        ${can('manageCrew') ? `<div class="row" style="gap:8px;margin-top:10px"><button class="btn ghost slim" style="flex:1" onclick="openRedeemFor()">LÖS IN ÅT KUNDEN</button>
+          <button class="btn ghost slim" style="flex:1" onclick="openAdjust()">JUSTERA SALDO</button></div>` : ''}
+        ${(d.sum.redemptions||[]).length ? `<div class="eyebrow">INLÖSTA<span class="ln"></span></div>${d.sum.redemptions.map(r=>`<div class="kv"><span>${esc(new Date(r.at).toLocaleDateString('sv-SE'))}</span><b>${esc(r.title)} · ${fmtP(r.cost)} · ${{waiting:'väntar',delivered:'utlämnad',cancelled:'makulerad'}[r.status]}</b></div>`).join('')}` : ''}
+        <div class="eyebrow">HISTORIK<span class="ln"></span></div>${pointsRows(d.sum.history)}` : '<div class="skel" style="height:120px"></div>')
+    : t==='level' ? (d.sum ? `<div class="card"><div class="studio-name">NIVÅ</div><div class="live-title" style="font-size:22px;margin-top:6px">${esc(d.sum.level ? d.sum.level.name : '—')}</div>
+        ${d.sum.level && d.sum.level.perks ? `<div class="tiny muted" style="margin-top:6px">${esc(d.sum.level.perks)}</div>` : ''}
+        <div class="kv" style="margin-top:12px"><span>INTJÄNADE POÄNG</span><b>${fmtP(d.sum.stats.earned)}</b></div>
+        <div class="kv"><span>BETALDA PASS, 12 MÅN</span><b>${d.sum.stats.sessions12}</b></div>
+        <div class="kv" style="border:0"><span>TIMMAR, 12 MÅN</span><b>${fmtH(+d.sum.stats.hours12)}</b></div></div>
+        ${d.sum.next ? `<div class="note">Nästa nivå: <b>${esc(d.sum.next.name)}</b> — ${critText(d.sum.next.criteria)}.</div>` : ''}` : '<div class="skel" style="height:120px"></div>')
+    : t==='notes' ? `${bs.some(b=>!b.status && startAt(b) < today && mayClose(b)) ? `<button class="btn ghost" onclick="openNoteFor()">+ OMDÖME</button>` : ''}
+        ${d.notes ? (d.notes.length ? d.notes.map(n=>`<div class="card notecard">
+          <div class="tiny muted">${n.date ? esc(longDate(n.date))+' '+n.start+'–'+n.end+' · ' : ''}${esc(n.author||'')} · ${esc(new Date(n.at).toLocaleDateString('sv-SE'))}</div>
+          ${NOTE_FIELDS.filter(([k])=>n[k]).map(([k,l])=>`<div class="lsub">${l}</div><p>${esc(n[k])}</p>`).join('')}</div>`).join('')
+          : '<div class="empty">Inga omdömen än.</div>') : '<div class="skel" style="height:120px"></div>'}`
+    : (d.intel ? intelPanel(d.intel) : d.intel===null ? '<div class="empty">Ingen data.</div>' : '<div class="skel" style="height:120px"></div>');
+  openSheet(`${X}<h2>${esc(a.n)}</h2><div class="sub">Kund${a.producer && byId(a.producer) ? ' · producent ' + esc(byId(a.producer).n) : ''}${a.email?' · '+esc(a.email):''}</div>
+    <div class="seg ${tabs.length>4?'many':''}" role="tablist" style="margin:14px 0">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="apTab='${k}';paintArtist()">${n}</button>`).join('')}</div>
+    ${d.err ? `<div class="warn">${esc(d.err)}</div>` : ''}${body}`);
+}
+function critText(c){
+  c = c||{}; const p = [];
+  if(+c.minEarned) p.push(`${fmtP(c.minEarned)} intjänade poäng`);
+  if(+c.minSessions12) p.push(`${c.minSessions12} betalda pass senaste året`);
+  if(+c.minHours12) p.push(`${fmtH(+c.minHours12)} timmar senaste året`);
+  return p.join(', ') || 'inga krav';
+}
+const STAT_SV = {'ny':'Ny', 'aktiv':'Aktiv', 'återkommande':'Återkommande', 'inaktiv':'Inaktiv'};
+function intelPanel(x){
+  const mx = Math.max(1, ...x.months), cr = x.crm || {};
+  return `<div class="card">
+      <div class="row" style="justify-content:space-between"><span class="pill rwlevel">${esc(STAT_SV[x.status]||x.status)}</span><span class="tiny muted">${x.level?esc(x.level)+' · ':''}${fmtP(x.available)} poäng</span></div>
+      <div class="kv" style="margin-top:10px"><span>BOKNINGAR</span><b>${x.bookings} · ${fmtH(+x.hours)} h</b></div>
+      <div class="kv"><span>SENASTE / NÄSTA</span><b>${x.last?esc(longDate(x.last)):'—'} / ${x.next?esc(longDate(x.next)):'—'}</b></div>
+      <div class="kv"><span>PRODUCENTER</span><b>${(x.producers||[]).map(esc).join(', ')||'—'}</b></div>
+      <div class="kv" style="border:0"><span>OMDÖMEN</span><b>${x.notes}</b></div>
+      <div class="lsub" style="margin-top:10px">Pass per månad</div>
+      <div class="spark">${x.months.map(n=>`<i style="height:${Math.max(4, n/mx*36)}px" title="${n}"></i>`).join('')}</div></div>
+    <div class="eyebrow">UPPFÖLJNING<span class="ln"></span></div>
+    <label class="lbl" for="crP">PÅGÅENDE PROJEKT</label><textarea id="crP">${esc(cr.projects||'')}</textarea>
+    <label class="lbl" for="crG">UTVECKLINGSMÅL</label><textarea id="crG">${esc(cr.goals||'')}</textarea>
+    <div class="two"><div><label class="lbl" for="crF">FÖLJ UPP</label><input id="crF" type="date" value="${esc(cr.followup||'')}"></div>
+      <div><label class="lbl" for="crN">OM VAD</label><input id="crN" value="${esc(cr.followup_note||'')}" maxlength="120"></div></div>
+    <button class="btn" style="margin-top:16px" onclick="saveCrm()">SPARA UPPFÖLJNINGEN</button>`;
+}
+async function saveCrm(){
+  const v = id => document.getElementById(id).value.trim();
+  try{ await rw('save_artist_crm', {p_member:apId, p:{projects:v('crP'), goals:v('crG'), followup:v('crF'), followup_note:v('crN')}});
+    toast('Uppföljningen sparad'); intelList = null; openArtistProfile(apId, 'intel'); }catch(e){ toast(e.message); }
+}
+function openNoteFor(){
+  const a = byId(apId), today = new Date();
+  const bs = live().filter(b=>!b.circleId && b.who===a.n && !b.status && startAt(b) < today && mayClose(b)).sort((x,y)=>startAt(y)-startAt(x));
+  openSheet(`${X}<h2>Omdöme</h2><div class="sub">${esc(a.n)} — internt, artisten ser det aldrig</div>
+    <label class="lbl" for="nbB">PASS</label><select id="nbB">${bs.map(b=>`<option value="${b.id}">${esc(longDate(b.date))} ${b.start}–${b.end}</option>`).join('')}</select>
+    ${NOTE_FIELDS.map(([k,l])=>`<label class="lbl" for="nb_${k}">${l.toUpperCase()}</label><textarea id="nb_${k}" style="min-height:56px"></textarea>`).join('')}
+    <button class="btn" style="margin-top:20px" onclick="saveNoteFor()">SPARA OMDÖMET</button>`);
+}
+async function saveNoteFor(){
+  const note = Object.fromEntries(NOTE_FIELDS.map(([k])=>[k, document.getElementById('nb_'+k).value.trim()]));
+  try{ await rw('add_artist_note', {p_booking:document.getElementById('nbB').value, p_note:note}); toast('Omdömet sparat'); openArtistProfile(apId, 'notes'); }
+  catch(e){ toast(e.message); }
+}
+function openRedeemFor(){
+  const cat = apData.cat || {rewards:[]}, s1 = apData.sum || {available:0};
+  openSheet(`${X}<h2>Lös in åt ${esc((byId(apId)||{}).n||'')}</h2><div class="sub">${fmtP(s1.available)} poäng</div>
+    ${cat.rewards.filter(w=>w.active!==false).map(w=>`<div class="member" style="cursor:default"><div class="grow"><div class="mname">${esc(w.title)}</div><div class="mrole">${fmtP(w.cost)} poäng</div></div>
+      <button class="btn slim" style="width:auto;flex:none;padding:9px 13px" ${s1.available>=w.cost?'':'disabled'} onclick="redeemFor('${w.id}')">LÖS IN</button></div>`).join('') || '<div class="empty">Inga belöningar än.</div>'}`);
+}
+async function redeemFor(rid){
+  try{ await rw('redeem_reward', {p_reward:rid, p_member:apId}); toast('Inlöst'); openArtistProfile(apId, 'rewards'); }catch(e){ toast(e.message); }
+}
+function openAdjust(){
+  openSheet(`${X}<h2>Justera saldo</h2><div class="sub">${esc((byId(apId)||{}).n||'')} · loggas med anledning</div>
+    <label class="lbl" for="ajP">POÄNG (MINUS FÖR ATT DRA AV)</label><input id="ajP" inputmode="numeric" placeholder="t.ex. 200 eller -100">
+    <label class="lbl" for="ajN">ANLEDNING</label><input id="ajN" maxlength="200" placeholder="Välkomstbonus, rättelse …">
+    <button class="btn" style="margin-top:20px" onclick="saveAdjust()">JUSTERA</button>`);
+}
+async function saveAdjust(){
+  try{ await rw('adjust_points', {p_member:apId, p_points:parseInt(document.getElementById('ajP').value,10)||0, p_note:document.getElementById('ajN').value});
+    toast('Saldot justerat'); openArtistProfile(apId, 'rewards'); }catch(e){ toast(e.message); }
+}
+
+/* ---------- Mer → Rewards (admin och artist_intel) ---------- */
+let rwTab = 'redeem', rwAdmin = {}, intelList = null, intelF = {status:'', level:'', producer:'', follow:false, sort:'name'};
+async function loadRwAdmin(){
+  try{
+    const [cat, pend] = await Promise.all([rw('rewards_catalog', {}), rw('pending_redemptions', {})]);
+    rwAdmin = {cat, pend}; if(rwTab==='intel' || !intelList) intelList = await rw('artist_intel', {});
+  }catch(e){ rwAdmin = {err:e.message}; }
+  if(view==='rewards') render();
+}
+function vRewards(){
+  if(!canIntel()) return `<div class="empty">Rewards syns bara för admin.</div>`;
+  if(!rwAdmin.cat && !rwAdmin.err){ loadRwAdmin(); }
+  const adm = can('manageCrew'), tabs = [['redeem','Inlösen'],['rewards','Belöningar'],['levels','Nivåer'],['points','Poäng'],['intel','Intelligence']];
+  const d = rwAdmin, t = rwTab;
+  const body = d.err ? `<div class="warn">${esc(d.err)}</div>` : !d.cat ? '<div class="skel" style="height:160px"></div>'
+    : t==='redeem' ? (d.pend.length ? d.pend.map(r=>`<div class="member" style="cursor:default">
+        <div class="grow" style="min-width:0"><div class="mname">${esc(r.title)}</div><div class="mrole">${esc(r.name)} · ${fmtP(r.cost)} poäng · ${esc(new Date(r.at).toLocaleDateString('sv-SE'))}</div></div>
+        ${adm ? `<button class="btn slim" style="width:auto;flex:none;padding:8px 12px" onclick="handleRedeem(${r.id},'delivered')">UTLÄMNAD</button>
+          <button class="btn ghost slim" style="width:auto;flex:none;padding:8px 12px" onclick="handleRedeem(${r.id},'cancelled')">MAKULERA</button>` : ''}</div>`).join('')
+      : '<div class="empty">Inga inlösningar väntar.</div>')
+    : t==='rewards' ? `${adm?`<button class="btn" onclick="openRewardEdit()">+ NY BELÖNING</button>`:''}
+        <div style="margin-top:12px">${d.cat.rewards.map(w=>`<button class="member" ${adm?`onclick="openRewardEdit('${w.id}')"`:''}>
+          <div class="grow"><div class="mname">${esc(w.title)}${w.active===false?' <span class="badge warn">AV</span>':''}</div><div class="mrole">${fmtP(w.cost)} poäng${w.description?' · '+esc(w.description):''}</div></div></button>`).join('') || '<div class="empty">Inga belöningar än — ni bestämmer dem tillsammans.</div>'}</div>`
+    : t==='levels' ? `${adm?`<button class="btn" onclick="openLevelEdit()">+ NY NIVÅ</button>`:''}
+        <div style="margin-top:12px">${d.cat.levels.map(l=>`<button class="member" ${adm?`onclick="openLevelEdit('${l.id}')"`:''}>
+          <div class="grow"><div class="mname">${esc(l.name)}${l.active===false?' <span class="badge warn">AV</span>':''}</div><div class="mrole">${critText(l.criteria)}${l.perks?' · '+esc(l.perks):''}</div></div></button>`).join('')}</div>
+        <div class="note">Nivån räknas fram automatiskt: den högsta nivå vars alla krav artisten uppfyller. Gränserna är exempel — ändra dem.</div>`
+    : t==='points' ? pointsCfgPanel(adm)
+    : intelPanelList();
+  return `<div class="h1">Rewards</div><div class="sub">Poäng, belöningar, nivåer och Artist Intelligence.</div>
+    <div class="seg many" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="rwTab='${k}';${k==='intel'?'loadRwAdmin();':''}render()">${n}${k==='redeem'&&d.pend&&d.pend.length?` <span class="dot-n">${d.pend.length}</span>`:''}</button>`).join('')}</div>
+    ${body}`;
+}
+async function handleRedeem(id, st){
+  if(!confirm(st==='cancelled' ? 'Makulera? Poängen går tillbaka till artisten.' : 'Markera som utlämnad?')) return;
+  try{ await rw('handle_redemption', {p_id:id, p_status:st}); toast(st==='cancelled' ? 'Makulerad — poängen är tillbaka' : 'Utlämnad'); loadRwAdmin(); }catch(e){ toast(e.message); }
+}
+function openRewardEdit(id){
+  const w = id ? (rwAdmin.cat.rewards||[]).find(x=>x.id===id) : null;
+  openSheet(`${X}<h2>${w?'Belöning':'Ny belöning'}</h2>
+    <label class="lbl" for="rwT">NAMN</label><input id="rwT" value="${esc(w?w.title:'')}" maxlength="60">
+    <label class="lbl" for="rwD">BESKRIVNING</label><input id="rwD" value="${esc(w?w.description||'':'')}" maxlength="140">
+    <label class="lbl" for="rwC">POÄNGKRAV</label><input id="rwC" inputmode="numeric" value="${w?w.cost:''}">
+    <label class="consent" style="margin-top:12px"><input type="checkbox" id="rwA" ${!w||w.active!==false?'checked':''}><span>Aktiv — artisterna kan lösa in den</span></label>
+    <button class="btn" style="margin-top:20px" onclick="saveRewardEdit('${w?w.id:''}')">SPARA</button>
+    ${w?`<button class="btn danger" style="margin-top:9px" onclick="delRewardEdit('${w.id}')">TA BORT</button>`:''}`);
+}
+async function saveRewardEdit(id){
+  const v = x => document.getElementById(x).value.trim();
+  try{ await rw('save_reward', {p:{id:id||null, title:v('rwT'), description:v('rwD'), cost:parseInt(v('rwC'),10)||0, active:document.getElementById('rwA').checked}});
+    closeSheet(); toast('Sparad'); loadRwAdmin(); }catch(e){ toast(e.message); }
+}
+async function delRewardEdit(id){ if(!confirm('Ta bort belöningen? Inlösta behåller namn och poäng.')) return;
+  try{ await rw('delete_reward', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
+function openLevelEdit(id){
+  const l = id ? (rwAdmin.cat.levels||[]).find(x=>x.id===id) : null, c = (l&&l.criteria)||{};
+  openSheet(`${X}<h2>${l?'Nivå':'Ny nivå'}</h2>
+    <label class="lbl" for="lvN">NAMN</label><input id="lvN" value="${esc(l?l.name:'')}" maxlength="30">
+    <label class="lbl" for="lvR">ORDNING (0 = LÄGST)</label><input id="lvR" inputmode="numeric" value="${l?l.rank:''}">
+    <div class="eyebrow">KRITERIER<span class="ln"></span></div>
+    <label class="lbl" for="lvE">INTJÄNADE POÄNG (TOTALT)</label><input id="lvE" inputmode="numeric" value="${c.minEarned||''}">
+    <label class="lbl" for="lvS">BETALDA PASS SENASTE ÅRET</label><input id="lvS" inputmode="numeric" value="${c.minSessions12||''}">
+    <label class="lbl" for="lvH">TIMMAR SENASTE ÅRET</label><input id="lvH" inputmode="numeric" value="${c.minHours12||''}">
+    <label class="lbl" for="lvP">FÖRMÅNER</label><textarea id="lvP">${esc(l?l.perks||'':'')}</textarea>
+    <label class="consent" style="margin-top:12px"><input type="checkbox" id="lvA" ${!l||l.active!==false?'checked':''}><span>Aktiv</span></label>
+    <button class="btn" style="margin-top:20px" onclick="saveLevelEdit('${l?l.id:''}')">SPARA</button>
+    ${l?`<button class="btn danger" style="margin-top:9px" onclick="delLevelEdit('${l.id}')">TA BORT</button>`:''}`);
+}
+async function saveLevelEdit(id){
+  const n = x => { const v = parseInt(document.getElementById(x).value,10); return v > 0 ? v : undefined; };
+  const crit = {minEarned:n('lvE'), minSessions12:n('lvS'), minHours12:n('lvH')}; Object.keys(crit).forEach(k=>crit[k]===undefined && delete crit[k]);
+  try{ await rw('save_level', {p:{id:id||null, name:document.getElementById('lvN').value.trim(), rank:parseInt(document.getElementById('lvR').value,10)||0,
+      criteria:crit, perks:document.getElementById('lvP').value.trim(), active:document.getElementById('lvA').checked}});
+    closeSheet(); toast('Sparad'); loadRwAdmin(); }catch(e){ toast(e.message); }
+}
+async function delLevelEdit(id){ if(!confirm('Ta bort nivån?')) return; try{ await rw('delete_level', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
+function pointsCfgPanel(adm){
+  const c = rcfg();
+  return `<div class="card"><div class="studio-name">POÄNGTRAPPAN</div>
+      <div class="tiny muted" style="margin-top:6px">Ett avslutat och betalt pass ger poängen för det högsta steget dess längd når.</div>
+      <div id="tiers">${c.tiers.map((t,i)=>`<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" value="${t.hours}" aria-label="Timmar" ${adm?'':'disabled'}>
+        <input class="tP" inputmode="numeric" value="${t.points}" aria-label="Poäng" ${adm?'':'disabled'}></div>`).join('')}</div>
+      ${adm?`<button class="linkbtn" onclick="addTier()">+ steg</button>`:''}</div>
+    <div class="eyebrow">ARTIST INTELLIGENCE<span class="ln"></span></div>
+    <label class="lbl" for="rcA">INAKTIV EFTER (DAGAR UTAN PASS)</label><input id="rcA" inputmode="numeric" value="${c.activeDays}" ${adm?'':'disabled'}>
+    <label class="lbl" for="rcM">ÅTERKOMMANDE: MINST ANTAL PASS</label><input id="rcM" inputmode="numeric" value="${c.recurringMin}" ${adm?'':'disabled'}>
+    <label class="lbl" for="rcW">… UNDER SÅ MÅNGA DAGAR</label><input id="rcW" inputmode="numeric" value="${c.recurringWindow}" ${adm?'':'disabled'}>
+    ${adm?`<button class="btn" style="margin-top:20px" onclick="savePointsCfg()">SPARA</button>`:''}`;
+}
+function addTier(){ document.getElementById('tiers').insertAdjacentHTML('beforeend', `<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" aria-label="Timmar" placeholder="timmar"><input class="tP" inputmode="numeric" aria-label="Poäng" placeholder="poäng"></div>`); }
+function savePointsCfg(){
+  const hs = [...document.querySelectorAll('.tH')].map(x=>Number(String(x.value).replace(',','.'))), ps = [...document.querySelectorAll('.tP')].map(x=>parseInt(x.value,10));
+  const tiers = hs.map((h,i)=>({hours:h, points:ps[i]})).filter(t=>t.hours>0 && t.points>=0).sort((a,b)=>a.hours-b.hours);
+  const n = id => parseInt(document.getElementById(id).value,10);
+  if(!tiers.length || !(n('rcA')>0) || !(n('rcM')>0) || !(n('rcW')>0)) return toast('Kontrollera siffrorna');
+  S.rewardsCfg = {tiers, activeDays:n('rcA'), recurringMin:n('rcM'), recurringWindow:n('rcW'), up:Date.now()};
+  save(); sync(true); render(); toast('Sparat');
+}
+function intelPanelList(){
+  if(!intelList) return '<div class="skel" style="height:160px"></div>';
+  const f = intelF, today = iso(new Date());
+  const prods = [...new Set(intelList.flatMap(x=>x.producers||[]))].sort((a,b)=>a.localeCompare(b,'sv'));
+  const levels = [...new Set(intelList.map(x=>x.level).filter(Boolean))];
+  let L = intelList.filter(x=>(!f.status || x.status===f.status) && (!f.level || x.level===f.level) && (!f.producer || (x.producers||[]).includes(f.producer))
+    && (!f.follow || (x.crm && x.crm.followup && x.crm.followup <= today)));
+  const by = {name:(a,b)=>a.name.localeCompare(b.name,'sv'), hours:(a,b)=>b.hours-a.hours, last:(a,b)=>String(b.last||'').localeCompare(String(a.last||'')), points:(a,b)=>b.available-a.available}[f.sort];
+  L = L.slice().sort(by);
+  const sel = (k, opts, label) => `<select onchange="intelF.${k}=this.value;render()" aria-label="${label}"><option value="">${label}</option>${opts.map(([v,n])=>`<option value="${esc(v)}" ${f[k]===v?'selected':''}>${esc(n)}</option>`).join('')}</select>`;
+  return `<div class="calfilters">
+      ${sel('status', Object.entries(STAT_SV), 'Alla artister')}${levels.length?sel('level', levels.map(v=>[v,v]), 'Alla nivåer'):''}${prods.length?sel('producer', prods.map(v=>[v,v]), 'Alla producenter'):''}
+      <select onchange="intelF.sort=this.value;render()" aria-label="Sortera">${[['name','Namn'],['hours','Flest timmar'],['last','Senaste pass'],['points','Mest poäng']].map(([v,n])=>`<option value="${v}" ${f.sort===v?'selected':''}>${n}</option>`).join('')}</select></div>
+    <label class="consent" style="margin:0 0 10px"><input type="checkbox" ${f.follow?'checked':''} onchange="intelF.follow=this.checked;render()"><span>Bara de som ska följas upp nu</span></label>
+    ${L.length ? L.map(x=>`<button class="member" onclick="openArtistProfile('${x.id}','intel')">
+      <div class="grow" style="min-width:0"><div class="mname">${esc(x.name)} <span class="badge ${x.status==='inaktiv'?'warn':''}" style="${x.status==='inaktiv'?'':'background:rgba(168,85,247,.14);color:var(--pur3)'}">${esc((STAT_SV[x.status]||x.status).toUpperCase())}</span></div>
+        <div class="mrole">${x.bookings} pass · ${fmtH(+x.hours)} h · senast ${x.last?esc(x.last):'—'}${x.level?' · '+esc(x.level):''} · ${fmtP(x.available)} p${x.crm&&x.crm.followup?` · följ upp ${esc(x.crm.followup)}`:''}</div></div>
+      <span style="color:var(--mut2);font-size:18px">›</span></button>`).join('') : '<div class="empty">Inga artister matchar.</div>'}`;
+}
+/* Kunderna i Crew: admin och artist_intel alla, producenter sina egna. */
+function customersSection(){
+  const m = me(); if(!m || !isCrewRole(m.r)) return '';
+  const list = accounts().filter(a=>a.r==='customer' && a.active!==false && !a.del && (canIntel() || a.producer===m.id)).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
+  if(!list.length) return '';
+  return `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
+    ${list.slice(0, 30).map(a=>{ const bs = live().filter(b=>!b.circleId && b.who===a.n && !['request','declined'].includes(b.status));
+      const open = bs.filter(b=>!b.closed && startAt(b) < new Date() && mayClose(b)).length;
+      return `<button class="member" onclick="openArtistProfile('${a.id}')">${avatar(a)}
+        <div class="grow"><div class="mname">${esc(a.n)}</div><div class="mrole">${nt(bs.length,'pass','pass')}${open?` · <span style="color:var(--warn)">${open} att avsluta</span>`:''}</div></div>
+        <span style="color:var(--mut2);font-size:18px">›</span></button>`; }).join('')}`;
 }
 
 async function circlePlanCheck(cid, dates, start, studio){
@@ -2111,6 +2562,7 @@ function memberToAcc(m){
   return {id:m.id, n:m.name, r:m.role, email:m.email||'', phone:m.phone||'',
     team:m.team||'', ig:m.ig||'', producer:m.producer||'',
     login: !!m.user_id, username: m.username||'',          /* har personen loggat in? (inbjudningarna) */
+    perms: Array.isArray(m.perms) ? m.perms : [],           /* t.ex. artist_intel (Rewards, omdömen, CRM) */
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
     active: m.active!==false, del:false, up:+m.up||0};
@@ -2171,6 +2623,7 @@ async function cloudPush(){
   setting('studios', S.studios, S.studiosUp);
   setting('rates', S.rates, S.rates.up);
   if(can('manageCircles')){ const {up:cu, ...cfg} = S.circleCfg; setting('circles', cfg, cu); }
+  if(can('manageCrew')){ const {up:ru, ...rc} = S.rewardsCfg; setting('rewards', rc, ru); }
   setting('dropbox', {appKey:S.dropbox.appKey||'', sharedId:S.dropbox.sharedId||'', setupAt:S.dropbox.setupAt||0}, S.dropbox.up);
   setting('push', {publicKey:S.pushCfg.publicKey||''}, S.pushCfg.up);
   setting('backup', {at:S.backupCfg.at||0, by:S.backupCfg.by||''}, S.backupCfg.up);
@@ -2205,6 +2658,7 @@ function applyRecord(r){
     if(r.id==='push'    && up > (S.pushCfg.up||0)) S.pushCfg = Object.assign({}, S.pushCfg, r.data, {up});
     if(r.id==='backup'  && up > (S.backupCfg.up||0)) S.backupCfg = Object.assign({}, S.backupCfg, r.data, {up});
     if(r.id==='circles' && up > (S.circleCfg.up||0)) S.circleCfg = Object.assign({}, r.data, {up});
+    if(r.id==='rewards' && up > (S.rewardsCfg.up||0)) S.rewardsCfg = Object.assign({}, r.data, {up});
     return;
   }
   const coll = KINDS[r.kind]; if(!coll) return;
@@ -2658,10 +3112,11 @@ const ICONS = {
   more :'<circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/>',
   artists:'<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/><path d="M18 3.5l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z"/>',
   goals:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
-  gallery:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>'
+  gallery:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
+  rewards:'<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>'
 };
 const LABELS = {today:'IDAG', week:'SCHEMA', agenda:'AGENDA', beats:'BEATS', more:'MER',
-  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅL', gallery:'GALLERI'};
+  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅL', gallery:'GALLERI', rewards:'REWARDS'};
 /* Sex flikar hade blivit tio. Fem i botten, resten bakom MER. */
 function tabs(){
   const m = me();
@@ -2673,14 +3128,14 @@ function tabs(){
    bara managern ser. Producenterna har artistfliken för det gemensamma. */
 function moreViews(){
   const m = me(); if(m && m.r==='camera') return [];
-  return can('dashboard') ? ['artists','gallery','dash','circles','team','goals']
-                          : ['artists','gallery','circles','team','goals'];
+  const base = can('dashboard') ? ['artists','gallery','dash','circles','team','goals'] : ['artists','gallery','circles','team','goals'];
+  return canIntel() ? base.concat('rewards') : base;
 }
 function canView(v){ return roleView()==='full' && (tabs().includes(v) || moreViews().includes(v)); }
 
 /* Mobilen: fem flikar i botten. Datorn: allt i sidopanelen, utan MER. */
 const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', more:'Mer',
-  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Mål', gallery:'Galleri'};
+  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Mål', gallery:'Galleri', rewards:'Rewards'};
 function buildNav(){
   const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="go('${k}')">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg><span class="nl-m">${LABELS[k]}</span></button>`;
@@ -2729,7 +3184,7 @@ function render(){
     view==='agenda'  ? vAgenda()  : view==='beats'   ? vBeats()   :
     view==='more'    ? vMore()    : view==='artists' ? vArtists() :
     view==='goals'   ? vGoals()   : view==='team'    ? vTeam()    :
-    view==='gallery' ? vGallery() :
+    view==='gallery' ? vGallery() : view==='rewards' ? vRewards() :
     view==='circles' ? (openCircle ? vCircle() : vCircles()) : vDash());
   if(view==='gallery') loadThumbs();
   paintSync();
@@ -2759,6 +3214,7 @@ function vMore(){
       ${mgr ? card('dash','STATISTIK', 'Samarbeten, släpp, streams och studiotid') : ''}
       ${card('goals','MÅL', mgr ? `Allas mål och planer · ${nt(allGoals,'aktivt','aktiva')}` : `Dina mål och din plan · ${nt(myGoals,'aktivt','aktiva')}`)}
       ${card('gallery','GALLERI', `${nt(lmedia().length,'bild eller film','bilder och filmer')} från kamerateamet`)}
+      ${canIntel() ? card('rewards','REWARDS', 'Poäng, belöningar, nivåer och Artist Intelligence') : ''}
       ${card('team','CREW', `${teamAcc().length} personer · profiler och konton`)}
       ${card('circles','CIRKLAR', `${lcircle().length} cirklar i programmet`)}
     </div>`;
@@ -4429,6 +4885,7 @@ function vTeam(){
       <button class="btn" style="flex:1" onclick="openAddPerson('customer')">+ KUND</button>
       <button class="btn ghost" style="flex:1" onclick="openAddPerson('participant')">+ DELTAGARE</button></div>
       ${clientsSection()}` : ''}
+    ${customersSection()}
     <div class="stagger">${rows}</div>
     ${cameras().length ? `<div class="eyebrow">KAMERATEAM<span class="ln"></span></div>
       ${[...new Set(cameras().map(creditOf))].map(t=>{ const ms = cameras().filter(a=>creditOf(a)===t);
@@ -4653,14 +5110,17 @@ function openPrivacy(){
       <h3>Vad vi sparar</h3>
       <p>Namn, e-post, användarnamn, telefon om du lämnat det, och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
         uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Nya kunder: det som fylls i på
-        bokningssidan. <b>Vi sparar inte personnummer.</b></p>
+        bokningssidan. Kunder: poäng och inlösta belöningar i Bando Rewards, och producenternas interna omdömen
+        och uppföljning efter passen. <b>Vi sparar inte personnummer.</b></p>
       <h3>Varför</h3>
       <p>För att boka studion, driva studiecirklarna (timmarna rapporteras till studieförbundet), svara på
         bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.</p>
       <h3>Vem ser vad</h3>
       <p>Crewet och admins ser schemat och kontona. En cirkelledare ser sina deltagares namn, telefon och e-post.
         Deltagare ser sin ledares namn och kontaktuppgifter. Kunder ser bara sina egna bokningar och lediga tider.
-        Mål och personliga planer ser bara du och managern.</p>
+        Mål och personliga planer ser bara du och managern. Interna omdömen och uppföljning om kunder ser bara
+        admin, den med särskild behörighet och producenten som var med på passet — aldrig kunden själv eller andra
+        kunder. Kunden ser sina egna poäng och sin nivå.</p>
       <h3>Var det ligger</h3>
       <p>Konton och data hos Supabase (servrar i Stockholm). Filer i Bando Collectives Dropbox.
         Mejl skickas via Resend. Notiser via Apple och Google — innehållet är krypterat
@@ -6119,6 +6579,7 @@ function vCustomer(){
     <div class="tiny muted" style="margin-top:4px;line-height:1.55">Avboka senast en timme innan. Efter det: hör av dig till
       ${esc(p ? p.name : 'din producent')}.</div>
     ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
+    ${rewardsCard()}
     ${contactCard(p, 'DIN PRODUCENT')}`;
 }
 
@@ -6710,6 +7171,8 @@ function openAccount(id){
     ${leads.length?`<div class="eyebrow">LEDER<span class="ln"></span></div>
       ${leads.map(c=>`<div class="kv"><span>CIRKEL</span><b>${esc(c.n)}</b></div>`).join('')}`:''}
 
+    ${a && can('manageCrew') && isCrewRole(a.r) && !isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acX" ${(a.perms||[]).includes('artist_intel')?'checked':''}>
+      <span><b>Artist Intelligence</b> — ser Rewards, alla omdömen och CRM för alla artister</span></label>` : ''}
     <button class="btn" style="margin-top:22px" onclick="saveAccount('${a?a.id:''}')">SPARA</button>
     ${a && a.id!==(me()||{}).id ? `
       ${can('grantManager') ? `<button class="btn danger" style="margin-top:9px" onclick="deletePerson('${a.id}')">RADERA PERSON</button>` : ''}
@@ -6760,6 +7223,11 @@ function saveAccount(id){
       m.n = nn;
     }
     Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, up:Date.now()});
+    const px = document.getElementById('acX');
+    if(px && px.checked !== (m.perms||[]).includes('artist_intel')){
+      const perms = px.checked ? (m.perms||[]).concat('artist_intel') : (m.perms||[]).filter(x=>x!=='artist_intel');
+      rw('set_member_perms', {p_member:m.id, p_perms:perms}).then(()=>{ m.perms = perms; save(); }).catch(e=>toast(e.message));
+    }
   } else {
     S.accounts.push({id:uid(), n:nn, r:nr, email:ne, phone:np, team:nt_, ig:ni, producer:nk,
       c:'#6633b8', g:'#9d5cf5',
@@ -7210,6 +7678,9 @@ function openDetail(id){
       ${b.note?`<div class="kv"><span>NOTERING</span><b style="font-weight:500;color:var(--mut)">${esc(b.note)}</b></div>`:''}
     </div>
     ${fs.length?`<div class="eyebrow">FILER FRÅN PASSET<span class="ln"></span></div>${fs.map(fileRow).join('')}`:''}
+    ${customerOf(b) && !b.status ? `<div class="kv"><span>AVSLUT</span><b>${b.closed ? (b.paid ? `Avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'Avslutat, ej betalt') : startAt(b) < new Date() ? '<span style="color:var(--warn)">Inte avslutat</span>' : 'Kommande'}</b></div>
+      ${startAt(b) < new Date() && mayClose(b) ? `<button class="btn ${b.closed?'ghost':''}" style="margin-top:14px" onclick="openClose('${b.id}')">${b.closed ? 'ÄNDRA AVSLUTET' : 'AVSLUTA PASSET'}</button>` : ''}
+      ${mayClose(b) || canIntel() ? `<button class="linkbtn" onclick="openArtistProfile('${customerOf(b).id}')">Artistprofilen</button>` : ''}` : ''}
     ${b.circleId?`<div class="kv"><span>STATUS</span><b>${statePill(b)}</b></div>
       ${can('manageCircles')?`<div class="row" style="gap:8px;margin-top:12px">
         <button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="openHistory('${b.id}')">HISTORIK</button>

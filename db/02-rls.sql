@@ -20,6 +20,14 @@ alter table circle_signups enable row level security;
 alter table bs_secrets enable row level security;
 alter table session_reports enable row level security;
 alter table record_history enable row level security;
+alter table points enable row level security;
+alter table rewards enable row level security;
+alter table redemptions enable row level security;
+alter table levels enable row level security;
+alter table level_history enable row level security;
+alter table artist_notes enable row level security;
+alter table artist_crm enable row level security;
+-- (Rewards-tabellerna har inga policys: bara funktionerna i 03 läser och skriver dem)
 
 -- ---------- hjälpare (security definer: går förbi RLS internt) ----------
 create or replace function bs_me() returns members
@@ -154,6 +162,7 @@ begin
   new.id := old.id; new.role := old.role; new.name := old.name;
   new.active := old.active; new.user_id := old.user_id; new.email := old.email;
   new.team := old.team; new.producer := old.producer; new.username := old.username;
+  new.perms := old.perms;
   return new;
 end $$;
 drop trigger if exists members_guard on members;

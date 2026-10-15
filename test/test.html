@@ -1610,6 +1610,60 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('närvaro och rapportering per vecka', r.wk && r.wk.n===2 && r.wk.checked===1 && r.wk.planned===1 && Math.round(r.wk.att*100)===100, r.wk);
   ok('ledare, timbank och utbildningsnivå visas', /LEDARE OCH TIMBANK/.test(r.html) && /UTBILDNINGSNIVÅ/.test(r.html) && /NÄRVARO OCH RAPPORTERING/.test(r.html));
 
+  /* ============ BANDO REWARDS ============ */
+  log('\n── Bando Rewards: avsluta pass, poäng, belöningar, nivåer, omdömen, intelligence ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    byId('p2').r = 'customer'; byId('p2').producer = 'rkay'; save();
+    const D = n => iso(addDays(new Date(), n));
+    const K = (id, d, o) => S.bookings.push(bump(Object.assign({id, studio:'A', date:D(d), start:'10:00', end:'13:00', who:'Nora Lind', title:'Studiotid',
+      note:'', circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, del:false}, o)));
+    K('rk1', -3); K('rk2', -2, {end:'16:00'}); K('rk3', 4);
+    S.session.member = 'ADREY'; render();
+    let t = ''; const rt = toast; window.toast = m => { t = m; }; openClose('rk1'); window.toast = rt; const adreyNo = t;
+    S.session.member = 'RKAY'; render(); openDetail('rk1'); const det = document.getElementById('sheetBody').innerHTML;
+    openClose('rk1'); document.getElementById('cl_went').value = 'Bra session'; document.getElementById('cl_next').value = 'Mixa';
+    await saveClose('rk1');
+    openClose('rk2'); await saveClose('rk2');
+    const b1 = S.bookings.find(x=>x.id==='rk1');
+    const intelNo = canIntel(), moreNo = moreViews().includes('rewards');
+    S.session.member = 'AZ'; render();
+    rwTab = 'rewards'; go('rewards'); openRewardEdit(); document.getElementById('rwT').value = 'Hoodie'; document.getElementById('rwC').value = '500';
+    await saveRewardEdit(''); await new Promise(r=>setTimeout(r,50));
+    S.session.member = 'Nora Lind'; rwMineAt = 0; render(); await new Promise(r=>setTimeout(r,80)); render();
+    const cust = document.getElementById('view').innerHTML;
+    await redeemMine(rwCat.rewards[0].id); await new Promise(r=>setTimeout(r,80));
+    const after = rwMine.available;
+    S.session.member = 'AZ'; render(); await loadRwAdmin(); rwTab = 'redeem'; go('rewards'); const red = document.getElementById('view').innerHTML;
+    await handleRedeem(rwAdmin.pend[0].id, 'delivered');
+    await openArtistProfile('p2'); const tabs = artistTabs().map(x=>x[0]).join(','); apTab='notes'; paintArtist(); const notes = document.getElementById('sheetBody').innerHTML;
+    apTab='intel'; paintArtist(); const intel = document.getElementById('sheetBody').innerHTML;
+    document.getElementById('crN').value = 'Ring om EP'; document.getElementById('crF').value = D(1); await saveCrm();
+    const crm = (rwState().crm.p2||{}).followup_note;
+    await rw('adjust_points', {p_member:'p2', p_points:1000, p_note:'Bonus'});
+    const lvl = (await rw('points_summary', {p_member:'p2'})).level.name;
+    openAccount('rkay'); document.getElementById('acX').checked = true; saveAccount('rkay'); await new Promise(r=>setTimeout(r,50));
+    S.session.member = 'RKAY'; const rkIntel = canIntel() && moreViews().includes('rewards'); S.session.member = 'AZ';
+    rwTab='intel'; intelList = null; await loadRwAdmin(); intelF.status = 'aktiv'; render(); const il = document.getElementById('view').innerHTML; intelF.status='';
+    return {adreyNo, det:/AVSLUTA PASSET/.test(det) && /Inte avslutat/.test(det), closed:b1.closed && b1.paid && b1.closedBy==='RKAY', intelNo, moreNo,
+      cust:/BANDO REWARDS/.test(cust) && /600/.test(cust) && /MEMBER/.test(cust) && /Hoodie/.test(cust), after, red:/Hoodie/.test(red) && /UTLÄMNAD/.test(red),
+      delivered:rwState().redemptions[0].status, tabs, notes:/Bra session/.test(notes) && /Mixa/.test(notes), intel:/Pass per månad/.test(intel) && /UPPFÖLJNING/.test(intel),
+      crm, lvl, rkIntel, il:/Nora Lind/.test(il)};`);
+  ok('en producent som inte är kundens kan inte avsluta passet', /Bara kundens producent/.test(r.adreyNo), r.adreyNo);
+  ok('kundens producent ser "Avsluta passet" på ett pass som varit', r.det===true);
+  ok('avslutat och betalt — med vem', r.closed===true);
+  ok('utan behörighet syns inte Rewards för producenten', r.intelNo===false && r.moreNo===false);
+  ok('kunden ser sina poäng (100 + 500), nivå och belöningarna', r.cust===true);
+  ok('kunden löser in — poängen dras', r.after===100, r.after);
+  ok('admin ser inlösningen och lämnar ut', r.red===true && r.delivered==='delivered', r);
+  ok('artistprofilen har fem flikar för admin', r.tabs==='bookings,rewards,level,notes,intel', r.tabs);
+  ok('omdömet syns under Anteckningar', r.notes===true);
+  ok('Intelligence med aktivitet och uppföljning', r.intel===true && r.crm==='Ring om EP', r);
+  ok('nivån uppdateras automatiskt (1 100 intjänat → Silver)', r.lvl==='Silver', r.lvl);
+  ok('admin ger en producent Artist Intelligence', r.rkIntel===true);
+  ok('Intelligence-listan filtreras', r.il===true);
+
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');
   w = await boot(seed());

@@ -693,6 +693,45 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('lektionen sparas på servern när passet markeras genomfört', r.sel===true && r.lt==='Studion och DAW:en', r);
   ok('och ledarens vy visar nästa lektion', r.html===true, r);
 
+  /* ============ BANDO REWARDS MOT SERVERN ============ */
+  log('\n── Bando Rewards mot servern: avsluta pass, poäng, omdöme, belöning, intelligence ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    S.bookings.push(bump({id:'kk1', studio:'B', date:iso(addDays(new Date(),-2)), start:'10:00', end:'13:00', who:'Kalle Kund', title:'Studiotid', note:'',
+      circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, del:false}));
+    save(); await sync(true);
+    return (await sb('/records?select=id&kind=eq.booking&id=eq.kk1')).length;`);
+  ok('ett kundpass ligger på servern', r===1, r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('rkay','rkay12345')} ${wait(400)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true);
+    openClose('kk1'); document.getElementById('cl_went').value = 'Fokuserad'; await saveClose('kk1');
+    const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.kk1'))[0].data;
+    const notes = await rw('artist_notes_for', {p_member:customerOf(S.bookings.find(x=>x.id==='kk1')).id});
+    let direct = ''; try{ await sb('/points?select=*'); }catch(e){ direct = e.message; }
+    let sum = ''; try{ await rw('points_summary', {p_member:customerOf(S.bookings.find(x=>x.id==='kk1')).id}); }catch(e){ sum = e.message; }
+    return {closed:srv.closed && srv.paid && srv.closedBy==='RKAY', notes:notes.map(n=>n.went), direct, sum};`);
+  ok('producenten avslutar kundens pass via servern', r.closed===true, r);
+  ok('och ser sitt omdöme', JSON.stringify(r.notes)==='["Fokuserad"]', r.notes);
+  ok('men inte kundens poäng (ingen behörighet)', /Inte behörig/.test(r.sum), r.sum);
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    const kalle = accounts().find(a=>a.n==='Kalle Kund');
+    const sum0 = await rw('points_summary', {p_member:kalle.id});
+    const rid = await rw('save_reward', {p:{title:'Merch', cost:80}});
+    await rw('redeem_reward', {p_reward:rid, p_member:kalle.id});
+    const pend = await rw('pending_redemptions', {});
+    const intel = (await rw('artist_intel', {})).find(x=>x.id===kalle.id);
+    go('rewards'); await loadRwAdmin(); rwTab='redeem'; render(); const html = document.getElementById('view').innerHTML;
+    return {pts:sum0.available, level:sum0.level && sum0.level.name, pend:pend.map(x=>x.title), intel:intel && {b:+intel.bookings, notes:+intel.notes, av:intel.available}, html:/Merch/.test(html) && /Kalle Kund/.test(html)};`);
+  ok('poängen ligger på servern: 3 h = 100', r.pts===100 && r.level==='Member', r);
+  ok('admin löser in åt kunden — inlösen väntar', JSON.stringify(r.pend)==='["Merch"]', r.pend);
+  ok('Artist Intelligence från servern', r.intel && r.intel.b===1 && r.intel.notes===1 && r.intel.av===20, r.intel);
+  ok('Mer → Rewards visar inlösen', r.html===true);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

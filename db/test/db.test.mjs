@@ -738,6 +738,84 @@ await C(()=>rpc('check_sessions',{p_ids:'["cx5"]'}));
 const snap5 = await C(()=>rpc('report_sessions',{p_ids:'["cx5"]'}));
 ok('lektionen följer med i rapporten', snap5[0].lesson==='DAW-grunder', snap5[0]);
 
+/* ============ BANDO REWARDS ============ */
+head('Bando Rewards: poäng, belöningar, nivåer, omdömen och artist intelligence');
+U.ku1 = await user('ku1@b.se'); U.pr2 = await user('pr2@b.se');
+await M('ku1', U.ku1, 'customer', 'Kim Kund', 'ku1@b.se', null);
+await q(`update members set producer='rkay' where id='ku1'`);
+await M('pr2', U.pr2, 'producer', 'PR2', 'pr2@b.se', null);
+const KB = (id, o) => R('booking', id, Object.assign({id, studio:'A', date:'2026-10-05', start:'10:00', end:'13:00', who:'Kim Kund', title:'Studiotid',
+  circleId:'', status:'', with:[], paid:true}, o));
+await KB('kb1', {}); await KB('kb2', {date:'2026-10-06', end:'16:00'}); await KB('kb3', {date:'2026-10-07', with:['PR2']}); await KB('kbF', {date:'2027-01-05'});
+const clK = await as(db,U.rkay,()=>rpc('close_session',{p_booking:'kb1',p_paid:true,p_note:JSON.stringify({went:'Bra flyt',created:'Två verser',strengths:'Melodier',develop:'Andning',next:'Mixa',other:''})}));
+ok('producenten avslutar kundens pass: 3 h = 100 poäng', clK.points===100 && clK.available===100, clK);
+const kbK = (await one(`select data from records where id='kb1'`)).data;
+ok('passet blir avslutat och betalt, med vem', kbK.closed===true && kbK.paid===true && kbK.closedBy==='RKAY', kbK);
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'kb1',p_paid:true}));
+ok('samma pass ger aldrig poäng två gånger', +(await one(`select sum(points) s from points where member_id='ku1'`)).s===100);
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'kb1',p_paid:false}));
+ok('avmarkeras betalt dras poängen tillbaka', +(await one(`select sum(points) s from points where member_id='ku1'`)).s===0
+   && (await one(`select kind from points where booking_id='kb1' order by id desc limit 1`)).kind==='reversal');
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'kb1',p_paid:true}));
+ok('6 h = 500 poäng', (await as(db,U.rkay,()=>rpc('close_session',{p_booking:'kb2',p_paid:true}))).points===500);
+ok('ett pass som inte har varit kan inte avslutas', /inte börjat/.test(await boom(()=>as(db,U.rkay,()=>rpc('close_session',{p_booking:'kbF',p_paid:true})))||''));
+ok('en annan producent kan inte avsluta kundens pass', /Bara kundens producent/.test(await boom(()=>as(db,U.pr2,()=>rpc('close_session',{p_booking:'kb1',p_paid:true})))||''));
+ok('men den som var med på passet kan', (await as(db,U.pr2,()=>rpc('close_session',{p_booking:'kb3',p_paid:true}))).points===100);
+ok('cirkelpass har inga poäng', /Cirkelpass/.test(await boom(()=>as(db,U.lea,()=>rpc('close_session',{p_booking:'cx1',p_paid:true})))||''));
+
+const meK = await as(db,U.ku1,()=>rpc('points_summary',{}));
+ok('kunden ser sina poäng och sin historik', meK.available===700 && meK.earned===700 && meK.history.length===5 && meK.level.name==='Member', [meK.available, meK.history.length, meK.level]);
+ok('och nästa nivå', meK.next.name==='Silver', meK.next);
+ok('men aldrig omdömena', (await as(db,U.ku1,()=>rpc('artist_notes_for',{p_member:'ku1'}))).length===0);
+ok('en annan kund ser inte någon annans poäng', /Inte behörig/.test(await boom(()=>as(db,U.ku1,()=>rpc('points_summary',{p_member:'rkay'})))||''));
+ok('cirkelledare: ingen åtkomst till Rewards', /Inte behörig/.test(await boom(()=>as(db,U.lea,()=>rpc('points_summary',{p_member:'ku1'})))||'')
+   && (await as(db,U.lea,()=>rpc('rewards_catalog',{})))===null && (await as(db,U.lea,()=>rpc('artist_notes_for',{p_member:'ku1'}))).length===0);
+ok('ingen läser tabellerna direkt', (await as(db,U.rkay,()=>q(`select * from points`))).length===0 && (await as(db,U.az,()=>q(`select * from artist_notes`))).length===0);
+
+const rnK = await as(db,U.rkay,()=>rpc('artist_notes_for',{p_member:'ku1'}));
+ok('producenten ser omdömet på sin kunds pass', rnK.length===1 && rnK[0].went==='Bra flyt' && rnK[0].author==='RKAY' && rnK[0].date==='2026-10-05', rnK);
+ok('en producent som inte var med ser det inte', (await as(db,U.pr2,()=>rpc('artist_notes_for',{p_member:'ku1'}))).length===0);
+await as(db,U.pr2,()=>rpc('add_artist_note',{p_booking:'kb3',p_note:JSON.stringify({went:'Snabbt',next:'Vocals'})}));
+ok('omdöme i efterhand på ett pass man var med på', (await as(db,U.pr2,()=>rpc('artist_notes_for',{p_member:'ku1'}))).length===1);
+ok('admin ser alla omdömen', (await C(()=>rpc('artist_notes_for',{p_member:'ku1'}))).length===2);
+
+ok('bara admin skapar belöningar', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('save_reward',{p:JSON.stringify({title:'Merch',cost:100})})))||''));
+const rwA = await C(()=>rpc('save_reward',{p:JSON.stringify({title:'Hoodie',description:'Bando-hoodie',cost:600})}));
+const rwB = await C(()=>rpc('save_reward',{p:JSON.stringify({title:'Gratis pass',cost:5000})}));
+const catK = await as(db,U.ku1,()=>rpc('rewards_catalog',{}));
+ok('kunden ser belöningarna, nivåerna och poängtrappan', catK.rewards.length===2 && catK.levels.length===4 && catK.tiers.length===2, catK);
+const rdK = await as(db,U.ku1,()=>rpc('redeem_reward',{p_reward:rwA}));
+ok('kunden löser in — poängen dras direkt', rdK.available===100, rdK);
+ok('admins får veta', !!(await one(`select 1 from outbox where kind='reward' and member_id='az'`)));
+ok('för få poäng går inte', /För få poäng — 100 av 5000/.test(await boom(()=>as(db,U.ku1,()=>rpc('redeem_reward',{p_reward:rwB})))||''));
+ok('producenter kan inte lösa in åt kunden', /Bara kunder|Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('redeem_reward',{p_reward:rwA,p_member:'ku1'})))||''));
+const pendK = await C(()=>rpc('pending_redemptions',{}));
+ok('admin ser inlösningar som väntar', pendK.length===1 && pendK[0].name==='Kim Kund' && pendK[0].title==='Hoodie', pendK);
+await C(()=>rpc('handle_redemption',{p_id:pendK[0].id,p_status:'cancelled'}));
+ok('makulerad inlösen ger tillbaka poängen', (await as(db,U.ku1,()=>rpc('points_summary',{}))).available===700);
+ok('en hanterad inlösen kan inte hanteras igen', /redan hanterad/.test(await boom(()=>C(()=>rpc('handle_redemption',{p_id:pendK[0].id,p_status:'delivered'})))||''));
+ok('justering kräver en anledning', /Skriv varför/.test(await boom(()=>C(()=>rpc('adjust_points',{p_member:'ku1',p_points:400,p_note:''})))||''));
+ok('saldot kan inte bli negativt', /negativt/.test(await boom(()=>C(()=>rpc('adjust_points',{p_member:'ku1',p_points:-5000,p_note:'Rättelse'})))||''));
+await C(()=>rpc('adjust_points',{p_member:'ku1',p_points:400,p_note:'Välkomstbonus'}));
+const lvK = await as(db,U.ku1,()=>rpc('points_summary',{}));
+ok('nivån uppdateras automatiskt: 1 100 intjänat → Silver', lvK.level.name==='Silver' && lvK.next.name==='Gold', lvK.level);
+ok('och kunden får en notis om nivån', !!(await one(`select 1 from outbox where kind='level' and member_id='ku1' and subject='Ny nivå: Silver'`)));
+await C(()=>rpc('save_level',{p:JSON.stringify({id:'lv_silver',name:'Silver',rank:1,criteria:{minEarned:2000},perks:'10 % rabatt'})}));
+ok('admin ändrar nivåns kriterier', (await as(db,U.ku1,()=>rpc('points_summary',{}))).level.name==='Member');
+
+ok('Artist Intelligence: producenter utan behörighet ser ingenting', (await as(db,U.rkay,()=>rpc('artist_intel',{}))).length===0);
+const aiR = await C(()=>rpc('artist_intel',{}));
+const kim = aiR.find(x=>x.id==='ku1');
+ok('admin ser bokningar, timmar, senaste och nästa pass, producenter och poäng', kim && +kim.bookings===3 && +kim.hours===12 && kim.last==='2026-10-07' && kim.next==='2027-01-05'
+   && kim.producers.includes('RKAY') && kim.producers.includes('PR2') && kim.available===1100 && kim.notes===2 && kim.status==='återkommande', kim);
+ok('RKAY kan inte ge sig själv behörighet', !!(await as(db,U.rkay,()=>q(`update members set perms='{artist_intel}' where id='rkay'`).then(()=>null)), true)
+   && (await one(`select perms from members where id='rkay'`)).perms.length===0);
+await C(()=>rpc('set_member_perms',{p_member:'rkay',p_perms:'["artist_intel"]'}));
+ok('admin ger RKAY behörigheten — då ser RKAY Artist Intelligence', (await as(db,U.rkay,()=>rpc('artist_intel',{}))).length>0);
+await as(db,U.rkay,()=>rpc('save_artist_crm',{p_member:'ku1',p:JSON.stringify({projects:'EP i vår',goals:'Spelning',followup:'2026-11-01',followup_note:'Ring om EP:n'})}));
+ok('och kan föra uppföljning', (await C(()=>rpc('artist_intel',{}))).find(x=>x.id==='ku1').crm.followup_note==='Ring om EP:n');
+ok('utan behörighet går det inte', /Inte behörig/.test(await boom(()=>as(db,U.pr2,()=>rpc('save_artist_crm',{p_member:'ku1',p:'{}'})))||''));
+
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

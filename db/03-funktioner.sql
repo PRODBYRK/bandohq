@@ -1221,3 +1221,347 @@ do $$ begin
     grant execute on function bs_login_fail(text) to service_role;
   end if;
 end $$;
+
+-- =====================================================================
+--  BANDO REWARDS — poäng, belöningar, nivåer, omdömen och artist intelligence
+--  Artisten är kundkontot. Tabellerna har inga policys; allt går via funktionerna
+--  här, som kontrollerar vem som får vad:
+--    admin (och den med behörigheten artist_intel): allt
+--    producenter: avsluta egna kunders pass och skriva omdömen, se omdömen på egna pass
+--    kunden: sina egna poäng, sin nivå och belöningarna — aldrig omdömen eller CRM
+--    cirkelledare, deltagare, kamera: ingenting
+-- =====================================================================
+create or replace function bs_rcfg(p_key text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select data->p_key from records where kind = 'setting' and id = 'rewards' and not del and data ? p_key),
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object('hours', 3, 'points', 100), jsonb_build_object('hours', 6, 'points', 500)),
+      'activeDays', 60, 'recurringMin', 3, 'recurringWindow', 90)->p_key)
+$$;
+create or replace function bs_has_perm(p text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select bs_is_admin() or exists (select 1 from members where user_id = auth.uid() and active and p = any(perms))
+$$;
+/* Poängen för ett pass: högsta steget i trappan som passets längd når (3 h → 100, 6 h → 500). */
+create or replace function bs_points_for(p_hours numeric) returns int
+language sql stable security definer set search_path = public as $$
+  select coalesce(max((t->>'points')::int), 0) from jsonb_array_elements(bs_rcfg('tiers')) t
+   where (t->>'hours')::numeric <= p_hours + 0.0001
+$$;
+create or replace function bs_balance(p_member text) returns table(earned int, spent int, available int)
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(points) filter (where kind in ('earn','reversal','adjust')), 0)::int,
+         coalesce(-sum(points) filter (where kind in ('redeem','refund')), 0)::int,
+         coalesce(sum(points), 0)::int
+    from points where member_id = p_member
+$$;
+/* Kundens pass (kundens namn står på passet). Avslutade och betalda räknas för nivåerna. */
+create or replace function bs_level_stats(p_member text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'earned', (select earned from bs_balance(p_member)),
+    'sessions12', count(*) filter (where (r.data->>'closed')::boolean and (r.data->>'paid')::boolean
+                                     and (r.data->>'date')::date >= current_date - 365),
+    'hours12', coalesce(sum(bs_len_h(r.data)) filter (where (r.data->>'closed')::boolean and (r.data->>'paid')::boolean
+                                     and (r.data->>'date')::date >= current_date - 365), 0))
+    from members m left join records r on r.kind = 'booking' and not r.del and lower(r.data->>'who') = lower(m.name)
+                                       and coalesce(r.data->>'circleId','') = ''
+   where m.id = p_member
+$$;
+/* Högsta aktiva nivån vars kriterier är uppfyllda. Saknas ett kriterium räknas det som 0. */
+create or replace function bs_member_level(p_member text) returns levels
+language sql stable security definer set search_path = public as $$
+  select l.* from levels l, bs_level_stats(p_member) s
+   where l.active
+     and (s->>'earned')::numeric     >= coalesce((l.criteria->>'minEarned')::numeric, 0)
+     and (s->>'sessions12')::numeric >= coalesce((l.criteria->>'minSessions12')::numeric, 0)
+     and (s->>'hours12')::numeric    >= coalesce((l.criteria->>'minHours12')::numeric, 0)
+   order by l.rank desc limit 1
+$$;
+/* Nivån räknas om efter varje poängändring; en ny nivå loggas, och en högre ger kunden en notis. */
+create or replace function bs_update_level(p_member text) returns void
+language plpgsql security definer set search_path = public as $$
+declare lv levels := bs_member_level(p_member); prev level_history;
+begin
+  select * into prev from level_history where member_id = p_member order by id desc limit 1;
+  if coalesce(prev.level_id,'') is not distinct from coalesce(lv.id,'') then return; end if;
+  insert into level_history(member_id, level_id, level_name, rank) values (p_member, lv.id, lv.name, lv.rank);
+  if lv.id is not null and coalesce(lv.rank, 0) > coalesce(prev.rank, -1) and prev.id is not null then
+    perform bs_notify(p_member, null, 'Ny nivå: ' || lv.name,
+      'Grattis! Du är nu ' || lv.name || '-medlem hos Bando.' || coalesce(E'\n\n' || 'Det här ingår: ' || nullif(lv.perks,''), ''),
+      'level', 'level:' || p_member || ':' || lv.id);
+  end if;
+end $$;
+create or replace function bs_note_text(n jsonb) returns text
+language sql immutable as $$
+  select trim(concat_ws('', n->>'went', n->>'created', n->>'strengths', n->>'develop', n->>'next', n->>'other'))
+$$;
+/* Får jag avsluta passet och skriva omdöme? Admin, kundens producent eller en producent som var med. */
+create or replace function bs_may_close(d jsonb, cu members) returns boolean
+language sql stable security definer set search_path = public as $$
+  select bs_is_admin() or (bs_is_crew() and (cu.producer = bs_my_id() or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
+                                            or d->>'closedBy' = (bs_me()).name))
+$$;
+
+/* Efter passet: genomfört och betalt → poäng (en gång per pass; avmarkeras betalt dras de
+   tillbaka). Ett omdöme kan skrivas samtidigt. */
+create or replace function close_session(p_booking text, p_paid boolean, p_note jsonb default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; cu members; pts int; net int; diff int; me members := bs_me();
+begin
+  select data into d from records where kind = 'booking' and id = p_booking and not del for update;
+  if d is null then raise exception 'Passet finns inte'; end if;
+  if coalesce(d->>'circleId','') <> '' then raise exception 'Cirkelpass avslutas med närvaron'; end if;
+  if coalesce(d->>'status','') <> '' then raise exception 'Passet är inte bokat'; end if;
+  if bs_starts(d) > now() then raise exception 'Passet har inte börjat än'; end if;
+  select * into cu from members where role::text = 'customer' and lower(name) = lower(d->>'who') limit 1;
+  if cu.id is null then raise exception 'Passet är inte bokat av en kund'; end if;
+  if not bs_may_close(d, cu) then raise exception 'Bara kundens producent, en producent som var med eller admin kan avsluta passet'; end if;
+  pts := case when p_paid then bs_points_for(bs_len_h(d)) else 0 end;
+  perform pg_advisory_xact_lock(hashtext('points:' || cu.id));
+  select coalesce(sum(points), 0) into net from points where booking_id = p_booking and kind in ('earn','reversal');
+  diff := pts - net;
+  if diff <> 0 then
+    insert into points(member_id, booking_id, kind, points, note, by_id)
+    values (cu.id, p_booking, case when diff > 0 then 'earn' else 'reversal' end, diff, bs_when(d), me.id);
+  end if;
+  perform bs_put_booking(d || jsonb_build_object('closed', true, 'paid', p_paid,
+    'closedBy', coalesce(d->>'closedBy', me.name), 'closedAt', now_ms()));
+  if p_note is not null and bs_note_text(p_note) <> '' then
+    insert into artist_notes(member_id, booking_id, author_id, went, created, strengths, develop, next, other)
+    values (cu.id, p_booking, me.id, p_note->>'went', p_note->>'created', p_note->>'strengths', p_note->>'develop', p_note->>'next', p_note->>'other');
+  end if;
+  perform bs_update_level(cu.id);
+  return jsonb_build_object('points', pts, 'available', (select available from bs_balance(cu.id)));
+end $$;
+
+/* Omdöme i efterhand (samma regler som när passet avslutas). */
+create or replace function add_artist_note(p_booking text, p_note jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; cu members;
+begin
+  select data into d from records where kind = 'booking' and id = p_booking and not del;
+  if d is null then raise exception 'Passet finns inte'; end if;
+  select * into cu from members where role::text = 'customer' and lower(name) = lower(d->>'who') limit 1;
+  if cu.id is null then raise exception 'Passet är inte bokat av en kund'; end if;
+  if not bs_may_close(d, cu) then raise exception 'Bara producenter som var med på passet kan skriva omdöme'; end if;
+  if bs_note_text(p_note) = '' then raise exception 'Skriv något först'; end if;
+  insert into artist_notes(member_id, booking_id, author_id, went, created, strengths, develop, next, other)
+  values (cu.id, p_booking, bs_my_id(), p_note->>'went', p_note->>'created', p_note->>'strengths', p_note->>'develop', p_note->>'next', p_note->>'other');
+end $$;
+
+/* Omdömena om en artist som den inloggade får se: admin och artist_intel allt; producenter
+   sina egna och de på pass där de var med eller är kundens producent. */
+create or replace function artist_notes_for(p_member text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', n.id, 'at', n.created_at, 'author', a.name, 'mine', n.author_id = bs_my_id(),
+      'booking', n.booking_id, 'date', r.data->>'date', 'start', r.data->>'start', 'end', r.data->>'end',
+      'went', n.went, 'created', n.created, 'strengths', n.strengths, 'develop', n.develop, 'next', n.next, 'other', n.other)
+      order by n.created_at desc), '[]'::jsonb)
+    from artist_notes n
+    left join members a on a.id = n.author_id
+    left join records r on r.kind = 'booking' and r.id = n.booking_id
+    left join members cu on cu.id = n.member_id
+   where n.member_id = p_member and bs_is_crew()
+     and (bs_has_perm('artist_intel') or n.author_id = bs_my_id() or cu.producer = bs_my_id()
+          or coalesce(r.data->'with','[]'::jsonb) ? (bs_me()).name or r.data->>'closedBy' = (bs_me()).name)
+$$;
+
+/* Katalogen: belöningar (aktiva — admin ser alla), nivåer och poängtrappan. */
+create or replace function rewards_catalog() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when bs_my_id() is null or not (bs_is_crew() or (bs_me()).role::text = 'customer') then null else jsonb_build_object(
+    'rewards', coalesce((select jsonb_agg(to_jsonb(w) order by w.cost) from rewards w where w.active or bs_has_perm('artist_intel')), '[]'::jsonb),
+    'levels', coalesce((select jsonb_agg(to_jsonb(l) order by l.rank) from levels l where l.active or bs_has_perm('artist_intel')), '[]'::jsonb),
+    'tiers', bs_rcfg('tiers')) end
+$$;
+/* En artists poäng, nivå, historik och inlösningar — för artisten själv, admin och artist_intel. */
+create or replace function points_summary(p_member text default null) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare mid text := coalesce(p_member, bs_my_id()); b record; lv levels; nx levels; st jsonb;
+begin
+  if mid is null or not (mid = bs_my_id() or bs_has_perm('artist_intel')) then raise exception 'Inte behörig'; end if;
+  select * into b from bs_balance(mid);
+  lv := bs_member_level(mid); st := bs_level_stats(mid);
+  select * into nx from levels where active and rank > coalesce(lv.rank, -1) order by rank limit 1;
+  return jsonb_build_object('earned', b.earned, 'spent', b.spent, 'available', b.available, 'stats', st,
+    'level', case when lv.id is null then null else to_jsonb(lv) end, 'next', case when nx.id is null then null else to_jsonb(nx) end,
+    'history', coalesce((select jsonb_agg(jsonb_build_object('at', at, 'kind', kind, 'points', points, 'note', note) order by at desc)
+                           from (select * from points where member_id = mid order by at desc limit 50) x), '[]'::jsonb),
+    'redemptions', coalesce((select jsonb_agg(to_jsonb(r) order by r.at desc) from redemptions r where r.member_id = mid), '[]'::jsonb));
+end $$;
+
+/* Lös in: kunden själv, eller admin åt en kund. Poängen dras direkt. */
+create or replace function redeem_reward(p_reward text, p_member text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me members := bs_me(); mid text; w rewards; bal int; rid bigint; cname text; adm members;
+begin
+  if p_member is null then
+    if me.role::text <> 'customer' then raise exception 'Bara kunder löser in poäng'; end if;
+    mid := me.id;
+  else
+    if not bs_is_admin() then raise exception 'Bara admin löser in åt en kund'; end if;
+    mid := p_member;
+  end if;
+  select * into w from rewards where id = p_reward and active;
+  if w.id is null then raise exception 'Belöningen finns inte'; end if;
+  perform pg_advisory_xact_lock(hashtext('points:' || mid));
+  select available into bal from bs_balance(mid);
+  if bal < w.cost then raise exception 'För få poäng — % av %', bal, w.cost; end if;
+  insert into redemptions(member_id, reward_id, title, cost, by_id) values (mid, w.id, w.title, w.cost, me.id) returning id into rid;
+  insert into points(member_id, redemption_id, kind, points, note, by_id) values (mid, rid, 'redeem', -w.cost, w.title, me.id);
+  cname := (select name from members where id = mid);
+  for adm in select * from members where active and role::text in ('manager','admin') loop
+    perform bs_notify(adm.id, null, cname || ' löste in ' || w.title, cname || ' löste in ' || w.title || ' (' || w.cost || ' poäng). Lämna ut den och markera det i BANDOHQ.',
+      'reward', 'reward:' || rid || ':' || adm.id);
+  end loop;
+  return jsonb_build_object('redemption', rid, 'available', bal - w.cost);
+end $$;
+create or replace function handle_redemption(p_id bigint, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+declare r redemptions;
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar inlösningar'; end if;
+  if p_status not in ('delivered','cancelled') then raise exception 'Ogiltig status'; end if;
+  select * into r from redemptions where id = p_id for update;
+  if r.id is null or r.status <> 'waiting' then raise exception 'Inlösningen är redan hanterad'; end if;
+  update redemptions set status = p_status, handled_by = bs_my_id(), handled_at = now() where id = p_id;
+  if p_status = 'cancelled' then
+    insert into points(member_id, redemption_id, kind, points, note, by_id) values (r.member_id, r.id, 'refund', r.cost, 'Makulerad: ' || r.title, bs_my_id());
+  end if;
+end $$;
+create or replace function pending_redemptions() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not bs_has_perm('artist_intel') then '[]'::jsonb else coalesce(jsonb_agg(to_jsonb(r) || jsonb_build_object('name', m.name) order by r.at), '[]'::jsonb) end
+    from redemptions r left join members m on m.id = r.member_id where r.status = 'waiting'
+$$;
+create or replace function adjust_points(p_member text, p_points int, p_note text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin justerar saldon'; end if;
+  if coalesce(p_points, 0) = 0 then raise exception 'Ange hur många poäng'; end if;
+  if length(trim(coalesce(p_note,''))) < 3 then raise exception 'Skriv varför saldot justeras'; end if;
+  if not exists (select 1 from members where id = p_member and role::text = 'customer') then raise exception 'Bara kunder har poäng'; end if;
+  perform pg_advisory_xact_lock(hashtext('points:' || p_member));
+  if (select available from bs_balance(p_member)) + p_points < 0 then raise exception 'Saldot kan inte bli negativt'; end if;
+  insert into points(member_id, kind, points, note, by_id) values (p_member, 'adjust', p_points, left(trim(p_note), 200), bs_my_id());
+  perform bs_update_level(p_member);
+  return jsonb_build_object('available', (select available from bs_balance(p_member)));
+end $$;
+
+/* Belöningar och nivåer — admin. */
+create or replace function save_reward(p jsonb) returns text
+language plpgsql security definer set search_path = public as $$
+declare rid text := coalesce(nullif(p->>'id',''), bs_uid('rw_'));
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar belöningar'; end if;
+  if length(trim(coalesce(p->>'title',''))) < 2 then raise exception 'Belöningen behöver ett namn'; end if;
+  if coalesce((p->>'cost')::int, 0) <= 0 then raise exception 'Poängkravet måste vara större än 0'; end if;
+  insert into rewards(id, title, description, cost, active) values (rid, trim(p->>'title'), p->>'description', (p->>'cost')::int, coalesce((p->>'active')::boolean, true))
+  on conflict (id) do update set title = excluded.title, description = excluded.description, cost = excluded.cost, active = excluded.active;
+  return rid;
+end $$;
+create or replace function delete_reward(p_id text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar belöningar'; end if;
+  delete from rewards where id = p_id;            -- inlösningarna behåller namn och poäng
+end $$;
+create or replace function save_level(p jsonb) returns text
+language plpgsql security definer set search_path = public as $$
+declare lid text := coalesce(nullif(p->>'id',''), bs_uid('lv_'));
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar nivåer'; end if;
+  if length(trim(coalesce(p->>'name',''))) < 2 then raise exception 'Nivån behöver ett namn'; end if;
+  insert into levels(id, name, rank, criteria, perks, active)
+  values (lid, trim(p->>'name'), coalesce((p->>'rank')::int, 0), coalesce(p->'criteria','{}'::jsonb), p->>'perks', coalesce((p->>'active')::boolean, true))
+  on conflict (id) do update set name = excluded.name, rank = excluded.rank, criteria = excluded.criteria, perks = excluded.perks, active = excluded.active;
+  return lid;
+end $$;
+create or replace function delete_level(p_id text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin hanterar nivåer'; end if;
+  delete from levels where id = p_id;
+end $$;
+/* Startnivåerna — exempelgränser som ni ändrar. Läggs bara in om det inte finns några nivåer. */
+do $$ begin
+  if not exists (select 1 from levels) then
+    insert into levels(id, name, rank, criteria, perks) values
+      ('lv_member', 'Member', 0, '{}', null),
+      ('lv_silver', 'Silver', 1, '{"minEarned":1000}', null),
+      ('lv_gold', 'Gold', 2, '{"minEarned":3000,"minSessions12":10}', null),
+      ('lv_platinum', 'Platinum', 3, '{"minEarned":6000,"minSessions12":20}', null);
+  end if;
+end $$;
+
+/* Intern uppföljning per artist. */
+create or replace function save_artist_crm(p_member text, p jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_has_perm('artist_intel') then raise exception 'Inte behörig'; end if;
+  insert into artist_crm(member_id, projects, goals, followup, followup_note, updated_by, updated_at)
+  values (p_member, p->>'projects', p->>'goals', nullif(p->>'followup','')::date, p->>'followup_note', bs_my_id(), now())
+  on conflict (member_id) do update set projects = excluded.projects, goals = excluded.goals, followup = excluded.followup,
+    followup_note = excluded.followup_note, updated_by = excluded.updated_by, updated_at = now();
+end $$;
+create or replace function set_member_perms(p_member text, p_perms jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin delar ut behörigheter'; end if;
+  update members set perms = array(select jsonb_array_elements_text(coalesce(p_perms,'[]'::jsonb))) where id = p_member;
+end $$;
+
+/* Artist Intelligence: en rad per kund med aktivitet, nivå, poäng och uppföljning. */
+create or replace function artist_intel() returns jsonb
+language sql stable security definer set search_path = public as $$
+  with cu as (select * from members where role::text = 'customer' and active),
+  bk as (select m.id mid, r.data d from cu m join records r on r.kind = 'booking' and not r.del
+           and lower(r.data->>'who') = lower(m.name) and coalesce(r.data->>'circleId','') = ''
+           and coalesce(r.data->>'status','') not in ('request','declined'))
+  select case when not bs_has_perm('artist_intel') then '[]'::jsonb else coalesce(jsonb_agg(row order by row->>'name'), '[]'::jsonb) end
+  from (select jsonb_build_object(
+      'id', m.id, 'name', m.name, 'email', m.email, 'phone', m.phone,
+      'producer', (select name from members where id = m.producer),
+      'bookings', (select count(*) from bk where bk.mid = m.id and (bk.d->>'date')::date <= current_date),
+      'hours', coalesce((select sum(bs_len_h(bk.d)) from bk where bk.mid = m.id and (bk.d->>'date')::date <= current_date), 0),
+      'last', (select max(bk.d->>'date') from bk where bk.mid = m.id and (bk.d->>'date')::date <= current_date),
+      'next', (select min(bk.d->>'date') from bk where bk.mid = m.id and (bk.d->>'date')::date > current_date),
+      'months', (select jsonb_agg(coalesce((select count(*) from bk where bk.mid = m.id
+                   and date_trunc('month', (bk.d->>'date')::date) = date_trunc('month', current_date) - make_interval(months => g)), 0) order by g desc)
+                 from generate_series(0, 5) g),
+      'recent', (select count(*) from bk where bk.mid = m.id and (bk.d->>'date')::date between current_date - (bs_rcfg('recurringWindow'))::text::int and current_date),
+      'producers', (select coalesce(jsonb_agg(distinct p), '[]'::jsonb) from (
+          select jsonb_array_elements_text(coalesce(bk.d->'with','[]'::jsonb)) p from bk where bk.mid = m.id
+          union select bk.d->>'closedBy' from bk where bk.mid = m.id and bk.d->>'closedBy' is not null
+          union select name from members where id = m.producer) x where p is not null),
+      'available', (select available from bs_balance(m.id)), 'earned', (select earned from bs_balance(m.id)),
+      'level', (select name from bs_member_level(m.id)),
+      'notes', (select count(*) from artist_notes n where n.member_id = m.id),
+      'crm', (select to_jsonb(c) - 'member_id' from artist_crm c where c.member_id = m.id),
+      'status', case
+         when (select count(*) from bk where bk.mid = m.id and (bk.d->>'date')::date <= current_date) <= 1 then 'ny'
+         when not exists (select 1 from bk where bk.mid = m.id and (bk.d->>'date')::date between current_date - (bs_rcfg('activeDays'))::text::int and current_date + 365) then 'inaktiv'
+         when (select count(*) from bk where bk.mid = m.id and (bk.d->>'date')::date between current_date - (bs_rcfg('recurringWindow'))::text::int and current_date)
+              >= (bs_rcfg('recurringMin'))::text::int then 'återkommande'
+         else 'aktiv' end) as row
+    from cu m) x
+$$;
+
+revoke all on function bs_rcfg(text) from public, anon, authenticated;
+revoke all on function bs_points_for(numeric) from public, anon, authenticated;
+revoke all on function bs_balance(text) from public, anon, authenticated;
+revoke all on function bs_level_stats(text) from public, anon, authenticated;
+revoke all on function bs_member_level(text) from public, anon, authenticated;
+revoke all on function bs_update_level(text) from public, anon, authenticated;
+revoke all on function bs_note_text(jsonb) from public, anon, authenticated;
+revoke all on function bs_may_close(jsonb, members) from public, anon, authenticated;
+revoke all on function bs_has_perm(text) from public, anon, authenticated;
+revoke all on function close_session(text, boolean, jsonb), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
+  points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
+  save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
+  set_member_perms(text, jsonb), artist_intel() from public, anon;
+grant execute on function close_session(text, boolean, jsonb), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
+  points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
+  save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
+  set_member_perms(text, jsonb), artist_intel() to authenticated;
