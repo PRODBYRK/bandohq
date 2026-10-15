@@ -5,9 +5,11 @@
 	<!-- push via Apple (APNs) — utskicket notify-send skickar dit -->
 	<key>aps-environment</key>
 	<string>production</string>
-	<!-- länkar till bandohq.se (inbjudningar, #boka, lösenord) öppnar appen. Inte www: den skickas vidare, och Apple följer inte omdirigeringar -->
+	<!-- länkar till bandohq.se (inbjudningar, #boka, lösenord) öppnar appen. www är huvudadressen;
+	     bandohq.se skickas vidare dit, och Apple följer inte omdirigeringar — därför www först -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>applinks:www.bandohq.se</string>
 		<string>applinks:bandohq.se</string>
 	</array>
 </dict>

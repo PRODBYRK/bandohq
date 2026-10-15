@@ -341,6 +341,8 @@ behövs bara när skalet ändras.
    ```
 
    Pusha. Netlify publicerar då `/.well-known/apple-app-site-association`.
+   Apple hämtar den från **www.bandohq.se** (huvudadressen). bandohq.se skickas vidare dit, och
+   Apple följer inte omdirigeringar.
 5. **App Store Connect → Användare och åtkomst → Integrationer**: skapa en API-nyckel med rollen
    *App Manager*.
 6. **App Store Connect → Appar → +**: skapa BANDOHQ med bundle-id `se.bandohq.app`.

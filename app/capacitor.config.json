@@ -4,7 +4,7 @@
   "webDir": "www",
   "backgroundColor": "#07050c",
   "server": {
-    "url": "https://bandohq.se",
+    "url": "https://www.bandohq.se",
     "errorPath": "offline.html",
     "allowNavigation": ["bandohq.se", "www.bandohq.se", "www.dropbox.com", "*.dropbox.com"]
   },
