@@ -720,6 +720,24 @@ ok('raderas en person ligger den rapporterade ögonblicksbilden kvar (med namnet
    !(await one(`select 1 from members where id='pb'`))
    && (await one(`select snapshot from session_reports where booking_id='cx1'`)).snapshot.present.some(p=>p.name==='Per Bo'));
 
+/* ============ CIRKLARNA · ETAPP 3: UTBILDNINGSSYSTEMET ============ */
+head('cirklarna: kurser och lektioner');
+await C(()=>rpc('push_records',{rows:JSON.stringify([
+  {kind:'course',id:'kp',data:{id:'kp',subject:'Musikproduktion',levels:[{title:'Grund',lessons:[{id:'l1',title:'DAW-grunder'},{id:'l2',title:'Trummor'}]},{title:'Fördjupning',lessons:[{id:'l3',title:'Mix'}]}]},up:1},
+  {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pc'],courseId:'kp'},up:9e12}])}));
+ok('producenter kan inte skapa eller ändra kurser', (await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([{kind:'course',id:'kx',data:{id:'kx'},up:1}])})))===0);
+await past('cx5', {date:'2026-10-06', status:'', hours:null, present:[]});
+const ls1 = await as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx5',p_hours:3,p_present:'["pa"]',p_lesson:'l1'}));
+ok('ledaren markerar passet genomfört med lektionen', ls1.lessonId==='l1' && ls1.lessonTitle==='DAW-grunder', ls1);
+ok('bara lektioner i gruppens kurs', /finns inte i gruppens kurs/.test(await boom(()=>as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx5',p_hours:3,p_present:'["pa"]',p_lesson:'nope'})))||''));
+ok('utan lektion går också (grupp utan kurs, eller pass utan lektion)', (await as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx5',p_hours:3,p_present:'["pa"]'}))).lessonId==='');
+await as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx5',p_hours:3,p_present:'["pa"]',p_lesson:'l1'}));
+const lvk = await as(db,U.lea,()=>rpc('my_view',{}));
+ok('ledaren får kursen i sin vy', lvk.courses.length===1 && lvk.courses[0].id==='kp');
+await C(()=>rpc('check_sessions',{p_ids:'["cx5"]'}));
+const snap5 = await C(()=>rpc('report_sessions',{p_ids:'["cx5"]'}));
+ok('lektionen följer med i rapporten', snap5[0].lesson==='DAW-grunder', snap5[0]);
+
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

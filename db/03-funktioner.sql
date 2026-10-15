@@ -656,6 +656,9 @@ begin
   res := jsonb_build_object(
     'me', to_jsonb(me), 'studios', studios,
     'circles', coalesce((select jsonb_agg(data) from records where kind='circle' and id = any(cids)), '[]'),
+    /* kurserna gruppernas ledare följer (utbildningssystemet) */
+    'courses', coalesce((select jsonb_agg(k.data) from records k where k.kind='course' and not k.del
+        and k.id in (select data->>'courseId' from records where kind='circle' and id = any(cids))), '[]'),
     'curricula', coalesce((select jsonb_agg(c.data) from records c where c.kind='curriculum' and not c.del
         and c.id in (select data->>'curriculumId' from records where kind='circle' and id = any(cids))), '[]'),
     /* cirkelns pass — men andra deltagares obesvarade förfrågningar visas inte */
@@ -764,9 +767,12 @@ begin
   return bs_put_booking(d || jsonb_build_object('studio', p_studio, 'status', ''));
 end $$;
 
-create or replace function complete_session(p_booking text, p_hours numeric, p_present jsonb) returns jsonb
+/* Genomfört: närvaro, timmar och (om gruppen har en kurs) vilken lektion som gicks igenom.
+   Gruppens läge i kursen räknas fram ur de genomförda passens lektioner. */
+drop function if exists complete_session(text, numeric, jsonb);
+create or replace function complete_session(p_booking text, p_hours numeric, p_present jsonb, p_lesson text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare d jsonb; c jsonb; bad int;
+declare d jsonb; c jsonb; bad int; ltitle text;
 begin
   select data into d from records where kind='booking' and id = p_booking and not del;
   if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
@@ -774,15 +780,22 @@ begin
   if bs_locked(p_booking) then raise exception 'Passet är kontrollerat — admin måste låsa upp det först'; end if;
   if d->>'status' in ('request','declined') then raise exception 'Passet är inte bokat'; end if;
   if p_hours is null then   /* ångra */
-    return bs_put_booking(d || '{"status":"","hours":null,"present":[],"completedBy":""}');
+    return bs_put_booking(d || '{"status":"","hours":null,"present":[],"completedBy":"","lessonId":"","lessonTitle":""}');
   end if;
   if p_hours <= 0 or p_hours > 24 then raise exception 'Ange mellan 0,5 och 24 timmar'; end if;
   select data into c from records where kind='circle' and id = d->>'circleId';
   select count(*) into bad from jsonb_array_elements_text(coalesce(p_present,'[]')) p(x)
    where not (c->'members' ? p.x);
   if bad > 0 then raise exception 'Någon av de närvarande är inte med i cirkeln'; end if;
+  if nullif(p_lesson,'') is not null then
+    select ls->>'title' into ltitle
+      from records k, jsonb_array_elements(coalesce(k.data->'levels','[]'::jsonb)) lv, jsonb_array_elements(coalesce(lv->'lessons','[]'::jsonb)) ls
+     where k.kind = 'course' and not k.del and k.id = c->>'courseId' and ls->>'id' = p_lesson;
+    if ltitle is null then raise exception 'Lektionen finns inte i gruppens kurs'; end if;
+  end if;
   return bs_put_booking(d || jsonb_build_object('status','done','hours',p_hours,
-    'present', coalesce(p_present,'[]'), 'completedBy', (bs_me()).name, 'completedAt', now_ms()));
+    'present', coalesce(p_present,'[]'), 'completedBy', (bs_me()).name, 'completedAt', now_ms(),
+    'lessonId', coalesce(nullif(p_lesson,''), ''), 'lessonTitle', coalesce(ltitle, '')));
 end $$;
 
 /* Flytta ett bokat cirkelpass (ledaren eller admin). Passet behåller sin längd från

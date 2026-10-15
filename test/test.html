@@ -1545,6 +1545,44 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('och passen blir rapporterade', r.st2==='reported' && r.html2===true, r.st2);
   ok('admin låser upp med en anledning', r.st3==='done', r.st3);
 
+  /* ============ CIRKLARNA · ETAPP 3: UTBILDNINGSSYSTEMET ============ */
+  log('\n── cirklarna: kurser, lektioner och gruppens läge ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    circTab='edu'; go('circles'); const empty = document.getElementById('view').innerHTML;
+    loadStarterCourses(); for(let i=0; i<40 && !lcourses().length; i++) await new Promise(r=>setTimeout(r,50));
+    const ks = lcourses(), c = circleById('c1');
+    const p0 = progressOf(c);
+    const b = bump({id:'e1', studio:'A', date:iso(addDays(new Date(),-2)), start:'10:00', end:'13:00', who:'RKAY', title:c.n, note:'',
+      circleId:'c1', leaderId:'rkay', status:'', hours:null, present:[], with:[], artistId:'', paid:false, del:false});
+    S.bookings.push(b); save();
+    openComplete('e1'); const sel = document.getElementById('cmpL').value, opts = document.getElementById('cmpL').options.length;
+    await saveComplete('e1');
+    const p1 = progressOf(c), stored = S.bookings.find(x=>x.id==='e1');
+    go('circles'); openCircleView('c1'); const cv = document.getElementById('view').innerHTML;
+    openCourse(c.courseId); const before = lessonsOf(courseDraft).length;
+    openLessonEdit(0, -1); document.getElementById('lsT').value='Extra lektion'; document.getElementById('lsG').value='Mål ett\\nMål två'; saveLessonEdit();
+    moveLesson(0, 5, -1); saveCourse();
+    const k = lcourses().find(x=>x.id===c.courseId), lv1 = k.levels[0].lessons.map(l=>l.title);
+    openCircleEdit('c1'); const fromOpts = document.getElementById('ciF').options.length;
+    document.getElementById('ciF').value = k.levels[1].lessons[0].id; saveCircle('c1');
+    const p2 = progressOf(circleById('c1'));
+    circTab='edu'; openCircle=null; go('circles'); const edu = document.getElementById('view').innerHTML;
+    return {empty:/LÄGG IN STARTINNEHÅLL/.test(empty), n:ks.length, draft:ks.every(x=>x.draft), subj:ks.map(x=>x.subject).sort().join(','),
+      cid:!!c.courseId, next0:p0.next.title, lvl0:p0.level, sel:sel===p0.next.id, opts, lid:stored.lessonId===p0.next.id, ltitle:stored.lessonTitle,
+      next1:p1.next.title, count1:p1.count, cv, before, lv1, fromOpts, next2:p2.next.title, lvl2:p2.level, edu};`);
+  ok('utan kurser erbjuds startinnehållet', r.empty===true);
+  ok('startinnehållet: sex ämnen, märkta som utkast', r.n===6 && r.draft && r.subj==='A&R,Artistutveckling,Foto och film,Management,Marknadsföring,Musikproduktion', r.subj);
+  ok('gruppen får kursen i sitt ämne och börjar på nivå 1, lektion 1', r.cid && r.lvl0===1 && r.next0==='Studion och DAW:en', r);
+  ok('vid genomfört är nästa lektion förvald', r.sel===true && r.opts>15, r);
+  ok('och sparas på passet', r.lid===true && r.ltitle==='Studion och DAW:en', r.ltitle);
+  ok('nästa lektion blir tillgänglig', r.next1==='Trummor och groove' && r.count1===1, r);
+  ok('gruppens sida visar kursen med nästa lektion, mål och övning', /UTBILDNING/.test(r.cv) && /Trummor och groove/.test(r.cv) && /Lärandemål/.test(r.cv) && /Övning/.test(r.cv));
+  ok('admin lägger till och flyttar lektioner', r.lv1.length===r.before/3+1 && r.lv1[4]==='Extra lektion', r.lv1);
+  ok('en grupp kan börja längre fram i kursen', r.fromOpts>10 && r.lvl2===2 && r.next2==='Inspelning av sång', r);
+  ok('Utbildning visar gruppernas läge', /GRUPPERNAS LÄGE/.test(r.edu) && /nivå 2/.test(r.edu), r.edu.slice(0,200));
+
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');
   w = await boot(seed());

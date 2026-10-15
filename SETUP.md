@@ -372,8 +372,22 @@ managern raderar någon. Den enda managern kan inte radera sig själv.
 
 ## Cirklarna (verksamhetssystemet)
 
-**Cirklar** har flikarna **Vecka**, **Grupper**, **Deltagare** och **Kalender**. Admin ser allt, och en
-producent eller cirkelledare ser bara sina egna grupper (utan Vecka och Deltagare).
+**Cirklar** har flikarna **Vecka**, **Grupper**, **Deltagare**, **Kalender** och **Utbildning**. Admin
+ser allt, och en producent eller cirkelledare ser bara sina egna grupper (utan Vecka och Deltagare).
+
+**Utbildningssystemet (Cirklar → Utbildning):**
+- **En kurs per ämne**, med nivåer och färdiga lektioner. Varje lektion har innehåll, lärandemål och
+  övning.
+- **Startinnehållet** är ett **utkast** som behöver skrivas om: sex ämnen, tre nivåer och fem
+  lektioner per nivå. Lägg in det med *Lägg in startinnehåll*.
+- **Admin redigerar kurserna** (lägg till, ändra, flytta lektioner). Ledarna följer kurserna och
+  skapar inga egna.
+- **En ny grupp börjar på nivå 1, lektion 1**, och får kursen i sitt ämne automatiskt. Har gruppen
+  redan kommit längre väljer admin var den börjar (*Ändra cirkeln → Gruppen börjar på*).
+- **Ledaren väljer lektion** när ett pass markeras genomfört. Nästa lektion är förvald. Gruppens läge
+  räknas fram ur passen, så nästa lektion blir tillgänglig av sig själv.
+- **Ledaren ser nästa lektion** med innehåll, mål och övning.
+- **Lektionen följer med i rapporten.**
 
 **Veckans administration (Cirklar → Vecka)** — gör det tillsammans en gång i veckan. Vyn öppnas på förra
 veckan.
@@ -626,7 +640,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 399 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 409 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -634,7 +648,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 314 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 320 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 55 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
@@ -643,6 +657,6 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
 användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
-från förhandsvisningen, 146 testfall.
+från förhandsvisningen, 150 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.

@@ -36,10 +36,26 @@ window.bandohqDemo = function(o){
    {id:'cu2',subject:'Artistutveckling',title:'Aktuell läroplan – Artistutveckling',
     body:'Eget uttryck\nLåtskrivning\nScennärvaro\nSläppa musik',from:'2026-09-01',del:false,up:1}];
   const circles=[
-   {id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',curriculumId:'cu1',
+   {id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',curriculumId:'cu1',courseId:'kmp',
     members:['p1','p2','p3'],active:true,del:false,up:1},
-   {id:'c2',n:'Artistutveckling – Grupp 2',subject:'Artistutveckling',leader:'Sofia Marks',curriculumId:'cu2',
+   {id:'c2',n:'Artistutveckling – Grupp 2',subject:'Artistutveckling',leader:'Sofia Marks',curriculumId:'cu2',courseId:'kau',
     members:['p1','p4'],active:true,del:false,up:1}];
+  /* utbildningssystemet: två kurser (förkortade — hela startinnehållet ligger i kurser.js) */
+  const LS = (p, t) => t.map((x,i)=>({id:p+i, title:x[0], content:x[1], goals:x[2], exercises:x[3]}));
+  const courses=[
+   {id:'kmp',subject:'Musikproduktion',draft:false,del:false,up:1,levels:[
+     {title:'Nivå 1 · Grunder',lessons:LS('mp1',[
+       ['Studion och DAW:en','Projekt, spår, tempo och export.','Kunna starta ett projekt\nKänna till signalvägen','Spela in åtta takter och exportera.'],
+       ['Trummor och groove','Kick, virvel, hihat, kvantisering och swing.','Programmera ett komp','Gör tre komp i samma tempo.'],
+       ['Harmonik och ackord','Tonarter, ackordföljder och basgång.','Bygga en ackordföljd','Skriv en följd och en basgång.']])},
+     {title:'Nivå 2 · Fördjupning',lessons:LS('mp2',[
+       ['Inspelning av sång','Mikrofon, avstånd och nivåer.','Ställa in en sånginspelning','Spela in en vers i tre tagningar.'],
+       ['Mix: balans','Nivåer, panorering och mono.','Göra en grovmix','Mixa utan plugins.']])}]},
+   {id:'kau',subject:'Artistutveckling',draft:false,del:false,up:1,levels:[
+     {title:'Nivå 1 · Grunder',lessons:LS('au1',[
+       ['Vem är du som artist?','Uttryck och förebilder.','Beskriva sitt uttryck','Skriv tre meningar om din musik.'],
+       ['Låtskrivande: idé och hook','Titel, hook och känsla.','Skriva en hook','Skriv fem hookar till samma beat.'],
+       ['Text och berättande','Bilder och detaljer.','Skriva konkreta rader','Skriv om en vers.']])}]}];
   const bookings=[];
   /* v5-demo: påhittade artister — de riktiga läggs in när det är klart vem som är vad */
   const artists=[
@@ -64,6 +80,10 @@ window.bandohqDemo = function(o){
     B('g'+(n++),'A',D(-7*w),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1','done',3,['p1','p2','p3']);
     if(w%2) B('g'+(n++),'B',D(-7*w+1),'17:00','20:00','Sofia Marks','Artistutveckling – Grupp 2','c2','done',3,['p1','p4']);
   }
+  /* de första passen har gått igenom kursens första lektioner */
+  const doneIn = cid => bookings.filter(b=>b.circleId===cid && b.status==='done').sort((a,b)=>a.date<b.date?-1:1);
+  doneIn('c1').slice(0,2).forEach((b,i)=>Object.assign(b, {lessonId:'mp1'+i, lessonTitle:courses[0].levels[0].lessons[i].title}));
+  doneIn('c2').slice(0,1).forEach(b=>Object.assign(b, {lessonId:'au10', lessonTitle:courses[1].levels[0].lessons[0].title}));
   B('u1','A',D(3),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1');
   const PR=['RKAY','ADREY','V2K','GIOVANNI','PKL'];
   for(let i=1;i<=40;i++) B('cp'+i, i%2?'A':'B', D(-i-1), i%3?'13:00':'10:00', i%3?'16:00':'13:00', PR[i%5], 'Session');
@@ -122,6 +142,7 @@ window.bandohqDemo = function(o){
       : {appKey:'', sharedId:'', setupAt:0, up:0},
     invites: o.join ? [{token:o.join, role:o.jrole||'participant', circle_id:o.jrole==='producer'?null:'c1',
       expires_at:Date.now()+7*864e5, max_uses:null, uses:2, closed:false, created:Date.now()}] : [],
+    courses,
     rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1}};
     return S;
 };

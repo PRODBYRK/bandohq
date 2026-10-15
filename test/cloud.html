@@ -669,6 +669,30 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('ledaren ser att passet är rapporterat och låst', r.st==='reported' && /admin måste låsa upp/.test(r.t), r);
   ok('och servern nekar ändringar', /kontrollerat — admin måste låsa upp/.test(r.direct), r.direct);
 
+  /* ============ CIRKLARNA · ETAPP 3 MOT SERVERN ============ */
+  log('\n── cirklarna mot servern: kurser och lektioner ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    loadStarterCourses(); for(let i=0; i<60 && !lcourses().length; i++) await new Promise(r=>setTimeout(r,100));
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    const c = S.circles.find(x=>x.n==='Grupp 1'), k = lcourses().find(x=>x.subject==='Musikproduktion');
+    c.courseId = k.id; touch(c); save(); await sync(true);
+    return {n:(await sb('/records?select=id&kind=eq.course')).length, cid:(await sb('/records?select=data&kind=eq.circle&id=eq.'+c.id))[0].data.courseId===k.id};`);
+  ok('admin lägger in kurserna — de ligger på servern', r.n===6 && r.cid===true, r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('sofia@b.se','sofia1234')} ${wait(300)}
+    const c = myCirclesAsLeader()[0], p = progressOf(c);
+    const b = circleSessions(c.id).filter(x=>x.status==='' && !isLocked(x)).sort((a,b)=>startAt(a)-startAt(b))[0];
+    openComplete(b.id); const sel = document.getElementById('cmpL').value; document.getElementById('cmpH').value='3';
+    await saveComplete(b.id);
+    const srv = (await sb('/rpc/my_view',{method:'POST',body:'{}'})).bookings.find(x=>x.id===b.id);
+    render(); const html = document.getElementById('view').innerHTML;
+    return {courses:S.courses.length, next:p && p.next && p.next.title, sel:sel===(p&&p.next&&p.next.id), lt:srv.lessonTitle, html:/NÄSTA · NIVÅ 1 · LEKTION 2/.test(html)};`);
+  ok('ledaren får sin grupps kurs från servern', r.courses===1 && r.next==='Studion och DAW:en', r);
+  ok('lektionen sparas på servern när passet markeras genomfört', r.sel===true && r.lt==='Studion och DAW:en', r);
+  ok('och ledarens vy visar nästa lektion', r.html===true, r);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
