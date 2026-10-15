@@ -158,6 +158,11 @@ create table if not exists push_subs (
   last_ok    timestamptz,
   fails      int not null default 0
 );
+/* iPhone-appen: push via Apple (APNs). Då är endpoint "apns:<enhetens token>" och
+   krypteringsnycklarna finns inte. kind = web | apns | apns-sandbox (utvecklingsbyggen). */
+alter table push_subs add column if not exists kind text not null default 'web';
+alter table push_subs alter column p256dh drop not null;
+alter table push_subs alter column auth drop not null;
 create index if not exists outbox_due_idx on outbox (send_after) where sent_at is null;
 
 -- ---------------------------------------------------------------------

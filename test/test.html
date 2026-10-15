@@ -1422,6 +1422,71 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('bara managern kan radera, inte sig själv', r.mgrBtn===true && r.self===false, r);
   ok('raderad person: kontot borta, namnet borta ur pass och agenda', r.gone && r.withs==='[]' && r.agenda===true, r);
 
+  /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
+  log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const calls = [], L = {};
+    const on = (ev, fn) => { (L[ev] = L[ev] || []).push(fn); return {remove(){ L[ev] = (L[ev]||[]).filter(f=>f!==fn); }}; };
+    window.Capacitor = {isNativePlatform:()=>true, Plugins:{
+      PushNotifications:{checkPermissions:async()=>({receive:'prompt'}), requestPermissions:async()=>{ calls.push('fråga'); return {receive:'granted'}; },
+        addListener:async(ev, fn)=>on(ev, fn), register:async()=>{ calls.push('register'); setTimeout(()=>(L.registration||[]).forEach(f=>f({value:'AB'.repeat(32)})), 10); }},
+      App:{addListener:async(ev, fn)=>on('app:'+ev, fn)},
+      Filesystem:{writeFile:async o=>{ calls.push('fil:'+o.path+':'+o.directory+':'+(o.data.length>10)); return {uri:'file:///c/'+o.path}; }},
+      Share:{share:async o=>{ calls.push('dela:'+o.url); }},
+      Browser:{open:async o=>{ calls.push('safari:'+o.url); }}}};
+    sb = async (path, o) => { calls.push('rpc:'+path.replace('/rpc/','')+':'+((o||{}).body||'')); return null; };
+    await nativeInit();
+    const env = pushEnv();
+    await enablePush();
+    const saved = localStorage.getItem(PUSH_LS);
+    exportArtists(); await new Promise(r=>setTimeout(r,60));
+    openExternal('https://www.dropbox.com/home');
+    signOut();
+    await L['app:appUrlOpen'][0]({url:'https://evil.example/#boka'}); const foreign = gateMode;
+    await L['app:appUrlOpen'][0]({url:'https://bandohq.se/#boka'}); await new Promise(r=>setTimeout(r,60));
+    const boka = gateMode==='public' && document.getElementById('gate').classList.contains('on');
+    gateMode='login'; pubDraft=null;
+    await L['app:appUrlOpen'][0]({url:'https://bandohq.se/#join=ABCD-EFGH12'}); const join = joinToken;
+    joinToken = null; delete window.Capacitor;
+    return {native:env.native && env.standalone && env.ios, calls, saved, foreign, boka, join, cls:document.body.classList.contains('native')};`);
+  ok('appen känner igen sig själv och visar aldrig "lägg på hemskärmen"', r.native===true && r.cls===true, r);
+  ok('notiser: frågar om lov, registrerar hos Apple och sparar token på servern', r.calls.includes('fråga') && r.calls.includes('register')
+     && r.calls.includes('rpc:save_device_token:{"p_token":"'+'ab'.repeat(32)+'","p_env":"production"}') && r.saved==='apns:'+'ab'.repeat(32), r.calls);
+  ok('nedladdning blir en fil + delningsmenyn', r.calls.includes('fil:bandohq-artister.csv:CACHE:true') && r.calls.includes('dela:file:///c/bandohq-artister.csv'), r.calls);
+  ok('Dropbox-länkar öppnas i Safari-vyn', r.calls.includes('safari:https://www.dropbox.com/home'));
+  ok('en bokningslänk från sms/mejl öppnar bokningen i appen', r.boka===true && r.foreign!=='public', r);
+  ok('en inbjudningslänk öppnar inbjudan', r.join==='ABCD-EFGH12', r.join);
+
+  r = await ev(w,`
+    signIn(byName('RKAY')); openMe(); const link = /Radera mitt konto/.test(document.getElementById('sheetBody').innerHTML);
+    openDeleteMe(); document.getElementById('dmW').value='fel'; await deleteMe(); const kept = !!byName('RKAY');
+    document.getElementById('dmW').value='rkay'; await deleteMe();
+    const gone = !byName('RKAY') && !S.session;
+    signIn(byName('AZ')); openDeleteMe(); document.getElementById('dmW').value='AZ'; await deleteMe(); const az = !!byName('AZ');
+    closeSheet(); openSupport(); const sup = document.getElementById('sheetBody').textContent; closeSheet();
+    return {link, kept, gone, az, sup:/bandocollect@gmail.com/.test(sup) && /Radera mitt konto/.test(sup) && /tre timmar/.test(sup)};`);
+  ok('Radera mitt konto finns i profilen', r.link===true);
+  ok('fel bekräftelse raderar inget', r.kept===true);
+  ok('rätt namn: kontot är borta och man är utloggad', r.gone===true, r);
+  ok('den enda managern kan inte radera sig själv', r.az===true);
+  ok('hjälpsidan har kontakt, bokning och radering', r.sup===true);
+
+  r = await ev(w,`enterDemo(); return true;`);
+  await new Promise(r=>setTimeout(r,1500));
+  w = fr.contentWindow;
+  r = await ev(w,`
+    const html = document.getElementById('view').innerHTML;
+    const res = {demo:DEMO, me:(me()||{}).n, n:accounts().length, preview:PREVIEW_LOGIN, banner:/Demoläge/.test(html)};
+    signOut(); res.gate = /DEMOLÄGE/.test(document.getElementById('gateTag').innerHTML) && document.querySelectorAll('#gateBody .member').length >= 10;
+    return res;`);
+  ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===17 && r.preview===true && r.banner===true, r);
+  ok('och granskaren kan byta till alla roller', r.gate===true, r);
+  r = await ev(w,`leaveDemo(); return true;`);
+  await new Promise(r=>setTimeout(r,1500));
+  r = await ev(fr.contentWindow,`return {demo:DEMO, left:localStorage.getItem('bandohq_demo')};`);
+  ok('avsluta demoläget tömmer det', r.demo===false && r.left===null, r);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

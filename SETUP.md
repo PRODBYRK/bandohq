@@ -315,6 +315,59 @@ Resend → *Emails*.
 
 ---
 
+## Steg 6 · iPhone-appen i App Store
+
+Appen i App Store är ett tunt skal (`app/`, Capacitor) runt https://bandohq.se. Det skalet
+tillför tre saker som webben inte har:
+
+- push via Apple, även när appen är stängd
+- länkar till bandohq.se (inbjudningar, `#boka`, nytt lösenord) som öppnar appen
+- delningsmenyn för nedladdningar
+
+En vanlig ändring i `index.html` når appen direkt när den är publicerad på Netlify. Ett nytt bygge
+behövs bara när skalet ändras.
+
+**Konton (en gång):**
+
+1. **D-U-N-S-nummer** för Bando: developer.apple.com/enroll/duns-lookup.
+2. **Apple Developer Program** som organisation, 99 USD per år.
+3. I **developer.apple.com → Identifiers**: skapa `se.bandohq.app` med **Push Notifications**
+   och **Associated Domains** påslagna.
+4. **Keys** → ny nyckel med *Apple Push Notifications service*. Ladda ner .p8-filen. Sedan:
+
+   ```
+   python3 tools/launch.py apns <KEY_ID> <TEAM_ID> ~/Downloads/AuthKey_<KEY_ID>.p8
+   python3 tools/launch.py aasa <TEAM_ID>
+   ```
+
+   Pusha. Netlify publicerar då `/.well-known/apple-app-site-association`.
+5. **App Store Connect → Användare och åtkomst → Integrationer**: skapa en API-nyckel med rollen
+   *App Manager*.
+6. **App Store Connect → Appar → +**: skapa BANDOHQ med bundle-id `se.bandohq.app`.
+
+**Codemagic (bygger i molnet, gratis upp till 500 minuter per månad):**
+
+1. Logga in med GitHub och lägg till repot `PRODBYRK/bandohq`.
+2. **Teams → Integrations → Developer Portal:** lägg in API-nyckeln och döp den till exakt
+   **BANDOHQ** (`codemagic.yaml` använder det namnet).
+3. **Teams → Code signing identities:** *Generate certificate* (Apple Distribution), och under
+   *iOS provisioning profiles* *Fetch profiles* för `se.bandohq.app` (App Store).
+4. **Start new build → ios-testflight**, eller pusha till grenen `ios`. Efter cirka 15 minuter
+   ligger bygget i **TestFlight**.
+
+**Inskick:** fyll i App Store-sidan från `app/store/APP-STORE.md` (texter, nyckelord,
+integritetsfrågorna och granskarens demokonto) och ladda upp bilderna i `app/store/skarmbilder/`.
+Välj bygget och skicka in. Granskningen tar oftast 1–3 dagar.
+
+**Demoläget:** användarnamnet `apple-review` med lösenordet `BandoDemo2026` öppnar appen med
+påhittad data (`demo.js`). Inget når servern. Det är det Apples granskare loggar in i, och det
+går också bra att visa appen för någon utan att visa riktiga kunder.
+
+**Radera mitt konto** finns i profilen för alla (Apple kräver det). Raderingen städar som när
+managern raderar någon. Den enda managern kan inte radera sig själv.
+
+---
+
 ## Rollerna
 
 | Roll | Ser och gör |
@@ -503,7 +556,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 355 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 369 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -511,8 +564,8 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 235 testfall
-node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 47 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 248 testfall
+node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 55 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
 
@@ -520,6 +573,6 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
 användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
-från förhandsvisningen, 125 testfall.
+från förhandsvisningen, 130 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.

@@ -297,6 +297,18 @@ begin
   on conflict (endpoint) do update set member_id = mid, p256dh = excluded.p256dh, auth = excluded.auth,
     ua = excluded.ua, fails = 0, created_at = now();
 end $$;
+/* iPhone-appen sparar sin APNs-token. p_env = 'sandbox' för utvecklingsbyggen från Xcode,
+   annars 'production' (TestFlight och App Store). */
+create or replace function save_device_token(p_token text, p_env text default 'production')
+returns void language plpgsql security definer set search_path = public as $$
+declare mid text := bs_my_id(); tok text := lower(regexp_replace(coalesce(p_token,''), '[\s<>]', '', 'g'));
+begin
+  if mid is null then raise exception 'Logga in först'; end if;
+  if tok !~ '^[0-9a-f]{64,200}$' then raise exception 'Ogiltig enhetstoken'; end if;
+  insert into push_subs(member_id, endpoint, kind, ua)
+  values (mid, 'apns:' || tok, case when p_env = 'sandbox' then 'apns-sandbox' else 'apns' end, 'iPhone-appen')
+  on conflict (endpoint) do update set member_id = mid, kind = excluded.kind, fails = 0, created_at = now();
+end $$;
 create or replace function remove_push_sub(p_endpoint text) returns void
 language sql security definer set search_path = public as $$
   delete from push_subs where endpoint = p_endpoint and member_id = bs_my_id()

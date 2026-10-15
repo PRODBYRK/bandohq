@@ -184,6 +184,50 @@ process.env.RESEND_KEY = env.RESEND_KEY;
 ok('ALWAYS_MAIL innehåller bekräftelser, förfrågningar, svar och inbjudningar',
    ['booked', 'request', 'received', 'answer', 'invite', 'lead-ok', 'lead-no'].every(k => W.ALWAYS_MAIL.includes(k)) && !W.ALWAYS_MAIL.includes('reminder'));
 
+/* ---------- iPhone-appen: push via Apple (APNs) ---------- */
+head('iPhone-appen: push via APNs');
+const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey));
+const pem = '-----BEGIN PRIVATE KEY-----\\n' + btoa(String.fromCharCode(...der)).match(/.{1,64}/g).join('\\n') + '\\n-----END PRIVATE KEY-----';
+Object.assign(process.env, { APNS_KEY: pem, APNS_KEY_ID: 'KEY123', APNS_TEAM_ID: 'TEAM456' });
+const apple = [], gone = 'ee'.repeat(32), T_BO = 'b0'.repeat(32), T_DI = 'd1'.repeat(32);
+const stubFetch = globalThis.fetch;
+globalThis.fetch = async (url, opt) => {
+  url = String(url);
+  const m = url.match(/^https:\/\/api\.(sandbox\.)?push\.apple\.com\/3\/device\/([0-9a-f]+)$/);
+  if (!m) return stubFetch(url, opt);
+  apple.push({ sandbox: !!m[1], token: m[2], headers: opt.headers, body: JSON.parse(opt.body) });
+  if (m[2] === gone) return new Response('{"reason":"BadDeviceToken"}', { status: 400 });
+  return new Response('', { status: 200 });
+};
+const apnsDev = (mid, tok, kind) => q(`insert into push_subs(member_id,endpoint,kind) values($1,$2,$3)`, [mid, 'apns:' + tok, kind]);
+await apnsDev('bo', T_BO, 'apns'); await apnsDev('di', T_DI, 'apns-sandbox'); await apnsDev('di', gone, 'apns');
+got.mail = []; got.push = {};
+await Q('bo', 'Påminnelse: imorgon 12-15', 'Påminnelse: imorgon 12-15', 'reminder', 'a1');
+await Q('di', 'Agendan har uppdaterats', 'Agendan har uppdaterats', 'agenda', 'a2');
+await W.handle();
+const toBo = apple.find(x => x.token === T_BO);
+ok('påminnelse till Bo går till hans iPhone — och inget mejl', !!toBo && !toBo.sandbox && toBo.body.aps.alert.title === 'Påminnelse'
+   && toBo.body.aps.alert.body === 'Påminnelse: imorgon 12-15' && !mailTo('bo@b.se').length && (await row('a1')).channel === 'push', toBo);
+ok('rätt app, alert och hög prioritet', toBo.headers['apns-topic'] === 'se.bandohq.app' && toBo.headers['apns-push-type'] === 'alert' && toBo.headers['apns-priority'] === '10', toBo.headers);
+const [jh, jp, js] = toBo.headers.authorization.replace(/^bearer /, '').split('.');
+const jhead = JSON.parse(td.decode(b64uDec(jh))), jpay = JSON.parse(td.decode(b64uDec(jp)));
+const valid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, kp.publicKey, b64uDec(js), te.encode(jh + '.' + jp));
+ok('JWT:n är ES256 med nyckel-id och team-id, signerad med .p8-nyckeln', jhead.alg === 'ES256' && jhead.kid === 'KEY123' && jpay.iss === 'TEAM456' && valid, { jhead, jpay, valid });
+ok('iat avrundas till halvtimmen (Apple nekar tätare tokenbyten)', jpay.iat % 1800 === 0 && Date.now() / 1000 - jpay.iat < 1800, jpay.iat);
+const j1 = await W.apnsJwt({ key: pem, keyId: 'KEY123', teamId: 'TEAM456' }), j2 = await W.apnsJwt({ key: pem, keyId: 'KEY123', teamId: 'TEAM456' });
+ok('samma token återanvänds inom halvtimmen', j1 === j2 && j1 === toBo.headers.authorization.replace(/^bearer /, ''));
+ok('utvecklingsbyggen går till Apples sandlåda', apple.some(x => x.token === T_DI && x.sandbox));
+ok('avinstallerad app (BadDeviceToken) städas bort', !(await q(`select 1 from push_subs where endpoint=$1`, ['apns:' + gone])).length
+   && (await q(`select 1 from push_subs where endpoint=$1`, ['apns:' + T_BO])).length === 1);
+delete process.env.APNS_KEY; apple.length = 0; got.mail = []; got.push = {};
+await Q('bo', 'Påminnelse: fre 10-13', 'Påminnelse: fre 10-13', 'reminder', 'a3');
+await Q('ada', 'Påminnelse: fre 13-16', 'Påminnelse: fre 13-16', 'reminder', 'a4');
+await W.handle();
+ok('utan APNs-nyckel: inget till Apple, Bo får mejl — och webb-pushen till Ada går som förut', !apple.length
+   && mailTo('bo@b.se').some(m => /fre 10-13/.test(m.subject)) && (got.push.ada1 || []).some(p => /fre 13-16/.test(p.body)));
+globalThis.fetch = stubFetch;
+
 /* ---------- 4. nycklar och skydd ---------- */
 head('nycklar och skydd');
 const seen = [];

@@ -5,7 +5,8 @@
     python3 test/run.py test       # bara test/test.html (förhandsläget)
     python3 test/run.py cloud      # bara test/cloud.html (startar emulatorn själv)
     python3 test/run.py db         # bara node-sviterna i db/test
-    python3 test/run.py shot 'as=AZ&tab=team' bild.png [390] [1000]   # skärmdump via test/shot.html (bredd, höjd)
+    python3 test/run.py shot 'as=AZ&tab=team' bild.png [390] [1000] [3]   # skärmdump via test/shot.html (bredd, höjd, skala)
+    # App Store 6,9": shot '…' bild.png 440 956 3 → 1320×2868
 
 Webbläsartesterna körs i en egen headless Chrome (egen profil, hård tidsgräns). Sidan
 skickar sitt resultat till /__result när den är klar, så ingen virtuell tid behövs —
@@ -115,12 +116,13 @@ def cloud():
         os.killpg(em.pid, signal.SIGKILL); em.wait()
 
 
-def shot(params, out, width='390', height='1000'):
+def shot(params, out, width='390', height='1000', scale='1'):
     srv, port = serve()
     target = os.path.abspath(out)
     before = os.path.getmtime(target) if os.path.exists(target) else 0
     url = f'http://127.0.0.1:{port}/test/shot.html?{params}&w={width}&h={height}'
     p, prof = chrome(['--hide-scrollbars', '--force-prefers-reduced-motion', f'--window-size={max(int(width), 500)},{height}',
+                      f'--force-device-scale-factor={scale}',
                       '--virtual-time-budget=6000', '--screenshot=' + target, url], 60)
     t0 = time.time()
     try:
@@ -129,13 +131,17 @@ def shot(params, out, width='390', height='1000'):
             time.sleep(0.3)
     finally:
         stop(p, prof); srv.shutdown()
-    print(target if os.path.exists(target) and os.path.getmtime(target) > before else '✗ ingen bild')
+    if not (os.path.exists(target) and os.path.getmtime(target) > before): print('✗ ingen bild'); return
+    w, h = int(width) * int(scale), int(height) * int(scale)
+    # fönstret är minst 500 px brett (headless) och ramen centrerad — skär ut telefonens yta ur mitten
+    subprocess.run(['sips', '-c', str(h), str(w), target], capture_output=True)
+    print(target)
 
 
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
     if what == 'shot':
-        shot(sys.argv[2], sys.argv[3], *sys.argv[4:6]); sys.exit(0)
+        shot(sys.argv[2], sys.argv[3], *sys.argv[4:7]); sys.exit(0)
     ok = True
     if what in ('all', 'db'):
         ok &= node('db.test.mjs'); ok &= node('notify.test.mjs')

@@ -636,14 +636,12 @@ end $$;
 --  i gamla pass, men passen och cirkeltimmarna ligger kvar: de behövs för
 --  rapporteringen och för de andra som var med.
 -- =====================================================================
-create or replace function delete_member(p_id text) returns jsonb
+/* Själva raderingen — samma för managern (delete_member) och för den som raderar sig själv
+   (delete_my_account). Intern: bara de två funktionerna anropar den. */
+create or replace function bs_erase_member(m members) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare m members; t bigint := now_ms(); n int := 0; gone text := 'Raderad person';
+declare t bigint := now_ms(); n int := 0; gone text := 'Raderad person';
 begin
-  if not bs_is_manager() then raise exception 'Bara managern kan radera konton'; end if;
-  select * into m from members where id = p_id;
-  if m.id is null then raise exception 'Kontot finns inte'; end if;
-  if m.id = bs_my_id() then raise exception 'Du kan inte radera ditt eget konto'; end if;
   /* pass: bokare och medproducent */
   update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t
    where kind = 'booking' and data->>'who' = m.name;
@@ -668,6 +666,31 @@ begin
   return jsonb_build_object('deleted', m.name, 'bookings', n);
 end $$;
 
+create or replace function delete_member(p_id text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare m members;
+begin
+  if not bs_is_manager() then raise exception 'Bara managern kan radera konton'; end if;
+  select * into m from members where id = p_id;
+  if m.id is null then raise exception 'Kontot finns inte'; end if;
+  if m.id = bs_my_id() then raise exception 'Du kan inte radera ditt eget konto'; end if;
+  return bs_erase_member(m);
+end $$;
+
+/* "Radera mitt konto" i profilen (Apple kräver det i appen). Den inloggade raderar sig själv,
+   med samma städning som när managern raderar. Den sista managern kan inte — då finns ingen kvar
+   som styr appen. */
+create or replace function delete_my_account() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare m members := bs_me();
+begin
+  if m.id is null then raise exception 'Inget konto'; end if;
+  if m.role::text = 'manager' and not exists (select 1 from members where role::text = 'manager' and active and id <> m.id) then
+    raise exception 'Du är den enda managern — gör någon annan till manager först';
+  end if;
+  return bs_erase_member(m);
+end $$;
+
 /* Studionamn och öppettider — bokningssidan för nya kunder behöver dem utan inloggning. */
 create or replace function studio_info() returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -687,6 +710,9 @@ revoke all on function username_free(text) from public, anon;
 grant execute on function username_free(text) to anon, authenticated;
 -- inloggning med användarnamn: bara servern (edge-funktionen auth-login)
 revoke all on function bs_login_lookup(text) from public, anon, authenticated;
+revoke all on function bs_erase_member(members) from public, anon, authenticated;
+revoke all on function delete_my_account() from public, anon;
+grant execute on function delete_my_account() to authenticated;
 revoke all on function bs_login_fail(text) from public, anon, authenticated;
 revoke all on function bs_role_sv(text) from public, anon, authenticated;
 do $$ begin

@@ -1,0 +1,22 @@
+{
+  "appId": "se.bandohq.app",
+  "appName": "BANDOHQ",
+  "webDir": "www",
+  "backgroundColor": "#07050c",
+  "server": {
+    "url": "https://bandohq.se",
+    "errorPath": "offline.html",
+    "allowNavigation": ["bandohq.se", "www.bandohq.se", "www.dropbox.com", "*.dropbox.com"]
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#07050c",
+    "scheme": "BANDOHQ",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] },
+    "SplashScreen": { "launchShowDuration": 600, "backgroundColor": "#07050c", "showSpinner": false },
+    "StatusBar": { "style": "DARK", "backgroundColor": "#07050c", "overlaysWebView": true }
+  }
+}

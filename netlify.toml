@@ -1,0 +1,7 @@
+# Bara rubriker — bygget och mappen styrs i Netlify (publiceringsmapp ".").
+# iPhone-appens länkar (Universal Links): Apple hämtar filen och kräver JSON.
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=3600"

@@ -429,6 +429,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   font-size:13.5px;font-weight:600;cursor:pointer;padding:6px}
 .linkbtn:hover{text-decoration:underline}
 .gate-form{margin-top:4px}
+.linkbtn.danger{color:var(--bad2)}
+.gate-or{text-align:center;color:var(--mut);font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:var(--s4) 0 calc(-1 * var(--s2))}
 .gate-foot{margin-top:var(--s5);text-align:center;color:var(--mut);font-size:13px;line-height:1.55}
 .hint{font-size:12px;line-height:1.45;margin-top:6px;color:var(--mut)}
 .hint.good{color:var(--ok2)} .hint.bad{color:var(--warn)}
@@ -1056,6 +1058,15 @@ const CLOUD = Object.assign({}, CLOUD_CONFIG, (()=>{
 CLOUD.url = String(CLOUD.url||'').replace(/\/$/,'');
 /* Utan Supabase: kontoväljaren och allt sparat på den här enheten. */
 const PREVIEW_LOGIN = !(CLOUD.url && CLOUD.key);
+/* iPhone-appen (app/, Capacitor) laddar samma sida som webben. Där finns telefonens egna
+   funktioner som plugins: push via Apple, länkar som öppnar appen, delningsmenyn.
+   En funktion (inte en konstant) så att testerna kan låtsas vara appen. */
+const isNative = () => !!(window.Capacitor && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform());
+const plug = n => (isNative() && Capacitor.Plugins && Capacitor.Plugins[n]) || null;
+/* Demoläget: förhandsläget med påhittad data (demo.js) — det App Store-granskningen loggar in i.
+   Inget når servern och inga riktiga personer syns. */
+const DEMO_LS = 'bandohq_demo', DEMO_USER = 'apple-review', DEMO_PASS = 'BandoDemo2026';
+const DEMO = (()=>{ try{ return localStorage.getItem(DEMO_LS) === '1'; }catch(_){ return false; } })();
 
 /* ===================== TID ===================== */
 const DAY = ['SÖN','MÅN','TIS','ONS','TOR','FRE','LÖR'];
@@ -1217,7 +1228,9 @@ function renderGate(){
       return;
     }
     tag.textContent = 'Logga in för att fortsätta.';
-    b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
+    /* i appen är bokningen lika viktig som inloggningen — det är det nya kunder kommer för */
+    const bookBtn = `<button class="btn ${isNative()?'':'ghost'}" style="margin-top:${isNative()?'0':'14px'}" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID${isNative()?'':' UTAN KONTO'}</button>`;
+    b.innerHTML = `${isNative() ? bookBtn + `<div class="gate-or">har du ett konto?</div>` : ''}<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
         <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
         <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
         <label class="lbl" for="gP">LÖSENORD</label>
@@ -1227,11 +1240,12 @@ function renderGate(){
       </form>
       <button class="linkbtn" onclick="gateEmail=(document.getElementById('gE')||{}).value||gateEmail;gateMode='forgot';gateErr='';renderGate()">Glömt lösenordet?</button>
       <div class="gate-foot">Nytt här? Du behöver en <b>inbjudningslänk</b> från oss. ·
-        <a href="#integritet" onclick="event.preventDefault();openPrivacy()">Integritet</a></div>
-      <button class="btn ghost" style="margin-top:14px" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID UTAN KONTO</button>`;
+        <a href="#integritet" onclick="event.preventDefault();openPrivacy()">Integritet</a> ·
+        <a href="#support" onclick="event.preventDefault();openSupport()">Hjälp</a></div>
+      ${isNative() ? '' : bookBtn}`;
     return;
   }
-  tag.innerHTML = `<span class="badge warn">FÖRHANDSVISNING</span>
+  tag.innerHTML = `<span class="badge warn">${DEMO ? 'DEMOLÄGE' : 'FÖRHANDSVISNING'}</span>
     <span style="display:block;margin-top:10px">Välj konto för att se appen som den personen.</span>`;
   const groups = ROLES.map(r=>({r, list:activeAcc().filter(a=>a.r===r)})).filter(g=>g.list.length);
   b.innerHTML = `
@@ -1247,8 +1261,11 @@ function renderGate(){
         </button>`).join('')}</div>`).join('')}
     ${gateErrBox()}
     <button class="btn ghost" style="margin-top:18px" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID UTAN KONTO</button>
-    <div class="note">Servern är inte inkopplad än, så man loggar in genom att välja konto.
-      När Supabase är inkopplat gäller <b>användarnamn och lösenord</b> och inbjudningar per mejl — se SETUP.md.</div>`;
+    ${DEMO ? `<div class="note">Demoläget visar appen med påhittade personer, pass och artister — producent, admin,
+        kamerateam, cirkelledare, deltagare och kund. Inget sparas på servern.</div>
+      <button class="btn ghost" style="margin-top:9px" onclick="leaveDemo()">AVSLUTA DEMOLÄGET</button>`
+    : `<div class="note">Servern är inte inkopplad än, så man loggar in genom att välja konto.
+      När Supabase är inkopplat gäller <b>användarnamn och lösenord</b> och inbjudningar per mejl — se SETUP.md.</div>`}`;
 }
 async function gateRun(fn){
   if(gateBusy) return;
@@ -1260,6 +1277,7 @@ async function gateRun(fn){
 }
 function doLogin(){
   const em = document.getElementById('gE').value.trim(), pw = document.getElementById('gP').value;
+  if(em.toLowerCase() === DEMO_USER && pw === DEMO_PASS) return enterDemo();
   gateEmail = em;
   return gateRun(async ()=>{
     try{ await cloudLogin(em, pw); }
@@ -2100,7 +2118,7 @@ function render(){
     document.getElementById('fab').style.display = 'none';
     document.body.classList.add('simple');
     document.getElementById('view').className = '';
-    document.getElementById('view').innerHTML = pushBanner() + (
+    document.getElementById('view').innerHTML = demoBanner() + pushBanner() + (
       rv==='participant' ? vParticipant() : rv==='leader' ? vLeader() : vCustomer());
     paintSync();
     return;
@@ -2110,7 +2128,7 @@ function render(){
   document.getElementById('fab').style.display = (view==='today'||view==='week') && can('book') ? '' : 'none';
   document.body.classList.remove('simple');
   document.getElementById('view').className = ['today','week','dash'].includes(view) ? 'wide' : '';
-  document.getElementById('view').innerHTML = (view===tabs()[0] ? pushBanner() : '') + (
+  document.getElementById('view').innerHTML = (view===tabs()[0] ? demoBanner() + pushBanner() : '') + (
     view==='today'   ? vToday()   : view==='week'    ? vWeek()    :
     view==='agenda'  ? vAgenda()  : view==='beats'   ? vBeats()   :
     view==='more'    ? vMore()    : view==='artists' ? vArtists() :
@@ -2367,9 +2385,25 @@ function exportArtists(){
   const q = v => /[;"\n]/.test(v) ? '"' + String(v).replace(/"/g,'""') + '"' : String(v||'');
   const csv = '﻿Namn;Prio;Genre;Anteckning;Instagram\n' + artistsRanked().map(a=>
     [a.n, prioOf(a), a.genre||'', a.note||'', a.ig||''].map(q).join(';')).join('\n');
-  const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
-  const el = document.createElement('a'); el.href = url; el.download = 'bandohq-artister.csv';
-  document.body.appendChild(el); el.click(); el.remove(); setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  saveBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), 'bandohq-artister.csv');
+}
+/* Spara en fil. I iPhone-appen går det inte att ladda ner — där öppnas delningsmenyn
+   (Spara i Filer, AirDrop, mejl) med filen. */
+async function saveBlob(blob, name){
+  if(isNative()){
+    const data = await new Promise((res, rej)=>{ const r = new FileReader();
+      r.onload = ()=>res(String(r.result).split(',')[1]); r.onerror = ()=>rej(r.error); r.readAsDataURL(blob); });
+    const f = await plug('Filesystem').writeFile({path:name, data, directory:'CACHE'});
+    await plug('Share').share({title:name, url:f.uri}).catch(()=>{});
+    return;
+  }
+  const url = URL.createObjectURL(blob), el = document.createElement('a'); el.href = url; el.download = name;
+  document.body.appendChild(el); el.click(); el.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+/* Länkar ut ur appen (Dropbox): i iPhone-appen i Safari-vyn ovanpå appen. */
+function openExternal(url){
+  if(isNative() && plug('Browser')) return plug('Browser').open({url});
+  window.open(url, '_blank', 'noopener');
 }
 /* Minimal .xlsx-läsare: zipens centralkatalog → delade strängar + första bladet. */
 async function readXlsx(buf){
@@ -3147,7 +3181,7 @@ async function uploadBeats(files){
 let playing = '';
 async function playBeat(id){
   const b = S.beats.find(x=>x.id===id); if(!b) return;
-  if(!b.fileId) return b.link ? window.open(b.link, '_blank', 'noopener') : toast('Filen finns inte i Dropbox');
+  if(!b.fileId) return b.link ? openExternal(b.link) : toast('Filen finns inte i Dropbox');
   if(!dbxConnected()) return toast('Koppla Dropbox under Profil för att lyssna');
   let np = document.getElementById('np');
   if(!np){ np = document.createElement('div'); np.id = 'np'; document.body.appendChild(np); }
@@ -3364,7 +3398,7 @@ async function delBeat(id){
 const dbxWeb = path => 'https://www.dropbox.com/home' + encodeURI(path);
 function openBeatFolder(){
   if(!dbxReady()) return toast('Dropbox är inte kopplat');
-  window.open(dbxWeb(dbxRoot() + '/Beats/' + me().n), '_blank', 'noopener');
+  openExternal(dbxWeb(dbxRoot() + '/Beats/' + me().n));
 }
 
 /* =====================================================================
@@ -3534,9 +3568,7 @@ async function shareMedia(id){
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({files:[file], text:captionFor(x)}).catch(()=>{});
     } else {
-      const u = URL.createObjectURL(blob), el = document.createElement('a');
-      el.href = u; el.download = x.file || x.name; document.body.appendChild(el); el.click(); el.remove();
-      setTimeout(()=>URL.revokeObjectURL(u), 4000);
+      await saveBlob(blob, x.file || x.name);
       copy(captionFor(x), 'Filen laddas ner · bildtexten kopierad');
     }
   }catch(e){ toast(e.message); }
@@ -3864,7 +3896,9 @@ const b64uDecode = s => { s = String(s).replace(/-/g,'+').replace(/_/g,'/'); s +
   return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); };
 const b64uEncode = u8 => btoa(String.fromCharCode(...new Uint8Array(u8))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 /* Vad enheten klarar och vad som är gjort. Egen funktion så att testerna kan byta den. */
+let nativePerm = 'default';           /* iPhone-appen: svaret från PushNotifications.checkPermissions */
 function pushEnv(){
+  if(isNative()) return {supported:true, ios:true, standalone:true, perm:nativePerm, native:true};
   const ua = navigator.userAgent || '';
   return {supported: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
     ios: /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1),
@@ -3912,13 +3946,16 @@ async function enablePush(){
   if(pushBusy) return;
   pushBusy = true; render();
   try{
-    const key = await sbRpc('push_public_key', {});
-    if(!key) throw new Error('Push är inte uppsatt än — managern skapar nycklarna under Crew → Notiser');
-    const sub = await pushSubscribe(key);
-    const j = sub.toJSON ? sub.toJSON() : sub;
-    await sbRpc('save_push_sub', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth,
-      p_ua:(navigator.userAgent||'').slice(0,200)});
-    try{ localStorage.setItem(PUSH_LS, j.endpoint); }catch(_){}
+    if(isNative()) await saveNativeToken();
+    else {
+      const key = await sbRpc('push_public_key', {});
+      if(!key) throw new Error('Push är inte uppsatt än — managern skapar nycklarna under Crew → Notiser');
+      const sub = await pushSubscribe(key);
+      const j = sub.toJSON ? sub.toJSON() : sub;
+      await sbRpc('save_push_sub', {p_endpoint:j.endpoint, p_p256dh:j.keys.p256dh, p_auth:j.keys.auth,
+        p_ua:(navigator.userAgent||'').slice(0,200)});
+      try{ localStorage.setItem(PUSH_LS, j.endpoint); }catch(_){}
+    }
     toast('Notiser påslagna — testa med "Skicka en testnotis" i profilen');
   }catch(e){ toast(e.message || 'Det gick inte att slå på notiser'); }
   pushBusy = false; render(); if(document.getElementById('sheet').classList.contains('on')) openMe();
@@ -3936,9 +3973,34 @@ async function pushSubscribe(key){
   return (await reg.pushManager.getSubscription()) ||
     reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64uDecode(key)});
 }
+/* iPhone-appen: frågar om lov och registrerar telefonen hos Apple. Svarar med enhetens token. */
+async function nativePushToken(){
+  const P = plug('PushNotifications');
+  let perm = (await P.checkPermissions()).receive;
+  if(perm !== 'granted') perm = (await P.requestPermissions()).receive;
+  nativePerm = perm === 'granted' ? 'granted' : perm === 'denied' ? 'denied' : 'default';
+  if(perm !== 'granted') throw new Error(perm === 'denied' ? 'Notiser nekades — slå på dem under Inställningar → BANDOHQ' : 'Notiser slogs inte på');
+  const hs = []; let timer = null;
+  const tok = await new Promise(async (res, rej) => {
+    hs.push(await P.addListener('registration', t => res(t.value)));
+    hs.push(await P.addListener('registrationError', e => rej(new Error('Apple svarade inte' + (e && e.error ? ': ' + e.error : '')))));
+    timer = setTimeout(() => rej(new Error('Ingen kontakt med Apple — försök igen')), 15000);
+    await P.register();
+  }).finally(() => { clearTimeout(timer); hs.forEach(h => h && h.remove && h.remove()); });
+  return String(tok).toLowerCase();
+}
+async function saveNativeToken(){
+  const tok = await nativePushToken();
+  await sbRpc('save_device_token', {p_token:tok, p_env:'production'});
+  try{ localStorage.setItem(PUSH_LS, 'apns:' + tok); }catch(_){}
+}
 /* Vid start: håll prenumerationen färsk (push-tjänster byter ibland adress). */
 async function pushRefresh(){
   if(PREVIEW_LOGIN || !S.session || !AUTH || !pushState().on) return;
+  if(isNative()){
+    try{ await saveNativeToken(); }catch(_){ try{ localStorage.removeItem(PUSH_LS); }catch(_){} render(); }
+    return;
+  }
   try{
     const reg = await navigator.serviceWorker.getRegistration('sw.js');
     const sub = reg && await reg.pushManager.getSubscription();
@@ -4001,7 +4063,7 @@ function openPrivacy(){
         bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.</p>
       <h3>Vem ser vad</h3>
       <p>Crewet och admins ser schemat och kontona. En cirkelledare ser sina deltagares namn, telefon och e-post.
-        Deltagare ser bara sin ledares namn. Kunder ser bara sina egna bokningar och lediga tider.
+        Deltagare ser sin ledares namn och kontaktuppgifter. Kunder ser bara sina egna bokningar och lediga tider.
         Mål och personliga planer ser bara du och managern.</p>
       <h3>Var det ligger</h3>
       <p>Konton och data hos Supabase (servrar i Stockholm). Filer i Bando Collectives Dropbox.
@@ -4038,9 +4100,7 @@ async function downloadBackup(){
   if(!can('manageCrew')) return;
   try{
     const data = await backupData();
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data)], {type:'application/json'}));
-    const el = document.createElement('a'); el.href = url; el.download = `bandohq-backup-${iso(new Date())}.json`;
-    document.body.appendChild(el); el.click(); el.remove(); setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    await saveBlob(new Blob([JSON.stringify(data)], {type:'application/json'}), `bandohq-backup-${iso(new Date())}.json`);
     S.backupCfg = {at:Date.now(), by:(me()||{}).n||'', up:Date.now()}; save(); sync(true); render();
     toast(`Säkerhetskopia sparad · ${data.records ? data.records.length + ' poster' : 'förhandsläget'}`);
     return data;
@@ -5522,9 +5582,10 @@ function openMe(){
             S.session.email?' · '+esc(S.session.email):''}</div></div>
       </div>
       <div style="margin-top:18px">${extra}</div>
-      <button class="btn ghost" style="margin-top:22px" onclick="signOut()">BYT KONTO</button>
+      ${PREVIEW_LOGIN ? '' : notisNote()}
+      <button class="btn ghost" style="margin-top:22px" onclick="signOut()">${PREVIEW_LOGIN ? 'BYT KONTO' : 'LOGGA UT'}</button>
       <div class="note">Din roll är satt av AZ. Behöver du se något annat än det här,
-        är det AZ som ändrar det under Hantera konton.</div>`);
+        är det AZ som ändrar det under Hantera konton.</div>${privacyLink()}${deleteLink()}`);
     return;
   }
   const mgr = can('dashboard');
@@ -5575,16 +5636,120 @@ function notisNote(){
     ${pushCard()}`;
 }
 const privacyLink = () => `<button class="linkbtn" style="margin-top:14px" onclick="openPrivacy()">Hur BANDOHQ hanterar dina uppgifter</button>`;
+const deleteLink = () => `<button class="linkbtn danger" style="margin-top:4px" onclick="openDeleteMe()">Radera mitt konto</button>`;
+/* Alla kan radera sitt eget konto (Apple kräver det i appen). Samma städning som när
+   managern raderar någon: delete_my_account i databasen. */
+function openDeleteMe(){
+  const m = me(); if(!m) return;
+  const word = m.username || m.n;
+  openSheet(`${X}<h2>Radera mitt konto</h2>
+    <div class="sub">Det går inte att ångra.</div>
+    <div class="note" style="margin-top:14px">Ditt konto och din inloggning tas bort, liksom din agenda, dina mål och
+      notiserna till dina enheter. Ditt namn tas bort ur gamla pass. Passen och cirkeltimmarna finns kvar utan namn —
+      studion och studieförbundet behöver dem för bokföring och rapportering.</div>
+    <label class="lbl" for="dmW">SKRIV ${esc(word.toUpperCase())} FÖR ATT BEKRÄFTA</label>
+    <input id="dmW" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <button class="btn danger" style="margin-top:18px" onclick="deleteMe()">RADERA MITT KONTO</button>`);
+}
+async function deleteMe(){
+  const m = me(); if(!m) return;
+  const word = m.username || m.n;
+  if((document.getElementById('dmW').value||'').trim().toLowerCase() !== word.toLowerCase()) return toast('Skriv ' + word + ' för att bekräfta');
+  try{
+    if(PREVIEW_LOGIN){
+      if(m.r==='manager' && !accounts().some(a=>a.r==='manager' && a.id!==m.id && a.active!==false))
+        throw new Error('Du är den enda managern — gör någon annan till manager först');
+      deleteLocally(m);
+    } else await sbRpc('delete_my_account', {});
+    closeSheet(); signOut(); toast('Ditt konto är raderat');
+  }catch(e){ toast(e.message); }
+}
+function openSupport(){
+  openSheet(`${X}<h2>Hjälp och kontakt</h2>
+    <div class="sub">BANDOHQ är ${esc(ORG.name)}s app för studiobokning, crewet och studiecirklarna.</div>
+    <div class="privacy">
+      <h3>Kontakt</h3>
+      <p>Mejla <a href="mailto:${esc(ORG.email)}">${esc(ORG.email)}</a> — vi svarar inom ett par dagar.</p>
+      <h3>Boka studiotid</h3>
+      <p>Utan konto: tryck <b>Boka studiotid</b> vid inloggningen, välj en dag och en starttid och skicka en förfrågan.
+        Ett pass är tre timmar. Vi bekräftar på mejlen eller per telefon.</p>
+      <h3>Konto</h3>
+      <p>Konton skapas med en inbjudan från oss. Glömt lösenordet? Tryck <b>Glömt lösenordet?</b> vid inloggningen.</p>
+      <h3>Radera ditt konto</h3>
+      <p>Tryck på ditt namn uppe till höger och sedan <b>Radera mitt konto</b> — eller mejla oss.</p>
+    </div>${privacyLink()}`);
+}
+
+/* ---------- IPHONE-APPEN OCH DEMOLÄGET ---------- */
+async function nativeInit(){
+  if(!isNative()) return;
+  document.body.classList.add('native');
+  const App = plug('App'), Push = plug('PushNotifications');
+  /* inbjudningar, #boka och lösenordslänkar från mejl öppnar appen (Universal Links) */
+  if(App) App.addListener('appUrlOpen', e => openLanding(e && e.url));
+  if(Push){
+    try{ const p = (await Push.checkPermissions()).receive; nativePerm = p==='granted' ? 'granted' : p==='denied' ? 'denied' : 'default'; }catch(_){}
+    /* tryck på en notis: färsk data och appens första vy */
+    Push.addListener('pushNotificationActionPerformed', () => {
+      if(!S.session) return;
+      if(roleView()==='full') go(tabs()[0]); else render();
+      sync(true);
+    });
+  }
+}
+async function openLanding(url){
+  let u; try{ u = new URL(url); }catch(_){ return; }
+  if(!/(^|\.)bandohq\.se$/.test(u.hostname)) return;
+  history.replaceState(null, '', location.pathname + u.search + u.hash);
+  gateErr = '';
+  await readLanding();
+  if(joinToken || recoverToken || gateMode==='public') showGate();
+  else if(S.session) render();
+}
+function demoBanner(){
+  if(!DEMO) return '';
+  return `<div class="pushban" role="status"><div class="grow"><b>Demoläge</b> — påhittade personer och pass. Inget sparas på servern.</div>
+    <button class="btn slim ghost" style="width:auto;flex:none;padding:10px 14px" onclick="leaveDemo()">AVSLUTA</button></div>`;
+}
+function enterDemo(){
+  const go2 = () => {
+    try{
+      localStorage.setItem(KEY, JSON.stringify(window.bandohqDemo({who:'AZ'})));
+      /* en ev. egen serverinställning (tester, utveckling) läggs undan och kommer tillbaka efteråt */
+      const prev = localStorage.getItem('bandosesh_cloud');
+      if(prev !== null) localStorage.setItem(DEMO_LS + '_cloud', prev);
+      localStorage.setItem('bandosesh_cloud', JSON.stringify({url:'', key:''}));
+      localStorage.setItem(DEMO_LS, '1');
+    }catch(_){}
+    saveAuth(null); location.hash = ''; location.reload();
+  };
+  if(window.bandohqDemo) return go2();
+  const sc = document.createElement('script'); sc.src = 'demo.js?v=' + Date.now();
+  sc.onload = go2;
+  sc.onerror = () => { gateErr = 'Demoläget gick inte att ladda — försök igen'; renderGate(); };
+  document.head.appendChild(sc);
+}
+function leaveDemo(){
+  try{
+    const prev = localStorage.getItem(DEMO_LS + '_cloud');
+    [KEY, 'bandosesh_cloud', DEMO_LS, DEMO_LS + '_cloud'].forEach(k=>localStorage.removeItem(k));
+    if(prev !== null) localStorage.setItem('bandosesh_cloud', prev);
+  }catch(_){}
+  location.reload();
+}
 function accountCard(){
   if(PREVIEW_LOGIN) return `${notisNote()}<button class="btn ghost" onclick="signOut()">BYT KONTO</button>
-    <div class="note" style="margin-top:10px"><b>Förhandsvisning.</b> Servern är inte inkopplad än, så man
+    ${DEMO ? `<button class="btn ghost" style="margin-top:9px" onclick="leaveDemo()">AVSLUTA DEMOLÄGET</button>
+      <div class="note" style="margin-top:10px"><b>Demoläge.</b> Påhittade personer, pass och artister — byt konto för att se
+        appen som producent, kund, deltagare eller cirkelledare. Inget sparas på servern.</div>`
+    : `<div class="note" style="margin-top:10px"><b>Förhandsvisning.</b> Servern är inte inkopplad än, så man
       loggar in genom att välja konto och allt sparas bara här. När Supabase är inkopplat
-      gäller användarnamn och lösenord — se SETUP.md.</div>`;
+      gäller användarnamn och lösenord — se SETUP.md.</div>`}${deleteLink()}`;
   return `${notisNote()}<button class="btn ghost" onclick="sync(false)">SYNKA NU</button>
     <button class="btn ghost" style="margin-top:9px" onclick="signOut()">LOGGA UT</button>
     <div class="note" style="margin-top:10px">Du är inloggad som <b>${esc((me()||{}).username || S.session.email || '')}</b>${
       (me()||{}).username ? ` (${esc(S.session.email||'')})` : ''}.
-      Vad du ser styrs av din roll, och gränsen hålls av servern — inte av appen.</div>${privacyLink()}`;
+      Vad du ser styrs av din roll, och gränsen hålls av servern — inte av appen.</div>${privacyLink()}${deleteLink()}`;
 }
 function dropboxCard(){
   const mgr = can('manageDropbox');
@@ -6579,6 +6744,7 @@ async function readLanding(){
   }
   if(h==='#boka') gateMode = 'public';
   if(h==='#integritet'){ clean(); setTimeout(openPrivacy, 300); }
+  if(h==='#support'){ clean(); setTimeout(openSupport, 300); }
   if(h.startsWith('#join=')){
     joinToken = decodeURIComponent(h.slice(6)).trim().toUpperCase();
     if(!/^[A-Z0-9-]{10,40}$/.test(joinToken)) joinToken = null;
@@ -6610,6 +6776,7 @@ async function readLanding(){
 (async function init(){
   wireDrop();
   await readLanding();
+  nativeInit();
   /* kontot skapat men koden inte inskriven än (appen stängdes emellan) */
   if(!PREVIEW_LOGIN && !AUTH && !joinToken && !recoverToken && gateMode==='login'){
     const p = pendingInvite(); if(p && p.email){ gateEmail = p.email; gateMode = 'code'; }

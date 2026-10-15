@@ -552,6 +552,38 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('kunden och deltagaren får sina inbjudningar på mejlen', box.some(m=>m.kind==='invite' && m.email==='kalle@x.se') && box.some(m=>m.kind==='invite' && m.email==='dina@x.se'),
      box.filter(m=>m.kind==='invite').map(m=>m.email));
 
+  /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
+  log('\n── iPhone-appen mot servern: enhetstoken, radera mitt konto, demoläget ──');
+  w = await boot();
+  r = await ev(w,`
+    ${LOGIN('studionord','kund12345')}
+    const L = {};
+    window.Capacitor = {isNativePlatform:()=>true, Plugins:{
+      PushNotifications:{checkPermissions:async()=>({receive:'granted'}), requestPermissions:async()=>({receive:'granted'}),
+        addListener:async(ev, fn)=>{ (L[ev]=L[ev]||[]).push(fn); return {remove(){}}; },
+        register:async()=>{ setTimeout(()=>(L.registration||[]).forEach(f=>f({value:'C0FFEE'.repeat(10)+'abcd'})), 10); }},
+      App:{addListener:async()=>({remove(){}})}}};
+    await nativeInit(); await enablePush();
+    const subs = (await sb('/push_subs?select=endpoint,kind')).map(x=>x.kind+'|'+x.endpoint);
+    openDeleteMe(); document.getElementById('dmW').value='studionord'; await deleteMe();
+    const out = document.getElementById('gate').classList.contains('on');
+    delete window.Capacitor;
+    ${LOGIN('studionord','kund12345')}
+    return {subs, out, again:gateErr, session:!!S.session};`);
+  ok('appen sparar telefonens token på servern', JSON.stringify(r.subs)===JSON.stringify(['apns|apns:'+'c0ffee'.repeat(10)+'abcd']), r.subs);
+  ok('kunden raderar sitt konto i appen och loggas ut', r.out===true, r);
+  ok('och kan inte logga in igen', !r.session && !!r.again, r);
+  box = await outbox();
+  w = await boot();
+  r = await ev(w,`${LOGIN('apple-review','BandoDemo2026')} return true;`);
+  await new Promise(r=>setTimeout(r,1800));
+  r = await ev(fr.contentWindow,`return {demo:DEMO, preview:PREVIEW_LOGIN, me:(me()||{}).n, auth:!!AUTH};`);
+  ok('granskarens inloggning (apple-review) öppnar demoläget — inte servern', r.demo===true && r.preview===true && r.me==='AZ' && !r.auth, r);
+  r = await ev(fr.contentWindow,`leaveDemo(); return true;`);
+  await new Promise(r=>setTimeout(r,1800));
+  r = await ev(fr.contentWindow,`return {preview:PREVIEW_LOGIN, form:!!document.getElementById('gE')};`);
+  ok('avslutat demoläge: tillbaka till den riktiga inloggningen', r.preview===false && r.form===true, r);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

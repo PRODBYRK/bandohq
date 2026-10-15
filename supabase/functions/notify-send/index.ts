@@ -17,6 +17,8 @@
      APP_URL                appens adress för knappen i mejlen (standard https://bandohq.se/)
      VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY  push-nycklarna (skapas i appen: Crew → Notiser)
      VAPID_SUBJECT          mailto:din@epost.se — kontaktadress till push-tjänsterna
+     APNS_KEY, APNS_KEY_ID, APNS_TEAM_ID  push till iPhone-appen via Apple (.p8-nyckeln, dess id, team-id)
+     APNS_TOPIC             appens bundle-id (standard se.bandohq.app)
    SUPABASE_URL och servernyckeln finns automatiskt.
 
    Webb-push är skrivet direkt mot standarderna (RFC 8291 kryptering,
@@ -92,6 +94,38 @@ export async function sendPush(target, payload, vapid, urgency) {
     'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' } });
 }
 
+/* ---------- push till iPhone-appen (APNs) ----------
+   Apple tar emot JSON direkt (ingen kryptering som webb-push), men vill ha en JWT signerad
+   med teamets .p8-nyckel. Apple nekar (429) om en ny token skapas oftare än var 20:e minut,
+   så iat avrundas till halvtimmen — alla körningar inom den använder samma iat. */
+/* .p8-filens innehåll; i en secret blir radbrytningarna ofta bokstavligen \n */
+const pemToDer = (pem) => b64uDec(String(pem).replace(/\\n/g, '\n').replace(/-----[^-]+-----/g, '').replace(/[^A-Za-z0-9+/=]/g, ''));
+let apnsCache = null;
+export async function apnsJwt(apns, nowSec) {
+  const iat = Math.floor((nowSec ?? Date.now() / 1000) / 1800) * 1800;
+  if (apnsCache && apnsCache.iat === iat && apnsCache.kid === apns.keyId) return apnsCache.jwt;
+  const key = await crypto.subtle.importKey('pkcs8', pemToDer(apns.key), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const h = b64uEnc(enc.encode(JSON.stringify({ alg: 'ES256', kid: apns.keyId })));
+  const p = b64uEnc(enc.encode(JSON.stringify({ iss: apns.teamId, iat })));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, enc.encode(h + '.' + p)));
+  apnsCache = { iat, kid: apns.keyId, jwt: `${h}.${p}.${b64uEnc(sig)}` };
+  return apnsCache.jwt;
+}
+/* Svarar {status, gone}. Borta = appen avinstallerad eller token från fel miljö/app. */
+export async function sendApns(target, payload, apns, urgent) {
+  const token = String(target.endpoint).replace(/^apns:/, '');
+  const host = target.kind === 'apns-sandbox' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com';
+  const res = await fetch(`${host}/3/device/${token}`, { method: 'POST',
+    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: 'default' },
+      kind: payload.kind, url: payload.url }),
+    headers: { authorization: `bearer ${await apnsJwt(apns)}`, 'apns-topic': apns.topic, 'apns-push-type': 'alert',
+      'apns-priority': urgent ? '10' : '5', 'apns-expiration': String(Math.floor(Date.now() / 1000) + 43200),
+      'apns-collapse-id': String(payload.kind || 'bandohq').slice(0, 64), 'content-type': 'application/json' } });
+  let reason = '';
+  if (!res.ok) { try { reason = (await res.json()).reason || ''; } catch (_) { /* tomt svar */ } }
+  return { status: res.status, gone: res.status === 410 || /^(BadDeviceToken|Unregistered|DeviceTokenNotForTopic)$/.test(reason), reason };
+}
+
 /* ---------- utskicket ---------- */
 const env = (k) => (globalThis.Deno ? Deno.env.get(k) : process.env[k]) || '';
 const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfrågan mottagen', answer: 'Svar på din förfrågan',
@@ -156,6 +190,9 @@ export async function handle() {
   const vapid = env('VAPID_PUBLIC_KEY') && env('VAPID_PRIVATE_KEY')
     ? { publicKey: env('VAPID_PUBLIC_KEY'), privateKey: env('VAPID_PRIVATE_KEY'), subject: env('VAPID_SUBJECT') || 'mailto:noreply@bandohq.se' }
     : null;
+  const apns = env('APNS_KEY') && env('APNS_KEY_ID') && env('APNS_TEAM_ID')
+    ? { key: env('APNS_KEY'), keyId: env('APNS_KEY_ID'), teamId: env('APNS_TEAM_ID'), topic: env('APNS_TOPIC') || 'se.bandohq.app' }
+    : null;
   const mailOn = !!env('RESEND_KEY');
   const rows = (await rpc('outbox_claim', { p_limit: 50 })) || [];
   const out = { claimed: rows.length, push: 0, mail: 0, failed: 0 };
@@ -164,13 +201,19 @@ export async function handle() {
     let pushed = 0;
     /* 1. push till alla personens enheter (för mejl-notiser bara första försöket,
           så att ett nytt mejlförsök inte ger en push till) */
-    if (r.member_id && vapid && (!always || r.attempts <= 1)) {
+    if (r.member_id && (vapid || apns) && (!always || r.attempts <= 1)) {
+      const payload = { title: TITLE[r.kind] || 'BANDOHQ', body: r.body, kind: r.kind, url: './' };
+      const urgent = URGENT.includes(r.kind);
       for (const t of (await rpc('push_targets', { p_member: r.member_id })) || []) {
-        let status = 0;
-        try { status = (await sendPush(t, { title: TITLE[r.kind] || 'BANDOHQ', body: r.body, kind: r.kind, url: './' }, vapid,
-          URGENT.includes(r.kind) ? 'high' : 'normal')).status; } catch (_) { status = 0; }
+        const iphone = String(t.kind || 'web').startsWith('apns');
+        if (iphone ? !apns : !vapid) continue;                 /* den kanalen är inte inkopplad */
+        let status = 0, gone = false;
+        try {
+          if (iphone) ({ status, gone } = await sendApns(t, payload, apns, urgent));
+          else { status = (await sendPush(t, payload, vapid, urgent ? 'high' : 'normal')).status; gone = status === 404 || status === 410; }
+        } catch (_) { status = 0; }
         const ok = status >= 200 && status < 300;
-        await rpc('push_result', { p_id: t.id, p_ok: ok, p_gone: status === 404 || status === 410 });
+        await rpc('push_result', { p_id: t.id, p_ok: ok, p_gone: gone });
         if (ok) pushed++;
       }
     }

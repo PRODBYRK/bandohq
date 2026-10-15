@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- push via Apple (APNs) — utskicket notify-send skickar dit -->
+	<key>aps-environment</key>
+	<string>production</string>
+	<!-- länkar till bandohq.se (inbjudningar, #boka, lösenord) öppnar appen. Inte www: den skickas vidare, och Apple följer inte omdirigeringar -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:bandohq.se</string>
+	</array>
+</dict>
+</plist>

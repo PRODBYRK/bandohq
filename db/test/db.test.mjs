@@ -541,6 +541,34 @@ ok('hans agenda är borta', (await one(`select del from records where id='dw1'`)
 ok('timmarna finns kvar för rapporteringen', +(await one(`select bs_hours('will') h`)).h===hoursBefore && hoursBefore>0, hoursBefore);
 ok('ingen kvarvarande rad nämner namnet', !(await one(`select 1 from records where not del and data::text like '%William Ek%'`)));
 
+/* ============ iPHONE-APPEN · PUSH VIA APNs, RADERA MITT KONTO ============ */
+head('iPhone-appen: enhetstoken och radera mitt konto');
+const T64 = 'ab'.repeat(32), T2 = 'cd'.repeat(32);
+ok('anonyma kan inte spara en enhetstoken', /Logga in|permission denied/.test(await boom(()=>asAnon(db,()=>rpc('save_device_token',{p_token:T64,p_env:'production'})))||''));
+ok('skräp som token nekas', /Ogiltig enhetstoken/.test(await boom(()=>as(db,U.kund,()=>rpc('save_device_token',{p_token:'hej',p_env:'production'})))||''));
+await as(db,U.kund,()=>rpc('save_device_token',{p_token:'<'+T64.toUpperCase()+'>',p_env:'production'}));
+await as(db,U.nora,()=>rpc('save_device_token',{p_token:T2,p_env:'sandbox'}));
+const dv = await q(`select member_id, endpoint, kind, p256dh from push_subs where endpoint like 'apns:%' order by endpoint`);
+ok('token sparas som apns:<token> (gemener), sandbox för utvecklingsbyggen', dv.length===2 && dv[0].endpoint==='apns:'+T64 && dv[0].kind==='apns'
+   && dv[0].member_id==='kund' && dv[0].p256dh===null && dv[1].kind==='apns-sandbox', dv);
+ok('utskicket hittar telefonen', (await q(`select kind from push_targets('kund')`)).some(r=>r.kind==='apns'));
+ok('man ser bara sina egna enheter', (await as(db,U.kund,()=>q(`select endpoint from push_subs`))).every(r=>r.endpoint==='apns:'+T64));
+await as(db,U.nora,()=>rpc('save_device_token',{p_token:T64,p_env:'production'}));
+ok('samma telefon med ett annat konto tar över raden', (await one(`select member_id from push_subs where endpoint=$1`,['apns:'+T64])).member_id==='nora');
+await as(db,U.nora,()=>rpc('remove_push_sub',{p_endpoint:'apns:'+T64}));
+ok('utloggning tar bort telefonen', !(await one(`select 1 from push_subs where endpoint=$1`,['apns:'+T64])));
+await as(db,U.kund,()=>rpc('save_device_token',{p_token:T64,p_env:'production'}));
+
+ok('anonyma kan inte radera något', /permission denied|Inget konto/.test(await boom(()=>asAnon(db,()=>rpc('delete_my_account',{})))||''));
+ok('den interna raderingen går inte att anropa direkt', /permission denied/.test(await boom(()=>as(db,U.kund,()=>q(`select bs_erase_member(m) from members m where id='rkay'`)))||''));
+ok('den enda managern kan inte radera sig själv', /enda managern/.test(await boom(()=>as(db,U.az,()=>rpc('delete_my_account',{})))||''));
+await q(`insert into records(kind,id,data,up) values('booking','kdel',$1,1)`,[JSON.stringify({id:'kdel',studio:'A',date:'2026-12-29',start:'10:00',end:'13:00',who:'Studio Nord AB',status:'',reqBy:'kund'})]);
+const dk = await as(db,U.kund,()=>rpc('delete_my_account',{}));
+ok('kunden raderar sitt eget konto', dk.deleted==='Studio Nord AB', dk);
+ok('kontot, inloggningen och telefonen är borta', !(await one(`select 1 from members where id='kund'`)) && !(await one(`select 1 from auth.users where id=$1`,[U.kund]))
+   && !(await one(`select 1 from push_subs where endpoint=$1`,['apns:'+T64])));
+ok('namnet är borta ur passen', (await one(`select data from records where id='kdel'`)).data.who==='Raderad person');
+
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
