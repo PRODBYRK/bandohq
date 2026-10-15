@@ -372,8 +372,38 @@ managern raderar någon. Den enda managern kan inte radera sig själv.
 
 ## Cirklarna (verksamhetssystemet)
 
-**Cirklar** har flikarna **Grupper**, **Deltagare** och **Kalender**. Admin ser allt, och en producent
-eller cirkelledare ser bara sina egna grupper.
+**Cirklar** har flikarna **Vecka**, **Grupper**, **Deltagare** och **Kalender**. Admin ser allt, och en
+producent eller cirkelledare ser bara sina egna grupper (utan Vecka och Deltagare).
+
+**Veckans administration (Cirklar → Vecka)** — gör det tillsammans en gång i veckan. Vyn öppnas på förra
+veckan.
+
+1. Alla cirkelpass i veckan visas med status: **Planerat → Genomfört → Kontrollerat → Rapporterat**.
+2. Kontrollen flaggar **fel**, som måste rättas innan passet kan godkännas, och **varningar**. Knappen
+   bredvid öppnar rätt ställe, t.ex. *Registrera närvaro*.
+
+   | Fel | Varningar |
+   |---|---|
+   | passet har varit men närvaron saknas | för få deltagare i gruppen |
+   | fel antal timmar | någon har inte varit med på något av startpassen |
+   | ingen närvarande | färre närvarande än målet efter startperioden |
+   | närvarande som inte är med i gruppen | pass utan ledare |
+   | krock | |
+   | ledaren över timbanken | |
+   | deltagaren över 480 timmar | |
+   | genomfört i framtiden | |
+
+3. **Godkänn alla utan fel**. Godkända pass blir *Kontrollerade* och **låsta**: ingen kan ändra
+   dem, inte ens via synken.
+4. **Sammanställ rapport** markerar dem *Rapporterade* och laddar ner underlaget som CSV för Excel: en
+   rad per närvarande deltagare, med datum, tid, timmar, grupp, ämne, lektion, ledare, namn, telefon och
+   e-post. Personnummer läggs till från kalkylarket.
+5. Behöver ett låst pass ändras: **Lås upp** och skriv en anledning. Den sparas i passets **historik**,
+   som visar varje ändring med vem och när.
+
+Reglerna för kontrollen finns på ett ställe i appen (`SESSION_RULES` och `CIRCLE_RULES` i index.html),
+så att en ny regel blir en ny rad. Servern kontrollerar de viktigaste igen när admin godkänner
+(`check_sessions`).
 
 - **Regler** (Cirklar → Grupper → *Regler för cirklarna*), med standardvärdena inom parentes:
   - deltagare per grupp (4)
@@ -596,7 +626,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 388 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 399 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
@@ -604,7 +634,7 @@ Databasen och molnflödet (kräver Node):
 ```
 cd db/test
 npm install                       # en gång
-node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 293 testfall
+node db.test.mjs                  # behörigheter, notiskön, inbjudningar, push, nya kunder och radering i riktig Postgres, 314 testfall
 node notify.test.mjs              # push-krypteringen (RFC 8291), mejlutskicket och inloggning med användarnamn, 55 testfall
 node emulator.mjs                 # lokal Supabase på :8738 — låt den stå igång
 ```
@@ -613,6 +643,6 @@ node emulator.mjs                 # lokal Supabase på :8738 — låt den stå i
 inbjudningar, förfrågningar, godkännanden, kund, ny kund via bokningssidan, admin,
 utkorgen med mejlen, push, säkerhetskopia, radering, glömt lösenord, koden vid första inloggningen,
 användarnamn, inbjudan till någon som redan finns, producenter som lägger till kunder och flytten
-från förhandsvisningen, 140 testfall.
+från förhandsvisningen, 146 testfall.
 Starta om emulatorn före varje körning.
 Se `test/README.md`.

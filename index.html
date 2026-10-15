@@ -578,6 +578,20 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .tl-key .k-free{background:rgba(52,211,153,.12);box-shadow:inset 0 0 0 1px rgba(52,211,153,.35)}
 .tl-key .k-b{background:rgba(124,58,237,.5);box-shadow:inset 0 0 0 1px rgba(192,132,252,.5)}
 .tl-key .k-own{background:var(--pur)}
+.weekstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.weekstats div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
+.weekstats b{display:block;font-family:var(--disp);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.weekstats span{display:block;font-size:10px;color:var(--mut);letter-spacing:.03em;margin-top:2px}
+.wkcard{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:12px 14px;margin-bottom:9px}
+.wkcard.err{border-color:rgba(251,113,133,.45)}
+.wkcard.warnc{border-color:rgba(250,178,25,.32)}
+.flags{list-style:none;margin:10px 0 0;padding:0;font-size:13px;line-height:1.45}
+.flags.card{padding:12px 14px}
+.flags li{padding:4px 0 4px 18px;position:relative}
+.flags li::before{content:'';position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:50%}
+.flags li.f-err{color:#fecdd3}.flags li.f-err::before{background:var(--bad2)}
+.flags li.f-warn{color:#fde68a}.flags li.f-warn::before{background:var(--warn)}
+.linkbtn.inline{display:inline;margin:0 0 0 4px;padding:0;font-size:12.5px;text-decoration:underline}
 .bankhead{display:flex;align-items:center;gap:9px;margin-top:12px}
 .bankhead:first-child{margin-top:0}
 .bankhead b{font-size:14px}
@@ -808,6 +822,7 @@ function blank(){
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
     circleCfg:{up:0},                                      /* cirklarnas regler (setting/circles) — tomt = standard */
     signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
+    reports:{},                                            /* kontrollerade/rapporterade cirkelpass (session_reports) */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
     invites:[],                                         /* bara förhandsvisningen — annars i databasen */
     rates:{currency:'SEK', default:0, per:{}}};
@@ -847,6 +862,7 @@ function heal(s){
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
   s.circleCfg = Object.assign(blank().circleCfg, s.circleCfg||{});
   if(!Array.isArray(s.signups)) s.signups = [];
+  if(!s.reports || typeof s.reports !== 'object') s.reports = {};
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
   if(!Array.isArray(s.invites)) s.invites = [];
   delete s.drive;                                   /* Google Drive är borttaget */
@@ -992,6 +1008,216 @@ function circlePlanLocal(cid, dates, start, studio){
     return {date, ok:true};
   });
 }
+/* ===================== KONTROLL OCH RAPPORTERING =====================
+   Ett cirkelpass är Planerat ('') → Genomfört ('done') → Kontrollerat → Rapporterat.
+   De två sista står i session_reports på servern (S.reports här) och låser passet. */
+const SST = {planned:'Planerat', request:'Förslag', done:'Genomfört', checked:'Kontrollerat', reported:'Rapporterat'};
+const sessState = b => (S.reports && S.reports[b.id] && S.reports[b.id].status) || (b.status==='request' ? 'request' : b.status==='done' ? 'done' : 'planned');
+const isLocked = b => ['checked','reported'].includes(sessState(b));
+const LOCKED_MSG = 'Passet är kontrollerat — admin måste låsa upp det först';
+function statePill(b){
+  const st = sessState(b), c = {planned:['rgba(168,85,247,.14)','var(--pur3)'], request:['rgba(250,178,25,.15)','var(--warn)'],
+    done:['rgba(56,189,248,.14)','#7dd3fc'], checked:['rgba(52,211,153,.14)','var(--ok2)'], reported:['rgba(52,211,153,.24)','#a7f3d0']}[st];
+  return `<span class="pill" style="background:${c[0]};color:${c[1]}">${SST[st].toUpperCase()}</span>`;
+}
+/* Det n:te genomförda passet i gruppen (1, 2, 3 …) — startperioden räknas på det. */
+function sessionIndex(b){
+  return circleSessions(b.circleId).filter(x=>x.status==='done').sort((x,y)=>startAt(x)-startAt(y)).findIndex(x=>x.id===b.id) + 1;
+}
+
+/* Reglerna för kontrollen — en per rad. level 'fel' stoppar godkännandet, 'varning' gör det inte.
+   fix = vad knappen gör: 'complete' (registrera närvaro), 'move' (flytta passet). Ny regel = ny rad. */
+const SESSION_RULES = [
+  {id:'noattend', level:'fel', fix:'complete', test:(b,x)=> !b.status && endAt(b) < x.now ? 'Passet har varit men närvaron är inte registrerad' : ''},
+  {id:'future', level:'fel', fix:'complete', test:(b,x)=> b.status==='done' && startAt(b) > x.now ? 'Markerat genomfört men har inte varit än' : ''},
+  {id:'hours', level:'fel', fix:'complete', test:(b,x)=> b.status==='done' && Math.abs((+b.hours||0) - x.cf.sessionHours) > 1e-6
+      ? `Timmarna är ${fmtH(+b.hours||0)} — ska vara ${fmtH(x.cf.sessionHours)}` : ''},
+  {id:'empty', level:'fel', fix:'complete', test:b=> b.status==='done' && !(b.present||[]).length ? 'Ingen närvarande registrerad' : ''},
+  {id:'outsider', level:'fel', fix:'complete', test:b=>{ if(b.status!=='done') return '';
+      const c = circleById(b.circleId), out = (b.present||[]).filter(id=>!(c && (c.members||[]).includes(id)));
+      return out.length ? `${out.map(id=>(byId(id)||{}).n||'Okänd').join(', ')} är inte med i gruppen` : ''; }},
+  {id:'conflict', level:'fel', fix:'move', test:b=>{ if(!['','done'].includes(b.status||'')) return '';
+      const k = circleConflict(b, b.id); if(k) return 'Krock: ' + k;
+      const s = b.studio && clash(b, b.id)[0]; return s ? `Krock i studion: ${s.who||'ett annat pass'} ${s.start}–${s.end}` : ''; }},
+  {id:'leadercap', level:'fel', fix:null, test:(b,x)=>{ const lid = leaderIdOf(b), yr = +String(b.date).slice(0,4);
+      if(!lid || !(x.cf.leaderYearMax > 0) || yr < x.cf.leaderMaxFrom || !['','done'].includes(b.status||'')) return '';
+      const u = leaderYear(lid, yr); return u.done + u.planned > x.cf.leaderYearMax + 1e-6
+        ? `${(byId(lid)||{}).n||'Ledaren'} är över timbanken ${yr} (${fmtH(u.done+u.planned)} av ${fmtH(x.cf.leaderYearMax)} h)` : ''; }},
+  {id:'partcap', level:'fel', fix:null, test:b=>{ if(b.status!=='done') return '';
+      const over = (b.present||[]).filter(id=>hoursFor(id) > MAX_HOURS);
+      return over.length ? `${over.map(id=>(byId(id)||{}).n||'Okänd').join(', ')} har gått över ${MAX_HOURS} timmar` : ''; }},
+  {id:'noleader', level:'varning', fix:null, test:b=> !leaderIdOf(b) ? 'Passet saknar ledare' : ''},
+  {id:'few', level:'varning', fix:'complete', test:(b,x)=>{ if(b.status!=='done' || sessionIndex(b) <= x.cf.startSessions) return '';
+      const n = (b.present||[]).length; return n < x.cf.attendTarget ? `${n} närvarande — målet är ${x.cf.attendTarget}` : ''; }},
+];
+const CIRCLE_RULES = [
+  {id:'size', level:'varning', test:c=>{ const f = fillOf(c);
+      return f.need ? `${c.n} har ${f.n} av ${f.g} deltagare — behöver ${f.need}` : f.over ? `${c.n} har ${f.n} deltagare — ${f.over} fler än ${f.g}` : ''; }},
+  {id:'start', level:'varning', test:(c,x)=>{ const N = x.cf.startSessions;
+      const first = circleSessions(c.id).filter(b=>b.status==='done').sort((a,b)=>startAt(a)-startAt(b)).slice(0, N);
+      if(first.length < N) return '';
+      const been = new Set(first.flatMap(b=>b.present||[]));
+      const miss = membersOf(c.id).filter(p=>!been.has(p.id));
+      return miss.length ? `${c.n}: ${miss.map(p=>p.n).join(', ')} har inte varit med på något av de ${N} första passen` : ''; }},
+];
+function sessionFlags(b){
+  const x = {now:new Date(), cf:ccfg()}, out = [];
+  if(isLocked(b)) return out;                              /* kontrollerat: redan godkänt */
+  SESSION_RULES.forEach(r=>{ const t = r.test(b, x); if(t) out.push({rule:r.id, level:r.level, text:t, fix:r.fix, id:b.id}); });
+  return out;
+}
+function circleFlags(c){
+  const x = {now:new Date(), cf:ccfg()}, out = [];
+  CIRCLE_RULES.forEach(r=>{ const t = r.test(c, x); if(t) out.push({rule:r.id, level:r.level, text:t, circle:c.id}); });
+  return out;
+}
+const hasError = b => sessionFlags(b).some(f=>f.level==='fel');
+
+/* ---------- godkänn, rapportera, lås upp ---------- */
+async function refreshReports(){
+  if(PREVIEW_LOGIN || !cloudOn()) return;
+  if(remoteRole()){ await cloudView(); return; }
+  const rows = (await sb('/session_reports?select=booking_id,status,checked_by,checked_at,reported_by,reported_at')) || [];
+  S.reports = Object.fromEntries(rows.map(r=>[r.booking_id, r])); save();
+}
+async function approveSessions(ids){
+  ids = ids.filter(id=>{ const b = S.bookings.find(x=>x.id===id); return b && !isLocked(b); });
+  if(!ids.length) return toast('Inget att godkänna');
+  let res;
+  if(PREVIEW_LOGIN){
+    res = {checked:[], skipped:[]};
+    ids.forEach(id=>{ const b = S.bookings.find(x=>x.id===id), e = sessionFlags(b).find(f=>f.level==='fel');
+      if(b.status!=='done') res.skipped.push({id, reason:'Närvaron är inte registrerad'});
+      else if(e) res.skipped.push({id, reason:e.text});
+      else { S.reports = S.reports || {}; S.reports[id] = {status:'checked', checked_by:me().id, checked_at:new Date().toISOString()}; res.checked.push(id); } });
+    save();
+  } else {
+    try{ res = await sbRpc('check_sessions', {p_ids:ids}); await refreshReports(); }catch(e){ return toast(e.message); }
+  }
+  render();
+  toast(`${nt(res.checked.length,'pass godkänt','pass godkända')}${res.skipped.length ? ` · ${res.skipped.length} med fel: ${res.skipped[0].reason}` : ''}`);
+  return res;
+}
+/* Ögonblicksbilden — samma fält som bs_snapshot på servern. */
+function localSnapshot(b){
+  const c = circleById(b.circleId);
+  return {id:b.id, date:b.date, start:b.start, end:b.end, hours:+b.hours||0, studio:b.studio, circle:c?c.n:b.title,
+    subject:c?c.subject||'':'', lesson:b.lessonTitle||'', leader:(byId(leaderIdOf(b))||{}).n||b.who||'',
+    present:(b.present||[]).map(byId).filter(Boolean).sort((x,y)=>x.n.localeCompare(y.n,'sv'))
+      .map(p=>({id:p.id, name:p.n, email:p.email||'', phone:p.phone||''}))};
+}
+async function reportSessions(ids){
+  ids = ids.filter(id=>S.reports && S.reports[id] && S.reports[id].status==='checked');
+  if(!ids.length) return toast('Godkänn passen först');
+  if(!confirm(`Rapportera ${nt(ids.length,'pass','pass')}? Underlaget laddas ner, och passen markeras som rapporterade.`)) return;
+  let snaps;
+  if(PREVIEW_LOGIN){
+    snaps = ids.map(id=>localSnapshot(S.bookings.find(x=>x.id===id)));
+    snaps.forEach(s=>Object.assign(S.reports[s.id], {status:'reported', reported_by:me().id, reported_at:new Date().toISOString(), snapshot:s}));
+    save();
+  } else {
+    try{ snaps = await sbRpc('report_sessions', {p_ids:ids}); await refreshReports(); }catch(e){ return toast(e.message); }
+  }
+  await saveBlob(reportCsv(snaps), `cirkelrapport-${snaps.map(s=>s.date).sort()[0]}-${snaps.map(s=>s.date).sort().pop()}.csv`);
+  render(); toast(`${nt(snaps.length,'pass rapporterat','pass rapporterade')} · underlaget sparat`);
+  return snaps;
+}
+/* Underlaget till studieförbundet: en rad per närvarande deltagare. Personnummer fylls i från
+   kalkylarket (anmälningarna). Svensk Excel: BOM och semikolon. */
+function reportCsv(snaps){
+  const q = v => /[;"\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : String(v==null?'':v);
+  const rows = [['Datum','Start','Slut','Timmar','Grupp','Ämne','Lektion','Ledare','Deltagare','Telefon','E-post']];
+  snaps.slice().sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start)).forEach(s=>{
+    const base = [s.date, s.start, s.end, String(s.hours).replace('.', ','), s.circle, s.subject||'', s.lesson||'', s.leader||''];
+    (s.present && s.present.length ? s.present : [{name:'', phone:'', email:''}]).forEach(p=>rows.push(base.concat([p.name, p.phone||'', p.email||''])));
+  });
+  return new Blob(['﻿' + rows.map(r=>r.map(q).join(';')).join('\n')], {type:'text/csv;charset=utf-8'});
+}
+async function downloadReported(from, to){
+  let snaps;
+  if(PREVIEW_LOGIN) snaps = Object.values(S.reports||{}).filter(r=>r.status==='reported' && r.snapshot && r.snapshot.date>=from && r.snapshot.date<=to).map(r=>r.snapshot);
+  else { try{ snaps = await sbRpc('report_snapshots', {p_from:from, p_to:to}); }catch(e){ return toast(e.message); } }
+  if(!snaps.length) return toast('Inget rapporterat den veckan');
+  await saveBlob(reportCsv(snaps), `cirkelrapport-${from}-${to}.csv`);
+}
+async function unlockSession(id){
+  const reason = prompt('Varför ska passet låsas upp? (sparas i historiken)');
+  if(reason == null) return;
+  if(reason.trim().length < 3) return toast('Skriv varför passet låses upp');
+  try{
+    if(PREVIEW_LOGIN){ delete S.reports[id]; save(); }
+    else { await sbRpc('unlock_session', {p_booking:id, p_reason:reason.trim()}); await refreshReports(); }
+    closeSheet(); render(); toast('Upplåst — passet kan ändras igen');
+  }catch(e){ toast(e.message); }
+}
+async function openHistory(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b || !can('manageCircles')) return;
+  let rows = [];
+  if(!PREVIEW_LOGIN){ try{ rows = (await sb('/record_history?select=op,by_id,note,at,before,after&kind=eq.booking&rec_id=eq.' + encodeURIComponent(id) + '&order=at.asc')) || []; }catch(e){ return toast(e.message); } }
+  const r = S.reports && S.reports[id];
+  const who = x => (byId(x)||{}).n || (x ? x : 'systemet');
+  const diff = h => { if(!h.before || !h.after) return '';
+    const keys = ['date','start','end','studio','status','hours','present'].filter(k=>JSON.stringify(h.before[k])!==JSON.stringify(h.after[k]));
+    return keys.map(k=>k==='present' ? `närvaro ${(h.before.present||[]).length}→${(h.after.present||[]).length}` : `${k} ${h.before[k]??'–'}→${h.after[k]??'–'}`).join(', '); };
+  openSheet(`${X}<h2>Historik</h2><div class="sub">${esc(b.title)} · ${esc(longDate(b.date))} ${b.start}–${b.end}</div>
+    ${r ? `<div class="kv" style="margin-top:12px"><span>STATUS</span><b>${SST[r.status]}${r.checked_at?` · kontrollerat ${esc(new Date(r.checked_at).toLocaleDateString('sv-SE'))} av ${esc(who(r.checked_by))}`:''}</b></div>` : ''}
+    <div style="margin-top:12px">${rows.length ? rows.map(h=>`<div class="kv"><span>${esc(new Date(h.at).toLocaleString('sv-SE',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))}</span>
+      <b style="font-weight:500">${esc(h.op)} · ${esc(who(h.by_id))}${h.note?` — ${esc(h.note)}`:''}${diff(h)?`<br><span class="tiny muted">${esc(diff(h))}</span>`:''}</b></div>`).join('')
+      : `<div class="empty">${PREVIEW_LOGIN ? 'Historiken sparas på servern när den är inkopplad.' : 'Ingen historik än.'}</div>`}</div>`);
+}
+
+/* ---------- veckovyn: veckans administration ---------- */
+let adminWeek = null;
+function vCircleWeek(){
+  if(!adminWeek) adminWeek = monday(addDays(new Date(), -7));          /* förra veckan: den som ska kontrolleras */
+  const days = [...Array(7)].map((_,i)=>iso(addDays(adminWeek, i))), now = new Date();
+  const ss = live().filter(b=>b.circleId && b.status!=='declined' && b.status!=='request' && b.date>=days[0] && b.date<=days[6])
+    .sort((a,b)=>startAt(a)-startAt(b));
+  const flags = Object.fromEntries(ss.map(b=>[b.id, sessionFlags(b)]));
+  const cnt = st => ss.filter(b=>sessState(b)===st).length;
+  const errs = ss.filter(b=>flags[b.id].some(f=>f.level==='fel')).length, warns = ss.filter(b=>flags[b.id].some(f=>f.level==='varning')).length;
+  const ready = ss.filter(b=>sessState(b)==='done' && !flags[b.id].some(f=>f.level==='fel')).map(b=>b.id);
+  const checked = ss.filter(b=>sessState(b)==='checked').map(b=>b.id);
+  const groups = lcircle().map(c=>circleFlags(c)).flat();
+  const act = (f, b) => f.fix==='complete' && can('leadCircle', circleById(b.circleId)) ? `<button class="linkbtn inline" onclick="openComplete('${b.id}')">Registrera närvaro</button>`
+    : f.fix==='move' ? `<button class="linkbtn inline" onclick="openForm('${b.id}')">Flytta passet</button>` : '';
+  return `
+    <div class="row" style="gap:8px;margin-bottom:10px">
+      <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="adminWeek=addDays(adminWeek,-7);render()" aria-label="Förra veckan">‹</button>
+      <div class="grow" style="text-align:center;font-weight:650">Vecka ${weekNo(adminWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
+      <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="adminWeek=addDays(adminWeek,7);render()" aria-label="Nästa vecka">›</button>
+    </div>
+    <div class="weekstats">
+      <div><b>${ss.length}</b><span>pass</span></div><div><b>${cnt('done')}</b><span>att kontrollera</span></div>
+      <div><b>${cnt('checked')}</b><span>kontrollerade</span></div><div><b>${cnt('reported')}</b><span>rapporterade</span></div>
+    </div>
+    ${errs||warns?`<div class="${errs?'warn':'note'}" style="margin-top:10px">${errs?`<b>${nt(errs,'pass har fel','pass har fel')}</b> som måste rättas innan de kan godkännas.`:''}${errs&&warns?' ':''}${warns?`${nt(warns,'pass har varning','pass har varningar')}.`:''}</div>`
+      : ss.length ? `<div class="okbox" style="margin-top:10px">Inga fel den här veckan.</div>` : ''}
+    <div class="row" style="gap:9px;margin-top:12px">
+      <button class="btn" style="flex:1" ${ready.length?'':'disabled'} onclick="approveSessions(${esc(JSON.stringify(ready))})">GODKÄNN ALLA UTAN FEL${ready.length?` (${ready.length})`:''}</button>
+      <button class="btn ghost" style="flex:1" ${checked.length?'':'disabled'} onclick="reportSessions(${esc(JSON.stringify(checked))})">SAMMANSTÄLL RAPPORT${checked.length?` (${checked.length})`:''}</button>
+    </div>
+    ${cnt('reported')?`<button class="linkbtn" onclick="downloadReported('${days[0]}','${days[6]}')">Ladda ner veckans rapporterade underlag igen</button>`:''}
+    <div class="eyebrow">VECKANS PASS<span class="ln"></span><span style="color:var(--mut2)">${ss.length}</span></div>
+    ${ss.length ? ss.map(b=>{ const c = circleById(b.circleId), fl = flags[b.id], st = sessState(b), n = c ? membersOf(c.id).length : 0;
+      return `<div class="wkcard ${fl.some(f=>f.level==='fel')?'err':fl.length?'warnc':''}">
+        <div class="row" style="gap:10px;align-items:flex-start">
+          <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${DAY2[fromIso(b.date).getDay()]}</span></div>
+          <div class="grow" style="min-width:0"><div class="srow-t">${esc(c ? c.n : b.title)}</div>
+            <div class="srow-m">${b.start}–${b.end} · ${esc(b.who||'ingen ledare')}${b.status==='done' ? ` · ${(b.present||[]).length} av ${n} · ${fmtH(+b.hours||0)} h` : ''}</div></div>
+          ${statePill(b)}
+        </div>
+        ${fl.length ? `<ul class="flags">${fl.map(f=>`<li class="${f.level==='fel'?'f-err':'f-warn'}">${esc(f.text)} ${act(f, b)}</li>`).join('')}</ul>` : ''}
+        <div class="row" style="gap:8px;margin-top:10px">
+          ${st==='done' && !fl.some(f=>f.level==='fel') ? `<button class="btn slim" style="width:auto;padding:8px 14px" onclick="approveSessions(['${b.id}'])">GODKÄNN</button>` : ''}
+          ${isLocked(b) ? `<button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="unlockSession('${b.id}')">LÅS UPP</button>` : ''}
+          <button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="openHistory('${b.id}')">HISTORIK</button>
+        </div></div>`; }).join('')
+      : `<div class="empty">Inga cirkelpass den här veckan.</div>`}
+    ${groups.length?`<div class="eyebrow">GRUPPERNA<span class="ln"></span><span style="color:var(--warn)">${groups.length}</span></div>
+      <ul class="flags card">${groups.map(f=>`<li class="f-warn">${esc(f.text)} <button class="linkbtn inline" onclick="openCircleView('${f.circle}')">Öppna</button></li>`).join('')}</ul>`:''}`;
+}
+
 async function circlePlanCheck(cid, dates, start, studio){
   if(PREVIEW_LOGIN) return circlePlanLocal(cid, dates, start, studio);
   return sbRpc('circle_plan_check', {p_circle:cid, p_dates:dates, p_start:start, p_studio:studio||null});
@@ -1765,6 +1991,7 @@ async function cloudView(){
   S.myProducer = v.producer || '';
   if(v.circleCfg) S.circleCfg = Object.assign({up:0}, v.circleCfg);
   S.leaderHours = v.leaderHours || null;    /* ledarens timbank (i år och nästa år), räknad på servern */
+  S.reports = Object.fromEntries(Object.entries(v.reports || {}).map(([k,st])=>[k, {status:st}]));
   S.contact = v.contact || null;          /* kundens producent — för avbokning med kort varsel */
   save();
 }
@@ -1806,6 +2033,7 @@ async function sync(silent){
                 så att cirklar som inte längre syns försvinner från enheten */
              if((S.cloud.v||0) < 11){ S.circles = []; S.cloud.pulledTs = 0; S.cloud.v = 11; }
              await cloudPull();
+             if(can('manageCircles') || lcircle().some(c=>c.leader===(me()||{}).n)) await refreshReports().catch(()=>{});
              if(can('answerLeads')) S.leads = (await sb('/leads?select=*&status=eq.new&order=created_at.asc')) || []; }
            else await cloudView(); }
     if(d && Date.now() - lastBeatScan > 120000){ await scanBeats(); await scanMedia(); }
@@ -4889,10 +5117,10 @@ function hoursBar(hrs){
    Flikar: Grupper (fyllnad och ledarnas timbank), Deltagare (programmet, anmälningar,
    dubbletter) och Kalender (veckans pass med filter). Admin ser allt; en producent som
    leder ser bara sina egna grupper — servern skickar inte de andra. */
-let circTab = 'groups', calWeek = null, calFilter = {leader:'', circle:'', person:''};
+let circTab = null, calWeek = null, calFilter = {leader:'', circle:'', person:''};
 let signupList = null, signupAt = 0, distPlan = null;
 function circleTabs(){
-  return can('manageCircles') ? [['groups','Grupper'],['people','Deltagare'],['calendar','Kalender']]
+  return can('manageCircles') ? [['week','Vecka'],['groups','Grupper'],['people','Deltagare'],['calendar','Kalender']]
                               : [['groups','Grupper'],['calendar','Kalender']];
 }
 /* anmälningar som väntar (foundation-formuläret) */
@@ -4906,14 +5134,14 @@ function newSignups(){
   return signupList || [];
 }
 function vCircles(){
-  const tabs = circleTabs(); if(!tabs.some(t=>t[0]===circTab)) circTab = 'groups';
+  const tabs = circleTabs(); if(!tabs.some(t=>t[0]===circTab)) circTab = tabs[0][0];
   const ns = can('manageCircles') ? newSignups().length : 0;
   return `
     <div class="h1">Cirklar</div>
     <div class="sub">${can('manageCircles') ? 'Hela programmet.' : 'Cirklarna du leder.'}</div>
     <div class="seg" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${circTab===k}"
       class="${circTab===k?'on':''}" onclick="circTab='${k}';render()">${n}${k==='people'&&ns?` <span class="dot-n">${ns}</span>`:''}</button>`).join('')}</div>
-    ${circTab==='people' ? vCirclePeople() : circTab==='calendar' ? vCircleCal() : vCircleGroups()}`;
+    ${circTab==='week' ? vCircleWeek() : circTab==='people' ? vCirclePeople() : circTab==='calendar' ? vCircleCal() : vCircleGroups()}`;
 }
 
 /* gruppens fyllnad mot gruppstorleken i reglerna */
@@ -5265,12 +5493,10 @@ function circleSessionRow(b, c, leads, i){
       <div class="bk-sub">
         ${b.studio?`<span class="pill" style="background:${SC[b.studio]}26;color:${SC[b.studio]}">${esc(st)}</span>`:
           `<span class="pill" style="background:rgba(255,255,255,.06);color:var(--mut2)">UTAN STUDIO</span>`}
-        ${done?`<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">GENOMFÖRD · ${hh(b.hours)} H</span>
-          <span style="color:var(--mut2)">${(b.present||[]).length} av ${membersOf(c.id).length} deltog</span>`
-          :`<span class="pill" style="background:rgba(168,85,247,.14);color:var(--pur3)">BOKAD</span>`}
+        ${statePill(b)}${done?` <span style="color:var(--mut2)">${hh(b.hours)} h · ${(b.present||[]).length} av ${membersOf(c.id).length} deltog</span>`:''}
       </div>
     </div>
-    ${leads?`<button class="btn ${done?'ghost':''} slim" style="width:auto;padding:8px 12px;flex:none"
+    ${leads && !isLocked(b)?`<button class="btn ${done?'ghost':''} slim" style="width:auto;padding:8px 12px;flex:none"
       onclick="openComplete('${b.id}')">${done?'ÄNDRA':'GENOMFÖRD'}</button>`:''}
   </div>`;
 }
@@ -5420,7 +5646,7 @@ function vLeader(){
         <div class="srow-t">${relDay(b.date)?relDay(b.date).toLowerCase().replace(/^./,x=>x.toUpperCase())+' · ':DAY2[fromIso(b.date).getDay()]+' · '}${b.start}–${b.end}</div>
         <div class="srow-m">${b.status==='request'
           ? `Förslag från <b>${esc((byId(b.reqBy)||{}).n||'en medlem')}</b>`
-          : b.status==='done' ? `${hh(b.hours)} h · ${nt((b.present||[]).length,'närvarande','närvarande')}`
+          : b.status==='done' ? `${hh(b.hours)} h · ${nt((b.present||[]).length,'närvarande','närvarande')}${isLocked(b)?' · '+SST[sessState(b)].toLowerCase():''}`
           : esc(S.studios[b.studio]||'')}</div>
       </div>
       ${actions?`<div class="srow-a">${actions}</div>`:''}
@@ -5437,7 +5663,7 @@ function vLeader(){
     <div class="eyebrow">KOMMANDE<span class="ln"></span></div>
     ${coming.length ? coming.map(b=>row(b, '')).join('') : `<div class="empty">Inga bokade pass. Tryck på <b>Boka pass</b> ovan.</div>`}
     ${done.length?`<div class="eyebrow">GENOMFÖRDA<span class="ln"></span></div>
-      ${done.slice(0,12).map(b=>row(b, sm('Ändra',`openComplete('${b.id}')`,1), 'done')).join('')}`:''}`;
+      ${done.slice(0,12).map(b=>row(b, isLocked(b) ? '' : sm('Ändra',`openComplete('${b.id}')`,1), 'done')).join('')}`:''}`;
 }
 
 /* ---------- BOKA: KUND, DELTAGARE OCH BOKNINGSSIDAN ----------
@@ -6641,6 +6867,7 @@ async function saveCircleBooking(f, rep, go){
   const box = document.getElementById('clash'), btn = document.getElementById('saveBtn');
   if(editId){
     const b = S.bookings.find(x=>x.id===editId); if(!b) return;
+    if(isLocked(b)) return toast(LOCKED_MSG);
     const ok = await circleAct('update_circle_session', {p_booking:editId, p_date:f.date, p_start:f.start, p_studio:f.studio}, ()=>{
       const n = Object.assign({}, b, {date:f.date, start:f.start, end:plusH(f.start, ccfg().sessionHours), studio:f.studio});
       if(!freeAt(n.studio, n.date, n.start, n.end, b.id)) return 'Studion är upptagen den tiden';
@@ -6720,7 +6947,12 @@ function openDetail(id){
       ${b.note?`<div class="kv"><span>NOTERING</span><b style="font-weight:500;color:var(--mut)">${esc(b.note)}</b></div>`:''}
     </div>
     ${fs.length?`<div class="eyebrow">FILER FRÅN PASSET<span class="ln"></span></div>${fs.map(fileRow).join('')}`:''}
-    ${can('editBooking',b)?`<button class="btn" style="margin-top:22px" onclick="openForm('${b.id}')">ÄNDRA</button>
+    ${b.circleId?`<div class="kv"><span>STATUS</span><b>${statePill(b)}</b></div>
+      ${can('manageCircles')?`<div class="row" style="gap:8px;margin-top:12px">
+        <button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="openHistory('${b.id}')">HISTORIK</button>
+        ${isLocked(b)?`<button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="unlockSession('${b.id}')">LÅS UPP</button>`:''}</div>`:''}`:''}
+    ${b.circleId && isLocked(b) ? `<div class="note">Passet är ${SST[sessState(b)].toLowerCase()} och låst. Admin kan låsa upp det med en anledning.</div>`
+    : can('editBooking',b)?`<button class="btn" style="margin-top:22px" onclick="openForm('${b.id}')">ÄNDRA</button>
       <button class="btn danger" style="margin-top:9px" onclick="del('${b.id}')">TA BORT</button>`
       : `<div class="note">Passet är ${esc(b.who)}:s. Bara de och managern kan ändra det.</div>`}`);
 }
@@ -6729,6 +6961,7 @@ async function del(id){
   if(!can('delBooking',b)) return toast('Du kan bara ta bort dina egna pass');
   if(!confirm(b.circleId ? 'Ställa in cirkelpasset?' : 'Ta bort passet?')) return;
   if(b.circleId){
+    if(isLocked(b)) return toast(LOCKED_MSG);
     if(b.status==='done') return toast('Passet är genomfört — ångra det först om det inte blev av');
     if(!await circleAct('cancel_circle_session', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
     closeSheet(); render(); toast('Passet är inställt'); if(PREVIEW_LOGIN) sync(true); return;
@@ -6894,6 +7127,7 @@ function openComplete(bid){
   const b = S.bookings.find(x=>x.id===bid); if(!b) return;
   const c = circleById(b.circleId); if(!c) return;
   if(!can('leadCircle', c)) return toast('Bara cirkelns ledare kan markera den genomförd');
+  if(isLocked(b)) return toast(LOCKED_MSG);
   const mem = membersOf(c.id);
   const pre = b.status==='done' ? (b.present||[]) : mem.map(p=>p.id);
   const guess = b.hours != null ? b.hours : Math.round(dur(b)*10)/10;

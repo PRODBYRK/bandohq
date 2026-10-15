@@ -674,6 +674,52 @@ await C(()=>rpc('reject_signup',{p_signup:su3.id}));
 ok('admin kan avvisa en anmälan', (await one(`select status from circle_signups where id=$1`,[su3.id])).status==='rejected');
 ok('producenter kan inte placera', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('place_signup',{p_signup:su3.id,p_circle:null,p_member:null})))||''));
 
+/* ============ CIRKLARNA · ETAPP 2: KONTROLL, LÅSNING, RAPPORT, HISTORIK ============ */
+head('cirklarna: kontroll, låsning, rapport och historik');
+const past = (id, o) => R('booking', id, Object.assign({id, studio:'A', date:'2026-10-01', start:'10:00', end:'13:00', who:'Lea Ström',
+  title:'Prod 1', circleId:'k1', status:'done', hours:3, present:['pa'], leaderId:'lea', with:[], paid:false}, o));
+await past('cx1', {});
+await past('cx2', {date:'2026-10-02', hours:2});
+await past('cx3', {date:'2026-10-03', status:'', hours:null, present:[]});
+await past('cx4', {date:'2026-10-04', present:['rkay']});
+const hb = await one(`select op, by_id from record_history where rec_id=$1 order by id desc limit 1`, [mv.id]);
+ok('historiken sparar varje ändring av ett cirkelpass, med vem', hb && hb.by_id==='lea', hb);
+const cs = await C(()=>rpc('check_sessions',{p_ids:JSON.stringify(['cx1','cx2','cx3','cx4',mv.id])}));
+const why = Object.fromEntries(cs.skipped.map(x=>[x.id, x.reason]));
+ok('admin godkänner ett korrekt genomfört pass', JSON.stringify(cs.checked)==='["cx1"]', cs);
+ok('fel timmar godkänns inte', /Timmarna stämmer inte \(2 i stället för 3\)/.test(why.cx2), why);
+ok('inte heller ett pass utan registrerad närvaro', /inte registrerad/.test(why.cx3));
+ok('eller med närvarande som inte är med i gruppen', /inte med i gruppen/.test(why.cx4));
+ok('eller ett pass som inte har varit än', /inte varit än/.test(why[mv.id]));
+ok('producenter och ledare kan inte godkänna', /Bara admin/.test(await boom(()=>as(db,U.lea,()=>rpc('check_sessions',{p_ids:'["cx2"]'})))||'')
+   && /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('check_sessions',{p_ids:'["cx2"]'})))||''));
+ok('ett kontrollerat pass är låst för ledaren', /kontrollerat — admin måste låsa upp/.test(await boom(()=>as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx1',p_hours:2,p_present:'[]'})))||''));
+await C(()=>rpc('push_records',{rows:JSON.stringify([{kind:'booking',id:'cx1',data:{id:'cx1',circleId:'k1',hours:9,status:'done'},up:9e12}])}));
+ok('och kan inte ändras via synken — inte ens av admin', +(await one(`select data->>'hours' h from records where id='cx1'`)).h===3);
+ok('ledaren ser status på sina pass, andra ledare inte', (await as(db,U.lea,()=>q(`select booking_id from session_reports`))).length===1
+   && (await as(db,U.lars,()=>q(`select booking_id from session_reports`))).length===0);
+ok('och i sin vy', (await as(db,U.lea,()=>rpc('my_view',{}))).reports.cx1==='checked');
+ok('bara admin ser historiken', (await as(db,U.lea,()=>q(`select 1 from record_history`))).length===0);
+const rp = await C(()=>rpc('report_sessions',{p_ids:JSON.stringify(['cx1','cx2'])}));
+ok('rapporten tar bara kontrollerade pass', rp.length===1 && rp[0].id==='cx1', rp.map(x=>x.id));
+ok('ögonblicksbilden har tid, timmar, grupp, ledare och de närvarande med kontakt', rp[0].circle==='Prod 1' && rp[0].leader==='Lea Ström' && +rp[0].hours===3
+   && rp[0].present.length===1 && rp[0].present[0].name==='Pia Ask' && rp[0].present[0].email==='pa@b.se', rp[0]);
+ok('status: rapporterat', (await one(`select status from session_reports where booking_id='cx1'`)).status==='reported');
+const rsn = await C(()=>rpc('report_snapshots',{p_from:'2026-10-01',p_to:'2026-10-31'}));
+ok('underlaget går att ta ut igen för en period', rsn.length===1 && rsn[0].id==='cx1' && !!rsn[0].reportedAt, rsn.length);
+ok('upplåsning kräver en anledning', /Skriv varför/.test(await boom(()=>C(()=>rpc('unlock_session',{p_booking:'cx1',p_reason:''})))||''));
+await C(()=>rpc('unlock_session',{p_booking:'cx1',p_reason:'Fel deltagare registrerad'}));
+const un = await one(`select op, note from record_history where rec_id='cx1' order by id desc limit 1`);
+ok('upplåst: anledningen sparas i historiken', un.op==='upplåst' && un.note==='Fel deltagare registrerad', un);
+ok('och ledaren kan rätta passet igen', (await as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx1',p_hours:3,p_present:'["pa","pb"]'}))).present.length===2);
+const ops = (await q(`select op from record_history where rec_id='cx1' order by id`)).map(r=>r.op).join(',');
+ok('historiken visar hela kedjan', /skapad.*kontrollerat.*rapporterat.*upplåst.*ändrad/.test(ops), ops);
+await C(()=>rpc('check_sessions',{p_ids:'["cx1"]'})); await C(()=>rpc('report_sessions',{p_ids:'["cx1"]'}));
+await as(db,U.az,()=>rpc('delete_member',{p_id:'pb'}));
+ok('raderas en person ligger den rapporterade ögonblicksbilden kvar (med namnet, för rapporteringen)',
+   !(await one(`select 1 from members where id='pb'`))
+   && (await one(`select snapshot from session_reports where booking_id='cx1'`)).snapshot.present.some(p=>p.name==='Per Bo'));
+
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

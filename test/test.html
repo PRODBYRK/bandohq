@@ -1507,6 +1507,44 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('en anmälan med samma namn kan kopplas till personen som finns', /Finns kanske redan/.test(r.sheet) && /KOPPLA TILL WILLIAM EK/.test(r.sheet) && r.s2==='placed:p1', r.s2);
   ok('ny deltagare med ett namn som finns: frågar först', /Nora Lind/.test(r.asked) && /samma namn/.test(r.asked) && r.noDup===1, r.asked);
 
+  /* ============ CIRKLARNA · ETAPP 2: VECKOVYN ============ */
+  log('\n── cirklarna: veckovyn — kontroll, godkänn, rapport, låsning ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    const wk = monday(addDays(new Date(), -7)), D = n => iso(addDays(wk, n));
+    const P = (id, d, o) => S.bookings.push(bump(Object.assign({id, studio:'A', date:D(d), start:'10:00', end:'13:00', who:'RKAY', title:'Grupp 1',
+      note:'', circleId:'c1', leaderId:'rkay', status:'done', hours:3, present:['p1','p2'], with:[], artistId:'', paid:false, del:false}, o)));
+    P('w0', -7); P('w1', 0); P('w2', 1, {status:'', hours:null, present:[]}); P('w3', 2, {hours:2}); P('w4', 3, {present:['p1']});
+    save();
+    adminWeek = wk; circTab = 'week'; go('circles');
+    const html = document.getElementById('view').innerHTML;
+    const f = id => sessionFlags(S.bookings.find(b=>b.id===id)).map(x=>x.level+':'+x.text);
+    const flags = {w1:f('w1'), w2:f('w2'), w3:f('w3'), w4:f('w4')}, groups = circleFlags(circleById('c1')).map(x=>x.text);
+    const ap = await approveSessions(['w1','w2','w3','w4']);
+    const st = ['w1','w2','w3','w4'].map(id=>sessState(S.bookings.find(b=>b.id===id))).join(',');
+    let t1 = ''; const rt = toast; window.toast = m => { t1 = m; };
+    openComplete('w1'); const lockedComplete = t1; t1 = ''; await del('w1'); const lockedDel = t1; window.toast = rt;
+    let csv = ''; const realSave = saveBlob; saveBlob = async (blob, name) => { csv = name + '\\n' + await blob.text(); };
+    await reportSessions(['w1','w4']); saveBlob = realSave;
+    const st2 = sessState(S.bookings.find(b=>b.id==='w1'));
+    render(); const html2 = document.getElementById('view').innerHTML;
+    window.prompt = () => 'Fel närvaro'; await unlockSession('w1'); const st3 = sessState(S.bookings.find(b=>b.id==='w1'));
+    return {html:html.replace(/\\s+/g,' '), flags, groups, ap, st, lockedComplete, lockedDel, csv, st2, html2:/RAPPORTERAT/.test(html2) && /Ladda ner veckans rapporterade underlag igen/.test(html2), st3};`);
+  ok('veckovyn räknar veckans pass per status', /<b>4<\/b><span>pass<\/span>/.test(r.html) && /<b>3<\/b><span>att kontrollera<\/span>/.test(r.html), r.html.slice(0,600));
+  ok('ett korrekt pass har inga flaggor', r.flags.w1.length===0, r.flags.w1);
+  ok('passet som varit utan närvaro flaggas — med knappen för att registrera', r.flags.w2.some(x=>/fel:Passet har varit men närvaron är inte registrerad/.test(x)) && /Registrera närvaro/.test(r.html), r.flags.w2);
+  ok('fel timmar flaggas', r.flags.w3.some(x=>/fel:Timmarna är 2 — ska vara 3/.test(x)), r.flags.w3);
+  ok('efter startpassen: för få närvarande är en varning', r.flags.w4.some(x=>/varning:1 närvarande — målet är 3/.test(x)), r.flags.w4);
+  ok('grupperna: för få deltagare, och de som missat startpassen', r.groups.some(t=>/2 av 4 deltagare/.test(t)), r.groups);
+  ok('godkänn: bara pass utan fel blir kontrollerade', JSON.stringify(r.ap.checked)==='["w1","w4"]' && r.st==='checked,planned,done,checked', [r.ap, r.st]);
+  ok('ett kontrollerat pass är låst — även för ledaren', /admin måste låsa upp/.test(r.lockedComplete) && /admin måste låsa upp/.test(r.lockedDel), r);
+  ok('rapporten laddas ner som CSV för svensk Excel: en rad per närvarande', /^cirkelrapport-/.test(r.csv)
+     && /Datum;Start;Slut;Timmar;Grupp;Ämne;Lektion;Ledare;Deltagare;Telefon;E-post/.test(r.csv)
+     && (r.csv.match(/Musikproduktion – Grupp 1/g)||[]).length===3 && /William Ek;070-1;w@b.se/.test(r.csv), r.csv);
+  ok('och passen blir rapporterade', r.st2==='reported' && r.html2===true, r.st2);
+  ok('admin låser upp med en anledning', r.st3==='done', r.st3);
+
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');
   w = await boot(seed());

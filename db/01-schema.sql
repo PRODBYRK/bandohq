@@ -244,3 +244,29 @@ create table if not exists bs_secrets (
   value text not null
 );
 
+/* Passens kontroll: Planerat ('') och Genomfört ('done') står på passet. Kontrollerat och
+   Rapporterat står här — bara admin skriver, via check_sessions / report_sessions. Ett pass
+   som står här är låst (03: bs_guard_reported). Snapshot = det som rapporterades. */
+create table if not exists session_reports (
+  booking_id  text primary key,
+  status      text not null check (status in ('checked','reported')),
+  checked_by  text,
+  checked_at  timestamptz,
+  reported_by text,
+  reported_at timestamptz,
+  snapshot    jsonb
+);
+/* Historik över alla ändringar av cirkelpass och cirklar, och om upplåsningar. */
+create table if not exists record_history (
+  id      bigserial primary key,
+  kind    text not null,
+  rec_id  text not null,
+  op      text not null,
+  before  jsonb,
+  after   jsonb,
+  by_id   text,
+  note    text,
+  at      timestamptz not null default now()
+);
+create index if not exists record_history_idx on record_history (kind, rec_id, at);
+

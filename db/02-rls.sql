@@ -18,6 +18,8 @@ alter table login_fails enable row level security;
 alter table circle_membership enable row level security;
 alter table circle_signups enable row level security;
 alter table bs_secrets enable row level security;
+alter table session_reports enable row level security;
+alter table record_history enable row level security;
 
 -- ---------- hjälpare (security definer: går förbi RLS internt) ----------
 create or replace function bs_me() returns members
@@ -201,4 +203,14 @@ drop policy if exists signups_read on circle_signups;
 create policy signups_read on circle_signups for select to authenticated using (bs_is_admin());
 -- (anmälningar kommer bara via circle_signup och hanteras via place_signup / reject_signup;
 --  bs_secrets har ingen policy alls)
+/* Kontrollstatus: admin, och ledaren för passet (ser sina egna pass status). */
+drop policy if exists reports_read on session_reports;
+create or replace function bs_leads_booking(p_booking text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from records where kind = 'booking' and id = p_booking and data->>'leaderId' = bs_my_id())
+$$;
+create policy reports_read on session_reports for select to authenticated
+  using (bs_is_admin() or bs_leads_booking(booking_id));
+drop policy if exists history_read on record_history;
+create policy history_read on record_history for select to authenticated using (bs_is_admin());
 

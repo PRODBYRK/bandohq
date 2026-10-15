@@ -638,6 +638,37 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('admin markerar ett cirkelpass genomfört — via servern', r.st==='done' && r.by==='AZ', r);
   ok('admin ser alla ledares timbank', r.g===true);
 
+  /* ============ CIRKLARNA · ETAPP 2 MOT SERVERN ============ */
+  log('\n── cirklarna mot servern: godkänn, rapport, låst för ledaren ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true);
+    const c = S.circles.find(x=>x.n==='Grupp 1'), d = iso(addDays(new Date(), -3)), sofia = byName('Sofia Marks');
+    S.bookings.push(bump({id:'past1', studio:'A', date:d, start:'10:00', end:'13:00', who:'Sofia Marks', title:'Grupp 1', note:'',
+      circleId:c.id, leaderId:sofia.id, status:'done', hours:3, present:[(c.members||[])[0]], with:[], artistId:'', paid:false, del:false}));
+    S.bookings.push(bump({id:'past2', studio:'B', date:d, start:'14:00', end:'17:00', who:'Sofia Marks', title:'Grupp 1', note:'',
+      circleId:c.id, leaderId:sofia.id, status:'done', hours:2, present:[(c.members||[])[0]], with:[], artistId:'', paid:false, del:false}));
+    save(); await sync(true);
+    const ap = await approveSessions(['past1','past2']);
+    let csv = ''; const realSave = saveBlob; saveBlob = async (blob) => { csv = await blob.text(); };
+    window.confirm = () => true; await reportSessions(['past1']); saveBlob = realSave;
+    const srv = (await sb('/session_reports?select=booking_id,status&order=booking_id'));
+    adminWeek = monday(fromIso(d)); circTab='week'; go('circles'); const html = document.getElementById('view').innerHTML;
+    return {ap, csv, srv, html:/RAPPORTERAT/.test(html) && /Timmarna är 2/.test(html)};`);
+  ok('admin godkänner via servern — passet med fel timmar stoppas där', JSON.stringify(r.ap.checked)==='["past1"]' && /Timmarna stämmer inte/.test(r.ap.skipped[0].reason), r.ap);
+  ok('rapporten kommer från serverns ögonblicksbild', /Grupp 1/.test(r.csv) && /Sofia Marks/.test(r.csv) && /William Ek/.test(r.csv), r.csv);
+  ok('statusen ligger på servern', JSON.stringify(r.srv)==='[{"booking_id":"past1","status":"reported"}]', r.srv);
+  ok('veckovyn visar status och fel', r.html===true);
+  w = await boot();
+  r = await ev(w,`${LOGIN('sofia@b.se','sofia1234')} ${wait(300)}
+    const b = S.bookings.find(x=>x.id==='past1'); let t = ''; const rt = toast; window.toast = m => { t = m; };
+    openComplete('past1'); window.toast = rt;
+    let direct = ''; try{ await sbRpc('complete_session', {p_booking:'past1', p_hours:3, p_present:[]}); }catch(e){ direct = e.message; }
+    return {st: b && sessState(b), t, direct};`);
+  ok('ledaren ser att passet är rapporterat och låst', r.st==='reported' && /admin måste låsa upp/.test(r.t), r);
+  ok('och servern nekar ändringar', /kontrollerat — admin måste låsa upp/.test(r.direct), r.direct);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

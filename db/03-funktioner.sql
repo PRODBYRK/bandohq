@@ -479,6 +479,139 @@ do $$ begin
 end $$;
 
 -- =====================================================================
+--  CIRKLARNA — kontroll, låsning, historik och rapportering
+--  Planerat ('') och Genomfört ('done') står på passet; Kontrollerat och Rapporterat i
+--  session_reports, som bara admin skriver i (via funktionerna nedan).
+-- =====================================================================
+/* Ett kontrollerat eller rapporterat pass är låst. Ingen ändring går igenom — inte ens via
+   synken (den hoppas tyst över) — förrän admin låser upp det med unlock_session. */
+create or replace function bs_guard_reported() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if current_setting('bs.unlock', true) = '1' then return new; end if;
+  if new.data is not distinct from old.data and new.del = old.del then return new; end if;
+  if exists (select 1 from session_reports where booking_id = old.id) then return null; end if;
+  return new;
+end $$;
+drop trigger if exists records_guard_reported on records;
+create trigger records_guard_reported before update on records
+  for each row when (old.kind = 'booking') execute function bs_guard_reported();
+
+/* Historik: varje ändring av ett cirkelpass eller en cirkel — före, efter, vem och när. */
+create or replace function bs_history() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare circ boolean;
+begin
+  circ := new.kind = 'circle' or (new.kind = 'booking' and (coalesce(new.data->>'circleId','') <> ''
+          or (tg_op = 'UPDATE' and coalesce(old.data->>'circleId','') <> '')));
+  if not circ then return new; end if;
+  if tg_op = 'UPDATE' and new.data is not distinct from old.data and new.del = old.del then return new; end if;
+  insert into record_history(kind, rec_id, op, before, after, by_id)
+  values (new.kind, new.id,
+          case when tg_op = 'INSERT' then 'skapad' when new.del and not old.del then 'borttagen' else 'ändrad' end,
+          case when tg_op = 'UPDATE' then old.data end, new.data, bs_my_id());
+  return new;
+end $$;
+drop trigger if exists records_history on records;
+create trigger records_history after insert or update on records for each row execute function bs_history();
+
+/* Ett pass är låst om det står i session_reports. */
+create or replace function bs_locked(p_booking text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from session_reports where booking_id = p_booking)
+$$;
+
+/* Admin godkänner genomförda pass. Bara pass utan fel går igenom — de andra kommer
+   tillbaka med anledningen. (Appens veckovy visar samma regler, och fler varningar.) */
+create or replace function check_sessions(p_ids jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare bid text; d jsonb; c jsonb; why text; k text; good jsonb := '[]'; bad jsonb := '[]';
+        want numeric := (bs_ccfg('sessionHours'))::text::numeric;
+begin
+  if not bs_is_admin() then raise exception 'Bara admin kontrollerar pass'; end if;
+  for bid in select jsonb_array_elements_text(coalesce(p_ids,'[]'::jsonb)) loop
+    select data into d from records where kind = 'booking' and id = bid and not del;
+    why := null;
+    if d is null or coalesce(d->>'circleId','') = '' then why := 'Passet finns inte';
+    elsif bs_locked(bid) then why := 'Redan kontrollerat';
+    elsif coalesce(d->>'status','') <> 'done' then why := 'Närvaron är inte registrerad';
+    elsif bs_starts(d) > now() then why := 'Passet har inte varit än';
+    elsif coalesce((d->>'hours')::numeric, 0) <> want then
+      why := 'Timmarna stämmer inte (' || bs_fmt_h(coalesce((d->>'hours')::numeric, 0)) || ' i stället för ' || bs_fmt_h(want) || ')';
+    elsif jsonb_array_length(coalesce(d->'present','[]'::jsonb)) = 0 then why := 'Ingen närvarande registrerad';
+    else
+      select data into c from records where kind = 'circle' and id = d->>'circleId';
+      if exists (select 1 from jsonb_array_elements_text(d->'present') p(x)
+                  where not (coalesce(c->'members','[]'::jsonb) ? p.x)
+                    and not exists (select 1 from circle_membership m where m.circle_id = d->>'circleId' and m.member_id = p.x)) then
+        why := 'Någon av de närvarande är inte med i gruppen';
+      else
+        k := bs_circle_conflict(d, bid);
+        if k is not null then why := 'Krock: ' || k; end if;
+      end if;
+    end if;
+    if why is null then
+      insert into session_reports(booking_id, status, checked_by, checked_at) values (bid, 'checked', bs_my_id(), now());
+      insert into record_history(kind, rec_id, op, by_id) values ('booking', bid, 'kontrollerat', bs_my_id());
+      good := good || to_jsonb(bid);
+    else
+      bad := bad || jsonb_build_object('id', bid, 'reason', why);
+    end if;
+  end loop;
+  return jsonb_build_object('checked', good, 'skipped', bad);
+end $$;
+
+/* Ögonblicksbilden som rapporteras: tid, timmar, grupp, ämne, lektion, ledare och de
+   närvarande med kontaktuppgifter (personnummer finns inte här — de läggs till i arket). */
+create or replace function bs_snapshot(p_booking text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('id', r.id, 'date', r.data->>'date', 'start', r.data->>'start', 'end', r.data->>'end',
+    'hours', (r.data->>'hours')::numeric, 'studio', r.data->>'studio',
+    'circle', c.data->>'n', 'subject', c.data->>'subject', 'lesson', r.data->>'lessonTitle',
+    'leader', (select name from members where id = r.data->>'leaderId'),
+    'present', coalesce((select jsonb_agg(jsonb_build_object('id', m.id, 'name', m.name, 'email', m.email, 'phone', m.phone) order by m.name)
+                           from members m where r.data->'present' ? m.id), '[]'::jsonb))
+    from records r left join records c on c.kind = 'circle' and c.id = r.data->>'circleId'
+   where r.kind = 'booking' and r.id = p_booking
+$$;
+
+/* Rapportera kontrollerade pass: ögonblicksbilden sparas och skickas tillbaka (till exporten). */
+create or replace function report_sessions(p_ids jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare bid text; snap jsonb; out jsonb := '[]';
+begin
+  if not bs_is_admin() then raise exception 'Bara admin rapporterar'; end if;
+  for bid in select jsonb_array_elements_text(coalesce(p_ids,'[]'::jsonb)) loop
+    if not exists (select 1 from session_reports where booking_id = bid and status = 'checked') then continue; end if;
+    snap := bs_snapshot(bid);
+    update session_reports set status = 'reported', reported_by = bs_my_id(), reported_at = now(), snapshot = snap where booking_id = bid;
+    insert into record_history(kind, rec_id, op, by_id) values ('booking', bid, 'rapporterat', bs_my_id());
+    out := out || snap;
+  end loop;
+  return out;
+end $$;
+
+/* Allt som rapporterats under en period — för att ta ut underlaget igen. */
+create or replace function report_snapshots(p_from date, p_to date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not bs_is_admin() then '[]'::jsonb else coalesce(jsonb_agg(snapshot || jsonb_build_object('reportedAt', reported_at)
+           order by snapshot->>'date', snapshot->>'start'), '[]'::jsonb) end
+    from session_reports
+   where status = 'reported' and (snapshot->>'date')::date between p_from and p_to
+$$;
+
+/* Lås upp ett kontrollerat eller rapporterat pass — med en anledning som sparas i historiken. */
+create or replace function unlock_session(p_booking text, p_reason text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_is_admin() then raise exception 'Bara admin låser upp pass'; end if;
+  if length(trim(coalesce(p_reason,''))) < 3 then raise exception 'Skriv varför passet låses upp'; end if;
+  delete from session_reports where booking_id = p_booking;
+  if not found then raise exception 'Passet är inte låst'; end if;
+  insert into record_history(kind, rec_id, op, by_id, note) values ('booking', p_booking, 'upplåst', bs_my_id(), left(trim(p_reason), 300));
+end $$;
+
+-- =====================================================================
 --  LEDARE, DELTAGARE, KUND — det enda de når
 -- =====================================================================
 /* Admin, eller cirkelns ledare. (Producenter leder bara de cirklar de är ledare för.) */
@@ -540,6 +673,10 @@ begin
          group by p.pid) x), '{}'));
 
   if me.role = 'leader' then
+    /* kontrollstatus på ledarens pass (Kontrollerat / Rapporterat) */
+    res := res || jsonb_build_object('reports', coalesce((select jsonb_object_agg(sr.booking_id, sr.status)
+      from session_reports sr join records r on r.kind = 'booking' and r.id = sr.booking_id
+     where r.data->>'circleId' = any(cids)), '{}'::jsonb));
     /* timbanken: i år och nästa år, och reglerna appen visar dem mot */
     res := res || jsonb_build_object('circleCfg', coalesce((select data from records where kind = 'setting' and id = 'circles' and not del), '{}'::jsonb),
       'leaderHours', (select jsonb_object_agg(y::text, jsonb_build_object('done', h.done, 'planned', h.planned))
@@ -634,6 +771,7 @@ begin
   select data into d from records where kind='booking' and id = p_booking and not del;
   if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
   if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan markera genomförd'; end if;
+  if bs_locked(p_booking) then raise exception 'Passet är kontrollerat — admin måste låsa upp det först'; end if;
   if d->>'status' in ('request','declined') then raise exception 'Passet är inte bokat'; end if;
   if p_hours is null then   /* ångra */
     return bs_put_booking(d || '{"status":"","hours":null,"present":[],"completedBy":""}');
@@ -656,6 +794,7 @@ begin
   select data into d from records where kind = 'booking' and id = p_booking and not del;
   if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
   if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan flytta passet'; end if;
+  if bs_locked(p_booking) then raise exception 'Passet är kontrollerat — admin måste låsa upp det först'; end if;
   if d->>'status' = 'done' then raise exception 'Passet är redan genomfört — ångra det först'; end if;
   if coalesce(d->>'status','') in ('request','declined') then raise exception 'Passet är inte bokat'; end if;
   if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
@@ -676,6 +815,7 @@ begin
   select data into d from records where kind = 'booking' and id = p_booking and not del;
   if d is null or coalesce(d->>'circleId','') = '' then raise exception 'Passet finns inte'; end if;
   if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan ställa in passet'; end if;
+  if bs_locked(p_booking) then raise exception 'Passet är kontrollerat — admin måste låsa upp det först'; end if;
   if d->>'status' = 'done' then raise exception 'Passet är genomfört — ångra det först om det inte blev av'; end if;
   return bs_put_booking(d || '{"del":true}');
 end $$;
@@ -959,6 +1099,7 @@ create or replace function bs_erase_member(m members) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare t bigint := now_ms(); n int := 0; gone text := 'Raderad person';
 begin
+  perform set_config('bs.unlock', '1', true);     -- även låsta pass: namnet ska bort
   /* pass: bokare och medproducent */
   update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t
    where kind = 'booking' and data->>'who' = m.name;
@@ -1029,6 +1170,15 @@ grant execute on function username_free(text) to anon, authenticated;
 revoke all on function bs_login_lookup(text) from public, anon, authenticated;
 revoke all on function bs_erase_member(members) from public, anon, authenticated;
 revoke all on function bs_ccfg(text) from public, anon, authenticated;
+revoke all on function bs_guard_reported() from public, anon, authenticated;
+revoke all on function bs_history() from public, anon, authenticated;
+revoke all on function bs_locked(text) from public, anon, authenticated;
+revoke all on function bs_snapshot(text) from public, anon, authenticated;
+revoke all on function check_sessions(jsonb) from public, anon;
+revoke all on function report_sessions(jsonb) from public, anon;
+revoke all on function report_snapshots(date, date) from public, anon;
+revoke all on function unlock_session(text, text) from public, anon;
+grant execute on function check_sessions(jsonb), report_sessions(jsonb), report_snapshots(date, date), unlock_session(text, text) to authenticated;
 revoke all on function bs_fmt_h(numeric) from public, anon, authenticated;
 revoke all on function bs_len_h(jsonb) from public, anon, authenticated;
 revoke all on function bs_leader_hours(text, int, text) from public, anon, authenticated;
