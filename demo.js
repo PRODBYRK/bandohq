@@ -36,9 +36,9 @@ window.bandohqDemo = function(o){
    {id:'cu2',subject:'Artistutveckling',title:'Aktuell läroplan – Artistutveckling',
     body:'Eget uttryck\nLåtskrivning\nScennärvaro\nSläppa musik',from:'2026-09-01',del:false,up:1}];
   const circles=[
-   {id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',curriculumId:'cu1',courseId:'kmp',
+   {id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',curriculumId:'cu1',courseId:'kmp',courseSince:D(-15),
     members:['p1','p2','p3'],active:true,del:false,up:1},
-   {id:'c2',n:'Artistutveckling – Grupp 2',subject:'Artistutveckling',leader:'Sofia Marks',curriculumId:'cu2',courseId:'kau',
+   {id:'c2',n:'Artistutveckling – Grupp 2',subject:'Artistutveckling',leader:'Sofia Marks',curriculumId:'cu2',courseId:'kau',courseSince:D(-15),
     members:['p1','p4'],active:true,del:false,up:1}];
   /* utbildningssystemet: två kurser (förkortade — hela startinnehållet ligger i kurser.js) */
   const LS = (p, t) => t.map((x,i)=>({id:p+i, title:x[0], content:x[1], goals:x[2], exercises:x[3]}));
@@ -81,7 +81,7 @@ window.bandohqDemo = function(o){
     if(w%2) B('g'+(n++),'B',D(-7*w+1),'17:00','20:00','Sofia Marks','Artistutveckling – Grupp 2','c2','done',3,['p1','p4']);
   }
   /* de första passen har gått igenom kursens första lektioner */
-  const doneIn = cid => bookings.filter(b=>b.circleId===cid && b.status==='done').sort((a,b)=>a.date<b.date?-1:1);
+  const doneIn = cid => bookings.filter(b=>b.circleId===cid && b.status==='done' && b.date>=D(-15)).sort((a,b)=>a.date<b.date?-1:1);
   doneIn('c1').slice(0,2).forEach((b,i)=>Object.assign(b, {lessonId:'mp1'+i, lessonTitle:courses[0].levels[0].lessons[i].title}));
   doneIn('c2').slice(0,1).forEach(b=>Object.assign(b, {lessonId:'au10', lessonTitle:courses[1].levels[0].lessons[0].title}));
   B('u1','A',D(3),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1');

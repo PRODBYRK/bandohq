@@ -586,6 +586,15 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .lessonbtn{background:none;border:0;color:var(--txt);font:inherit;text-align:left;padding:6px 0;cursor:pointer}
 .iconbtn{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--mut);font:inherit;cursor:pointer}
 .iconbtn:disabled{opacity:.35;cursor:default}
+.seg.many{overflow-x:auto;scrollbar-width:none}
+.seg.many::-webkit-scrollbar{display:none}
+.seg.many button{flex:none;padding:9px 11px}
+.weekstats.ov b{font-size:22px}
+.ovweeks{display:flex;flex-direction:column;gap:8px}
+.ovweek{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:10px;background:none;border:0;color:var(--txt);font:inherit;text-align:left;padding:0;cursor:pointer}
+.ovbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.05)}
+.ovbar i,.tl-key i.s-reported,.tl-key i.s-checked,.tl-key i.s-done,.tl-key i.s-planned{display:block}
+.s-reported{background:#34d399}.s-checked{background:#2ba57a}.s-done{background:#38bdf8}.s-planned{background:rgba(168,85,247,.55)}.s-none{background:transparent}
 .weekstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .weekstats div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
 .weekstats b{display:block;font-family:var(--disp);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -1055,7 +1064,9 @@ const SESSION_RULES = [
       const over = (b.present||[]).filter(id=>hoursFor(id) > MAX_HOURS);
       return over.length ? `${over.map(id=>(byId(id)||{}).n||'Okänd').join(', ')} har gått över ${MAX_HOURS} timmar` : ''; }},
   {id:'noleader', level:'varning', fix:null, test:b=> !leaderIdOf(b) ? 'Passet saknar ledare' : ''},
-  {id:'nolesson', level:'varning', fix:'complete', test:b=> b.status==='done' && !b.lessonId && courseOf(circleById(b.circleId)) ? 'Ingen lektion registrerad' : ''},
+  /* bara pass efter att gruppen fick sin kurs (courseSince) — äldre pass har ingen lektion att välja */
+  {id:'nolesson', level:'varning', fix:'complete', test:b=>{ const c = circleById(b.circleId);
+      return b.status==='done' && !b.lessonId && courseOf(c) && c.courseSince && b.date >= c.courseSince ? 'Ingen lektion registrerad' : ''; }},
   {id:'few', level:'varning', fix:'complete', test:(b,x)=>{ if(b.status!=='done' || sessionIndex(b) <= x.cf.startSessions) return '';
       const n = (b.present||[]).length; return n < x.cf.attendTarget ? `${n} närvarande — målet är ${x.cf.attendTarget}` : ''; }},
 ];
@@ -1305,7 +1316,7 @@ async function loadStarterCourses(){
     });
     /* grupper utan kurs får kursen i sitt ämne — de börjar på nivå 1 */
     lcircle().filter(c=>!c.courseId).forEach(c=>{ const k = lcourses().find(x=>String(x.subject).toLowerCase()===String(c.subject||'').toLowerCase());
-      if(k){ c.courseId = k.id; touch(c); } });
+      if(k){ c.courseId = k.id; c.courseSince = iso(new Date()); touch(c); } });
     save(); render(); sync(true); toast(`${nt(list.length,'kurs','kurser')} inlagda som utkast`);
   };
   if(window.bandohqKurser) return go();
@@ -1397,6 +1408,71 @@ function delCourse(id){
   const k = S.courses.find(x=>x.id===id); if(!k) return;
   k.del = true; touch(k); used.forEach(c=>{ c.courseId = ''; touch(c); });
   save(); closeSheet(); render(); toast('Kursen borttagen'); sync(true);
+}
+
+/* ---------- Cirklar → Översikt: kontrollpanelen ----------
+   Allt räknas fram ur passen och reglerna. Admin ser hela programmet, en ledare sina grupper. */
+let ovAll = false;
+function circleOverviewData(){
+  const cs = myCircles(), ids = new Set(cs.map(c=>c.id)), now = new Date(), yr = now.getFullYear();
+  const ss = live().filter(b=>b.circleId && ids.has(b.circleId) && b.status!=='declined');
+  const people = new Set(cs.flatMap(c=>c.members||[]));
+  const leaders = [...new Set(cs.map(c=>c.leader).filter(Boolean))].map(byName).filter(Boolean).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
+  /* att åtgärda: passen de senaste åtta veckorna och kommande, plus grupperna */
+  const from = addDays(now, -56);
+  const flags = ss.filter(b=>b.status!=='request' && startAt(b) >= from).flatMap(b=>sessionFlags(b).map(f=>Object.assign(f, {b})))
+    .concat(cs.flatMap(c=>circleFlags(c)))
+    .sort((a,b)=>(a.level==='fel'?0:1)-(b.level==='fel'?0:1) || (a.b&&b.b ? startAt(a.b)-startAt(b.b) : 0));
+  const upcoming = ss.filter(b=>(b.status===''||b.status==='request') && startAt(b) > now && startAt(b) < addDays(now, 14)).sort((a,b)=>startAt(a)-startAt(b));
+  const weeks = [...Array(6)].map((_,i)=>{ const w0 = monday(addDays(now, -7*(5-i))), w1 = addDays(w0, 7);
+    const wk = ss.filter(b=>b.status!=='request' && startAt(b) >= w0 && startAt(b) < w1);
+    const done = wk.filter(b=>b.status==='done'), pres = done.reduce((a,b)=>a+(b.present||[]).length, 0);
+    const seats = done.reduce((a,b)=>{ const c = circleById(b.circleId); return a + (c ? (c.members||[]).length : 0); }, 0);
+    return {w0, n:wk.length, planned:wk.filter(b=>sessState(b)==='planned').length, done:wk.filter(b=>sessState(b)==='done').length,
+      checked:wk.filter(b=>sessState(b)==='checked').length, reported:wk.filter(b=>sessState(b)==='reported').length,
+      att: seats ? pres/seats : null}; });
+  const hoursYear = ss.filter(b=>b.status==='done' && String(b.date).slice(0,4)===String(yr)).reduce((a,b)=>a+(+b.hours||0), 0);
+  return {cs, ss, people, leaders, flags, upcoming, weeks, hoursYear, yr};
+}
+function vCircleOverview(){
+  const d = circleOverviewData(), mgr = can('manageCircles'), errs = d.flags.filter(f=>f.level==='fel').length;
+  const tile = (v, l) => `<div><b>${v}</b><span>${l}</span></div>`;
+  const goWeek = b => `adminWeek=monday(fromIso('${b.date}'));circTab='week';render()`;
+  const flagRow = f => `<li class="${f.level==='fel'?'f-err':'f-warn'}">${f.b ? `<b>${esc(fromIso(f.b.date).getDate()+' '+MON[fromIso(f.b.date).getMonth()])}</b> ${esc((circleById(f.b.circleId)||{}).n||f.b.title)}: ` : ''}${esc(f.text)}
+    ${f.b && mgr ? `<button class="linkbtn inline" onclick="${goWeek(f.b)}">Veckan</button>` : f.b && f.fix==='complete' ? `<button class="linkbtn inline" onclick="openComplete('${f.b.id}')">Registrera</button>` : f.circle ? `<button class="linkbtn inline" onclick="openCircleView('${f.circle}')">Öppna</button>` : ''}</li>`;
+  return `
+    <div class="weekstats ov">
+      ${tile(d.cs.length, d.cs.length===1?'grupp':'grupper')}${tile(d.people.size, 'deltagare')}${tile(d.leaders.length, d.leaders.length===1?'ledare':'ledare')}${tile(fmtH(d.hoursYear), 'timmar '+d.yr)}
+    </div>
+    <div class="eyebrow">ATT ÅTGÄRDA<span class="ln"></span><span style="color:${errs?'var(--bad2)':d.flags.length?'var(--warn)':'var(--mut2)'}">${d.flags.length}</span></div>
+    ${d.flags.length ? `<ul class="flags card">${(ovAll ? d.flags : d.flags.slice(0, 8)).map(flagRow).join('')}</ul>
+      ${d.flags.length > 8 ? `<button class="linkbtn" onclick="ovAll=!ovAll;render()">${ovAll?'Visa färre':'Visa alla '+d.flags.length}</button>` : ''}`
+      : `<div class="okbox">Inget att åtgärda — alla pass och grupper stämmer.</div>`}
+    <div class="eyebrow">LEDARE OCH TIMBANK<span class="ln"></span></div>
+    ${d.leaders.length ? `<div class="card">${d.leaders.map(a=>`<div class="bankhead">${pav(a, 28)}<b>${esc(a.n)}</b>
+        <span class="tiny muted" style="margin-left:auto;text-align:right">${d.cs.filter(c=>c.leader===a.n).map(c=>esc(c.n)).join(', ')}</span></div>${leaderBank(a.id)}`).join('')}</div>`
+      : `<div class="empty">Inga ledare kopplade än.</div>`}
+    <div class="eyebrow">KOMMANDE 14 DAGAR<span class="ln"></span><span style="color:var(--mut2)">${d.upcoming.length}</span></div>
+    ${d.upcoming.length ? d.upcoming.slice(0, 10).map(b=>{ const c = circleById(b.circleId);
+      return `<button class="srow" style="width:100%;text-align:left;cursor:pointer;color:var(--txt);font:inherit" onclick="openDetail('${b.id}')">
+        <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
+        <div class="grow" style="min-width:0"><div class="srow-t">${esc(c ? c.n : b.title)}</div>
+          <div class="srow-m">${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end} · ${esc(b.who||'ingen ledare')}${b.status==='request'?' · förslag':''}</div></div></button>`; }).join('')
+      + (d.upcoming.length > 10 ? `<button class="linkbtn" onclick="circTab='calendar';render()">Alla i kalendern</button>` : '')
+      : `<div class="empty">Inga pass de närmaste två veckorna.</div>`}
+    <div class="eyebrow">NÄRVARO OCH RAPPORTERING<span class="ln"></span></div>
+    <div class="card ovweeks">${d.weeks.map(w=>`<button class="ovweek" ${mgr?`onclick="adminWeek=new Date(${+w.w0});circTab='week';render()"`:''}>
+      <span class="tiny muted">v. ${weekNo(w.w0)}</span>
+      <div class="ovbar" title="${w.n} pass">${w.n ? ['reported','checked','done','planned'].map(k=>w[k]?`<i class="s-${k}" style="flex:${w[k]}"></i>`:'').join('') : '<i class="s-none" style="flex:1"></i>'}</div>
+      <span class="tiny">${w.n ? `${w.n} pass${w.att!=null?` · ${Math.round(w.att*100)} % närvaro`:''}` : '—'}</span></button>`).join('')}
+      <div class="tl-key" style="margin-top:10px"><span><i class="s-reported"></i>Rapporterat</span><span><i class="s-checked"></i>Kontrollerat</span><span><i class="s-done"></i>Genomfört</span><span><i class="s-planned"></i>Planerat</span></div></div>
+    <div class="eyebrow">UTBILDNINGSNIVÅ<span class="ln"></span></div>
+    ${d.cs.length ? d.cs.map(c=>{ const p = progressOf(c), f = fillOf(c);
+      return `<button class="member" onclick="openCircleView('${c.id}')">
+        <div class="grow" style="min-width:0"><div class="mname" style="letter-spacing:.02em">${esc(c.n)}</div>
+          <div class="mrole">${p ? (p.finished ? `${esc(p.course.subject)} · kursen klar` : `Nivå ${p.level} · ${esc(p.next.title)}`) : 'ingen kurs'} · ${f.n}/${f.g} deltagare</div>
+          ${p?`<div class="bar thin" style="margin-top:6px"><i style="width:${p.all.length ? p.count/p.all.length*100 : 0}%"></i></div>`:''}</div>
+        ${fillPill(c)}</button>`; }).join('') : `<div class="empty">Inga grupper.</div>`}`;
 }
 
 async function circlePlanCheck(cid, dates, start, studio){
@@ -5301,8 +5377,8 @@ function hoursBar(hrs){
 let circTab = null, calWeek = null, calFilter = {leader:'', circle:'', person:''};
 let signupList = null, signupAt = 0, distPlan = null;
 function circleTabs(){
-  return can('manageCircles') ? [['week','Vecka'],['groups','Grupper'],['people','Deltagare'],['calendar','Kalender'],['edu','Utbildning']]
-                              : [['groups','Grupper'],['calendar','Kalender'],['edu','Utbildning']];
+  return can('manageCircles') ? [['overview','Översikt'],['week','Vecka'],['groups','Grupper'],['people','Deltagare'],['calendar','Kalender'],['edu','Kurser']]
+                              : [['overview','Översikt'],['groups','Grupper'],['calendar','Kalender'],['edu','Kurser']];
 }
 /* anmälningar som väntar (foundation-formuläret) */
 function newSignups(){
@@ -5320,9 +5396,9 @@ function vCircles(){
   return `
     <div class="h1">Cirklar</div>
     <div class="sub">${can('manageCircles') ? 'Hela programmet.' : 'Cirklarna du leder.'}</div>
-    <div class="seg" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${circTab===k}"
+    <div class="seg ${tabs.length>4?'many':''}" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${circTab===k}"
       class="${circTab===k?'on':''}" onclick="circTab='${k}';render()">${n}${k==='people'&&ns?` <span class="dot-n">${ns}</span>`:''}</button>`).join('')}</div>
-    ${circTab==='week' ? vCircleWeek() : circTab==='people' ? vCirclePeople() : circTab==='calendar' ? vCircleCal() : circTab==='edu' ? vCircleEdu() : vCircleGroups()}`;
+    ${circTab==='overview' ? vCircleOverview() : circTab==='week' ? vCircleWeek() : circTab==='people' ? vCirclePeople() : circTab==='calendar' ? vCircleCal() : circTab==='edu' ? vCircleEdu() : vCircleGroups()}`;
 }
 
 /* gruppens fyllnad mot gruppstorleken i reglerna */
@@ -5836,6 +5912,10 @@ function vLeader(){
   const sm = (label, js, ghost) => `<button class="btn slim ${ghost?'ghost':''}" style="width:auto;flex:none;padding:9px 13px" onclick="${js}">${label}</button>`;
 
   return head + `
+    ${(()=>{ const fl = ss.filter(b=>b.status!=='request' && startAt(b) >= addDays(now,-56)).flatMap(b=>sessionFlags(b).filter(f=>f.fix==='complete').map(f=>Object.assign(f,{b})));
+      return fl.length ? `<div class="eyebrow" style="margin-top:0">ATT ÅTGÄRDA<span class="ln"></span><span style="color:var(--warn)">${fl.length}</span></div>
+        <ul class="flags card" style="margin-bottom:12px">${fl.map(f=>`<li class="${f.level==='fel'?'f-err':'f-warn'}"><b>${fromIso(f.b.date).getDate()} ${MON[fromIso(f.b.date).getMonth()]}</b>: ${esc(f.text)}
+          ${isLocked(f.b)?'':`<button class="linkbtn inline" onclick="openComplete('${f.b.id}')">Registrera</button>`}</li>`).join('')}</ul>` : ''; })()}
     <div class="card" style="margin-bottom:12px"><div class="studio-name">DIN TIMBANK</div>${leaderBank(m.id)}</div>
     ${courseOf(c) ? `<div style="margin-bottom:12px">${courseCard(c)}</div>` : ''}
     <button class="btn" onclick="openForm(null,null,'${c.id}')">+ BOKA PASS</button>
@@ -7203,6 +7283,9 @@ function saveCircle(id){
     courseId:document.getElementById('ciK').value, courseFrom:document.getElementById('ciF').value};
   /* en ny grupp utan vald kurs får kursen i sitt ämne */
   if(!id && !patch.courseId){ const k = lcourses().find(x=>String(x.subject).toLowerCase()===String(patch.subject).toLowerCase()); if(k) patch.courseId = k.id; }
+  /* från vilken dag kursen gäller — pass före det behöver ingen lektion */
+  const old = id ? circleById(id) : null;
+  if(patch.courseId && (!old || old.courseId !== patch.courseId)) patch.courseSince = iso(new Date());
   if(id){ const c = circleById(id); Object.assign(c, patch); touch(c); }
   else S.circles.push(Object.assign({id:uid(), members:[], active:true, del:false, up:Date.now()}, patch));
   save(); closeSheet(); render(); toast(id?'Cirkeln uppdaterad':'Cirkeln skapad'); sync(true);

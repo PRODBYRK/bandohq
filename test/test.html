@@ -1582,6 +1582,33 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('admin lägger till och flyttar lektioner', r.lv1.length===r.before/3+1 && r.lv1[4]==='Extra lektion', r.lv1);
   ok('en grupp kan börja längre fram i kursen', r.fromOpts>10 && r.lvl2===2 && r.next2==='Inspelning av sång', r);
   ok('Utbildning visar gruppernas läge', /GRUPPERNAS LÄGE/.test(r.edu) && /nivå 2/.test(r.edu), r.edu.slice(0,200));
+  r = await ev(w,`const c = circleById('c1'); c.courseSince = iso(addDays(new Date(),-1));
+    const mk = (id,d)=>{ const b = bump({id, studio:'B', date:iso(addDays(new Date(),d)), start:'15:00', end:'18:00', who:'RKAY', title:c.n, note:'',
+      circleId:'c1', leaderId:'rkay', status:'done', hours:3, present:['p1'], with:[], artistId:'', paid:false, del:false}); S.bookings.push(b); return b; };
+    const nw = mk('nl1', 0), od = mk('nl2', -30);
+    return {nw:sessionFlags(nw).map(f=>f.rule), od:sessionFlags(od).map(f=>f.rule)};`);
+  ok('pass utan lektion efter att kursen kopplats ger en varning — äldre pass inte', r.nw.includes('nolesson') && !r.od.includes('nolesson'), r);
+
+  /* ============ CIRKLARNA · ETAPP 4: ÖVERSIKTEN ============ */
+  log('\n── cirklarna: översikten ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wk = monday(addDays(new Date(), -7)), D = n => iso(addDays(wk, n));
+    const P = (id, d, o) => S.bookings.push(bump(Object.assign({id, studio:'A', date:D(d), start:'10:00', end:'13:00', who:'RKAY', title:'Grupp 1',
+      note:'', circleId:'c1', leaderId:'rkay', status:'done', hours:3, present:['p1','p2'], with:[], artistId:'', paid:false, del:false}, o)));
+    P('o1', 0); P('o2', 1, {status:'', hours:null, present:[]}); P('o3', 15, {status:'', hours:null, present:[]});
+    S.reports = {o1:{status:'checked'}}; save();
+    circTab = null; go('circles');
+    const html = document.getElementById('view').innerHTML, first = circTab;
+    const d = circleOverviewData();
+    S.session.member = 'RKAY'; render(); const lead = document.getElementById('view').innerHTML; S.session.member = 'AZ';
+    return {first, html, flags:d.flags.map(f=>f.text), up:d.upcoming.map(b=>b.id), wk:d.weeks[4], tabs:circleTabs().map(t=>t[0]).join(',')};`);
+  ok('Cirklar öppnar på översikten', r.first==='overview' && r.tabs==='overview,week,groups,people,calendar,edu', r);
+  ok('nyckeltal: grupper, deltagare, ledare och timmar i år', /<b>1<\/b><span>grupp<\/span>/.test(r.html) && /<b>2<\/b><span>deltagare<\/span>/.test(r.html) && /<b>1<\/b><span>ledare<\/span>/.test(r.html), r.html.slice(0,400));
+  ok('att åtgärda: fel först, sedan varningar', r.flags[0]==='Passet har varit men närvaron är inte registrerad' && r.flags.some(t=>/2 av 4 deltagare/.test(t)), r.flags);
+  ok('kommande 14 dagar', JSON.stringify(r.up)==='["o3"]', r.up);
+  ok('närvaro och rapportering per vecka', r.wk && r.wk.n===2 && r.wk.checked===1 && r.wk.planned===1 && Math.round(r.wk.att*100)===100, r.wk);
+  ok('ledare, timbank och utbildningsnivå visas', /LEDARE OCH TIMBANK/.test(r.html) && /UTBILDNINGSNIVÅ/.test(r.html) && /NÄRVARO OCH RAPPORTERING/.test(r.html));
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');

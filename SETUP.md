@@ -372,8 +372,19 @@ managern raderar någon. Den enda managern kan inte radera sig själv.
 
 ## Cirklarna (verksamhetssystemet)
 
-**Cirklar** har flikarna **Vecka**, **Grupper**, **Deltagare**, **Kalender** och **Utbildning**. Admin
-ser allt, och en producent eller cirkelledare ser bara sina egna grupper (utan Vecka och Deltagare).
+**Cirklar** har flikarna **Översikt**, **Vecka**, **Grupper**, **Deltagare**, **Kalender** och **Kurser**.
+Admin ser allt, och en producent eller cirkelledare ser bara sina egna grupper (utan Vecka och
+Deltagare).
+
+**Översikten** är kontrollpanelen:
+- antal grupper, deltagare och ledare, och timmar i år
+- **Att åtgärda**: alla fel och varningar de senaste åtta veckorna, fel först
+- ledarna med sina grupper och sin timbank
+- kommande pass de närmaste 14 dagarna
+- närvaro och rapportstatus per vecka för sex veckor
+- varje grupps nivå och lektion i kursen
+
+Ledare utan producentroll ser *Att åtgärda* för sina egna pass överst i sin vy.
 
 **Utbildningssystemet (Cirklar → Utbildning):**
 - **En kurs per ämne**, med nivåer och färdiga lektioner. Varje lektion har innehåll, lärandemål och
@@ -640,7 +651,7 @@ kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 409 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 416 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):
