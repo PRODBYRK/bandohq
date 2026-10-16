@@ -19,8 +19,9 @@
 <style>
 /* BANDO HQ ACCESS — registreringen bakom QR-koden i studion.
    Bando Collectives identitet: kolsvart, neonrosa som studioskylten, rubriken i skyltens
-   typsnitt (Barlow Condensed ExtraBold) ritad som neonrör, brödtext i Barlow. Få ytor,
-   tunna linjer, mobilen först. Sidan är fristående och lätt — appen laddas först efteråt. */
+   typsnitt (Barlow Condensed ExtraBold) ritad som neonrör, brödtext i Barlow. Resten följer
+   Bandos prislista: glest spärrade versaler, en tunn rosa linje under rubriken, centrerat,
+   rader med text till vänster. Få ytor, mobilen först. Sidan är fristående och lätt. */
 @font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
 @font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
 @font-face { font-family: "Barlow"; src: url("fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
@@ -67,18 +68,21 @@ input, button { caret-color: var(--pink); }
 
 .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--pad); }
 .h2 {
-  font-family: var(--display); font-weight: 800; text-transform: uppercase;
-  font-size: clamp(2.15rem, 8.4vw, 3.9rem); line-height: 0.95; letter-spacing: 0.01em;
+  font-family: var(--sans); font-weight: 600; text-transform: uppercase; color: var(--tube);
+  font-size: clamp(17px, 4.6vw, 23px); line-height: 1.55; letter-spacing: 0.4em; margin-right: -0.4em;   /* spärrningen centrerad */
+  text-shadow: 0 0 18px rgba(255, 62, 191, 0.35);
 }
-.lead { color: var(--text-2); font-size: 18px; max-width: 34em; }
-section { padding: clamp(64px, 11vw, 120px) 0 0; }
-.sec-head { display: grid; gap: 16px; margin-bottom: clamp(28px, 5vw, 44px); }
+.rule { display: block; width: 100%; max-width: 820px; height: 2px; margin: 0 auto; border-radius: 2px;
+  background: var(--tube); box-shadow: 0 0 14px rgba(255, 62, 191, 0.5); opacity: 0.9; }
+.lead { color: var(--text-2); font-size: 18px; max-width: 34em; margin: 0 auto; text-align: center; }
+section { padding: clamp(72px, 12vw, 128px) 0 0; }
+.sec-head { display: grid; gap: 20px; justify-items: center; text-align: center; margin: 0 auto clamp(30px, 5vw, 48px); max-width: 820px; }
 
 /* ---------- knappar ---------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   min-height: 56px; padding: 14px 30px; border-radius: 2px; width: 100%; max-width: 420px;
-  font-family: var(--display); font-size: 18px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  font-family: var(--sans); font-size: 15px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase;
   text-decoration: none; text-align: center; background: var(--btn); color: #fff;
   transition: transform 160ms var(--ease-out), background-color 180ms ease, box-shadow 240ms ease, opacity 180ms ease;
   user-select: none;
@@ -88,7 +92,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 .btn--line { background: transparent; border: 1px solid rgba(255, 255, 255, 0.42); }
 .txtlink {
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
-  font-family: var(--display); font-size: 16px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  font-family: var(--sans); font-size: 13px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
   text-decoration: none; color: var(--dim); transition: color 160ms ease;
 }
 .txtlink b { color: #fff; font-weight: 600; margin-left: 8px; border-bottom: 1px solid var(--tube); }
@@ -120,7 +124,8 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 @keyframes ignite { 0% { opacity: 0; } 10% { opacity: 0.9; } 16% { opacity: 0.1; } 28% { opacity: 1; } 36% { opacity: 0.35; } 46%, 100% { opacity: 1; } }
 @keyframes ignite2 { 0% { opacity: 0; } 8% { opacity: 0.6; } 14% { opacity: 0; } 22% { opacity: 0.9; } 30% { opacity: 0.2; } 44% { opacity: 1; } 54% { opacity: 0.55; } 62%, 100% { opacity: 1; } }
 @keyframes fadeOn { from { opacity: 0; } to { opacity: 1; } }
-.hero-text { display: grid; gap: 14px; justify-items: center; margin: clamp(30px, 6vw, 48px) auto 0; max-width: 33em; }
+.hero-rule { max-width: min(520px, 76%); margin-top: clamp(26px, 5vw, 40px); }
+.hero-text { display: grid; gap: 14px; justify-items: center; margin: clamp(26px, 5vw, 40px) auto 0; max-width: 33em; }
 .hero-text p { color: var(--text-2); }
 .hero-text p:first-child { color: #fff; font-weight: 500; font-size: clamp(19px, 2.2vw, 21px); }
 .hero-cta { display: grid; justify-items: center; gap: 10px; margin-top: clamp(30px, 6vw, 44px); }
@@ -132,19 +137,19 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
   background: linear-gradient(var(--tube), transparent); opacity: 0.6; }
 
 /* ---------- vad ingår ---------- */
-.perks { display: grid; grid-template-columns: 1fr; border-top: 1px solid var(--line); }
-.perk { display: grid; grid-template-columns: 52px 1fr; align-content: start; gap: 4px 12px; padding: 22px 0 24px; border-bottom: 1px solid var(--line); }
-.perk-n { font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.12em; color: var(--tube); padding-top: 3px; }
-.perk h3 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.2; }
-.perk p { grid-column: 2; color: var(--dim); font-size: 17px; }
-.fine { color: var(--mute); font-size: 15px; margin-top: 18px; max-width: 40em; }
+.perks { display: grid; grid-template-columns: 1fr; max-width: 820px; margin: 0 auto; }
+.perk { display: grid; grid-template-columns: 46px 1fr; align-content: start; gap: 6px 10px; padding: 20px 0 22px; border-bottom: 1px solid var(--line); }
+.perk-n { font-weight: 600; font-size: 15px; letter-spacing: 0.24em; color: var(--tube); padding-top: 1px; }
+.perk h3 { font-weight: 600; font-size: 15px; letter-spacing: 0.3em; text-transform: uppercase; line-height: 1.45; }
+.perk p { grid-column: 2; color: var(--dim); font-size: 16px; line-height: 1.55; }
+.fine { color: var(--mute); font-size: 14px; margin: 22px auto 0; max-width: 40em; text-align: center; }
 
 /* ---------- inriktningar ---------- */
-.chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 900px; margin: 0 auto; }
 .chip {
-  display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-radius: 2px;
+  display: inline-flex; align-items: center; gap: 12px; min-height: 50px; padding: 11px 16px; border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.24); text-align: left;
-  font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.07em; text-transform: uppercase; line-height: 1.2;
+  font-weight: 600; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; line-height: 1.35;
   color: var(--text-2); transition: border-color 160ms ease, color 160ms ease, box-shadow 220ms ease, background-color 160ms ease, transform 140ms var(--ease-out);
 }
 .chip:active { transform: scale(0.97); }
@@ -154,14 +159,14 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 .chip[aria-pressed="true"] i::after { content: ""; position: absolute; left: 4.5px; top: 1px; width: 5px; height: 9px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { border-color: rgba(255, 255, 255, 0.6); color: #fff; } .chip[aria-pressed="true"]:hover { border-color: var(--tube); } }
 @media (max-width: 559px) { .chip { width: 100%; } }
-.chips-count { margin-top: 16px; font-family: var(--display); font-weight: 600; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
+.chips-count { margin-top: 18px; text-align: center; font-weight: 600; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--mute); }
 .chips-count b { color: var(--tube); font-weight: 600; }
 
 /* ---------- formuläret ---------- */
-.form { max-width: 760px; }
+.form { max-width: 760px; margin: 0 auto; }
 .grid { display: grid; grid-template-columns: 1fr; gap: 26px 28px; }
 .f { display: grid; gap: 6px; align-content: start; }
-.f > label:not(.consent), .f > .lbl { font-family: var(--display); font-size: 14px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+.f > label:not(.consent), .f > .lbl { font-size: 12px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim); }
 .f input {
   width: 100%; padding: 10px 0 12px; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0; background: transparent;
   color: #fff; font: 400 19px/1.5 var(--sans); outline: none; -webkit-appearance: none; appearance: none;
@@ -176,10 +181,10 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 .err:empty { display: none; }
 .pw { position: relative; }
 .pw input { padding-right: 64px; }
-.pw button { position: absolute; right: 0; bottom: 8px; min-height: 36px; padding: 0 2px; font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.pw button { position: absolute; right: 0; bottom: 8px; min-height: 36px; padding: 0 2px; font-weight: 600; font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--dim); }
 .picked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 12px 0 14px; border-bottom: 1px solid var(--line-2); font-size: 17px; color: var(--text-2); }
 .picked.none { color: #6f6779; }
-.picked a { font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tube); text-decoration: none; }
+.picked a { font-weight: 600; font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--tube); text-decoration: none; }
 .consent { display: grid; grid-template-columns: 26px 1fr; gap: 14px; align-items: start; cursor: pointer; }
 .consent input { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin: 2px 0 0; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 2px; background: transparent; position: relative; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; }
 .consent input:checked { background: var(--tube); border-color: var(--tube); }
@@ -189,8 +194,8 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 .consent a { color: var(--tube); }
 .gdpr { display: grid; gap: 8px; padding: 6px 0 2px; font-size: 15px; color: var(--dim); line-height: 1.55; }
 .gdpr b { color: #fff; font-weight: 600; }
-.form-foot { display: grid; gap: 16px; margin-top: 34px; }
-.form-foot .after { color: var(--dim); font-size: 16px; max-width: 30em; }
+.form-foot { display: grid; gap: 16px; margin-top: 36px; justify-items: center; text-align: center; }
+.form-foot .after { color: var(--dim); font-size: 15px; max-width: 30em; }
 .msg { font-size: 16px; padding: 14px 16px; border-left: 2px solid var(--err); background: rgba(255, 157, 176, 0.07); color: var(--text-2); }
 .msg:empty { display: none; }
 .msg.ok { border-color: var(--ok); background: rgba(143, 240, 192, 0.06); }
@@ -200,27 +205,26 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 /* kodsteget och klart */
 .step { animation: blurIn 500ms var(--ease-out) both; }
 @keyframes blurIn { from { opacity: 0; filter: blur(4px); transform: translateY(6px); } }
-.code { font-family: var(--display) !important; font-weight: 600 !important; font-size: 34px !important; letter-spacing: 0.4em; }
-.step-links { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: 8px; }
+.code { font-weight: 600 !important; font-size: 30px !important; letter-spacing: 0.45em; }
+.step-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 22px; margin-top: 8px; }
 .done-title { font-family: var(--display); font-weight: 800; font-size: clamp(2.6rem, 11vw, 4.6rem); line-height: 0.95; text-transform: uppercase; color: #fff;
   text-shadow: 0 0 18px rgba(255, 62, 191, 0.55); }
-.banner { display: grid; gap: 14px; padding: 22px 0; border-top: 1px solid var(--tube); border-bottom: 1px solid var(--line); }
+.banner { display: grid; gap: 18px; justify-items: center; text-align: center; padding: 6px 0 22px; }
 
-.foot { margin-top: clamp(80px, 12vw, 140px); padding: 28px 0 max(28px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
-.foot .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; font-size: 14px; color: var(--mute); }
-.foot nav { display: flex; gap: 20px; }
-.foot a { text-decoration: none; color: var(--dim); }
+.foot { margin-top: clamp(88px, 13vw, 150px); padding: 34px 0 max(30px, env(safe-area-inset-bottom)); text-align: center; }
+.foot .wrap { display: grid; justify-items: center; gap: 16px; font-size: 13px; color: var(--mute); }
+.foot .ig { font-weight: 600; font-size: 14px; letter-spacing: 0.42em; margin-right: -0.42em; color: var(--tube); text-decoration: none; text-transform: uppercase; }
+.foot nav { display: flex; gap: 22px; }
+.foot nav a { text-decoration: none; color: var(--dim); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; }
 
 @media (min-width: 760px) {
-  .perks { grid-template-columns: 1fr 1fr; column-gap: 48px; border-top: 0; }
-  .perk { border-top: 1px solid var(--line); border-bottom: 0; }
-  .perks { border-bottom: 1px solid var(--line); }
+  .perks { grid-template-columns: 1fr 1fr; column-gap: 48px; }
   .grid { grid-template-columns: 1fr 1fr; }
   .f--full { grid-column: 1 / -1; }
-  .form-foot { grid-template-columns: auto 1fr; align-items: center; column-gap: 28px; }
-  .form-foot .btn { width: auto; min-width: 360px; }
+  .form-foot { justify-items: center; text-align: center; }
+  .form-foot .btn { width: auto; min-width: 420px; }
 }
-@media (min-width: 1040px) { .perks { grid-template-columns: repeat(3, 1fr); } }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .lit .tube-on .t1, .lit .tube-on .t2 { animation: fadeOn 300ms ease both !important; }
@@ -252,6 +256,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
           <g class="tube-on" filter="url(#neonGlow)"><text class="t1" x="500" y="250" text-anchor="middle" font-size="250">BANDO HQ</text><text class="t2" x="500" y="540" text-anchor="middle" font-size="300">ACCESS</text></g>
         </svg>
       </h1>
+      <span class="rule hero-rule" aria-hidden="true"></span>
       <div class="hero-text">
         <p>Välkommen till Bando HQ, vårt system för studiobokningar och kreativa tjänster.</p>
         <p>Genom våra studiocirklar får du tillgång till Bando HQ Access, där du kan boka sessions, hantera dina bokningar och ta del av exklusiva priser och förmåner.</p>
@@ -266,7 +271,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 
   <section id="ingar" aria-labelledby="ingarH">
     <div class="wrap">
-      <div class="sec-head"><h2 class="h2" id="ingarH">Vad ingår i Bando HQ Access?</h2></div>
+      <div class="sec-head"><h2 class="h2" id="ingarH">Vad ingår i Bando HQ Access?</h2><span class="rule" aria-hidden="true"></span></div>
       <ol class="perks" id="perks">
         <li class="perk"><span class="perk-n">01</span><h3>Studiobokningar</h3><p>Boka sessions smidigt och till förmånliga priser.</p></li>
         <li class="perk"><span class="perk-n">02</span><h3>Rabatter på tjänster</h3><p>Ta del av bättre priser på mix &amp; master, foto, musikvideo, content och marknadsföring.</p></li>
@@ -283,6 +288,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
     <div class="wrap">
       <div class="sec-head">
         <h2 class="h2" id="intH">Välj din inriktning</h2>
+        <span class="rule" aria-hidden="true"></span>
         <p class="lead">Som deltagare i våra studiocirklar väljer du vilket område du vill utvecklas inom genom dina sessions.</p>
       </div>
       <div class="chips" id="chips" role="group" aria-labelledby="intH"></div>
@@ -294,6 +300,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
     <div class="wrap">
       <div class="sec-head">
         <h2 class="h2" id="regH">Registrera dig</h2>
+        <span class="rule" aria-hidden="true"></span>
         <p class="lead" id="regLead">Skapa ditt konto för att få tillgång till Bando HQ Access och våra studiocirklar.</p>
       </div>
       <div id="stage"></div>
@@ -302,7 +309,7 @@ section { padding: clamp(64px, 11vw, 120px) 0 0; }
 
   <footer class="foot">
     <div class="wrap">
-      <span>Bando HQ · Bando Collective</span>
+      <a class="ig" href="https://instagram.com/bandocollective" target="_blank" rel="noopener">@bandocollective</a>
       <nav><a href="./#integritet">Integritet</a><a href="./#support">Hjälp</a><a href="./">Logga in</a></nav>
     </div>
   </footer>
@@ -537,10 +544,10 @@ function render(){
   }
   if(stage === 'code'){
     s.innerHTML = `<form class="form step" id="codeForm" novalidate>
-      <p class="h2" style="font-size:clamp(1.9rem,7vw,2.8rem);margin-bottom:14px">Kolla din mejl</p>
+      <div class="sec-head" style="margin-bottom:24px"><p class="h2">Kolla din mejl</p></div>
       <p class="lead" style="margin-bottom:28px">Vi har mejlat en kod till <b>${esc(draft.email)}</b>. Skriv in den här för att bekräfta din e-post.
         ${PREVIEW ? '<br><span class="hint">Förhandsläge: vilka sex siffror som helst fungerar.</span>' : ''}</p>
-      <div class="f" style="max-width:320px">
+      <div class="f" style="max-width:320px;margin:0 auto">
         <label for="f_code">Kod från mejlet</label>
         <input id="f_code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••" aria-describedby="e_code" required>
         <span class="err" id="e_code" role="alert"></span></div>
@@ -557,7 +564,7 @@ function render(){
     setTimeout(() => $('f_code').focus(), 60);
   }
   if(stage === 'done'){
-    s.innerHTML = `<div class="step" id="done">
+    s.innerHTML = `<div class="step" id="done" style="text-align:center;display:grid;justify-items:center">
       <p class="done-title">Välkommen in${who ? ', ' + esc(who.split(' ')[0]) : ''}</p>
       <p class="lead" style="margin:18px 0 30px">Ditt konto är klart. Du har nu tillgång till Bando HQ Access, och vi placerar dig i en studiocirkel
         utifrån det du valt. Du skickas vidare till Bando HQ…</p>

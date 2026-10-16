@@ -870,6 +870,9 @@ ok('admins och managern får "Ny registrering" med inriktningarna', adm.map(x=>x
 const st1 = await as(db,AU.a1,()=>rpc('access_status',{}));
 ok('access_status: kopplad och komplett', st1.member && st1.complete && JSON.stringify(st1.missing)==='{}', st1);
 const v1 = await as(db,AU.a1,()=>rpc('my_view',{}));
+ok('prislistan: åtta studiopaket (1 session 1 500 kr … 8 sessions 6 500 kr) och mix & master 1 500 kr/låt',
+   v1.access.packages.length===8 && v1.access.packages[0].price===1500 && v1.access.packages[0].hours===3 && v1.access.packages[7].price===6500
+   && v1.access.packages[7].hours===24 && v1.access.services[0].price===1500 && v1.access.notes.length===2, v1.access.packages);
 ok('kundvyn har priserna och förmånerna, profilen och ingen grupp än', v1.access.services.length===5 && v1.access.perks.length===6
    && v1.profile.pnr===true && v1.profile.consent===true && v1.circle===null && v1.group.length===0, {c:v1.circle, p:v1.profile});
 ok('och kontot i vyn innehåller inget personnummer', !JSON.stringify(v1).includes(P1.slice(-4) + '"') && !('pnr_enc' in v1.me));
@@ -963,6 +966,7 @@ const info2 = await asAnon(db,()=>rpc('access_info',{}));
 ok('admin ändrar inriktningarna — sidan visar dem direkt, dolda syns inte', info2.interests.length===1 && info2.interests[0].label==='Produktion & beats'
    && info2.perks.length===6, info2.interests);
 ok('och priserna syns för kunden', (await as(db,AU.a1,()=>rpc('my_view',{}))).access.services[0].access===1500);
+ok('paketen ligger kvar när admin inte ändrat dem', (await as(db,AU.a1,()=>rpc('my_view',{}))).access.packages.length===8);
 ok('en dold inriktning går inte att välja vid registrering', /Okänd inriktning: rap/.test(await boom(()=>reg(AU.a8,{p_name:'Åsa Öst',p_pnr:pnr('19950505','777'),p_interests:'["rap"]'}))||''));
 ok('men den som redan har den behåller den', JSON.stringify(await as(db,AU.a1,()=>rpc('set_my_interests',{p_interests:'["rap","production"]'})))==='["production","rap"]');
 ok('svenska tecken i namnet går bra', (await reg(AU.a8,{p_name:'Åsa Öst-Ärlig',p_phone:'0761234567',p_pnr:pnr('19950505','777'),p_interests:'["production"]'})).name==='Åsa Öst-Ärlig');

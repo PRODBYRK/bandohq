@@ -1695,12 +1695,13 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await new Promise(r=>setTimeout(r,500));
     const m = me(), html = document.getElementById('view').innerHTML;
     return {who:m&&m.n, role:m&&m.r, part:m&&m.part, ints:(m&&m.interests||[]).join(), pnr:m&&m.pnr, consent:m&&m.consent, src:m&&m.source, view:roleView(),
-      circle:/Vi placerar dig i en grupp/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html) && /STUDIOTID/.test(html) && /MIX &amp; MASTER/.test(html) && /fråga oss/.test(html),
+      circle:/Vi placerar dig i en grupp/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html) && /Prislista · studiotid/.test(html) && /8 sessions/.test(html)
+        && /6(&nbsp;|\\s)500 kr/.test(html) && /MIX &amp; MASTER/.test(html) && /fråga oss/.test(html),
       perks:/A&amp;R-feedback/.test(html), interests:/Musikproduktion &amp; beatmaking, Mixning &amp; mastering/.test(html), banner:!!document.getElementById('profBanner'),
       left:localStorage.getItem('bandohq_access_preview'), hash:location.hash};`);
   ok('appen tar emot registreringen: inloggad som kund och cirkeldeltagare', r.who==='Alva Strand' && r.role==='customer' && r.part===true && r.view==='customer'
      && r.ints==='production,mixing' && r.pnr==='990315-••••' && r.consent===true && r.src==='access' && !r.left && !r.hash, r);
-  ok('kundvyn: "Vi placerar dig i en grupp", priser, förmåner och inriktningar — ingen komplettering', r.circle && r.prices && r.perks && r.interests && !r.banner, r);
+  ok('kundvyn: "Vi placerar dig i en grupp", prislistan (8 paket), tjänstepriser, förmåner och inriktningar — ingen komplettering', r.circle && r.prices && r.perks && r.interests && !r.banner, r);
   r = await ev(w,`
     const alva = byName('Alva Strand');
     signIn(byName('AZ')); go('circles'); circTab='people'; render();
@@ -1737,6 +1738,16 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('Mer → Rewards → Access: inriktningar, förmåner och tjänstepriser', r.tab===true);
   ok('en förmån utan text sparas inte', /rubrik och text/.test(r.bad), r.bad);
   ok('admin sätter priset — kunden ser det direkt, ordinarie överstruket', r.mix.access===1500 && r.mix.price===2000 && r.price===true, r);
+  r = await ev(w,`
+    signIn(byName('AZ')); go('rewards'); rwTab='access'; accDraft=null; render(); await new Promise(r=>setTimeout(r,150)); render();
+    const n0 = accDraft.packages.length, tab = /PRISLISTA · STUDIOPAKET/.test(document.getElementById('view').innerHTML);
+    accDraft.packages.push({sessions:8, hours:24, price:9000}); saveAccessCfg(); const dup = document.getElementById('accMsg').textContent;
+    accDraft.packages.pop(); accDraft.packages[0].price = 1400; accDraft.notes = ['Rad ett', '']; saveAccessCfg();
+    S.session.member = 'Alva Strand'; render(); const cust = document.getElementById('view').innerHTML;
+    S.session.member = 'AZ'; save();
+    return {n0, tab, dup, p0:S.accessCfg.packages[0].price, notes:S.accessCfg.notes, cust:/1(&nbsp;|\\s)400 kr/.test(cust) && /Rad ett/.test(cust)};`);
+  ok('admin ändrar prislistan: åtta paket från start, dubbletter nekas, kunden ser ändringen direkt', r.n0===8 && r.tab && /samma antal sessions/.test(r.dup)
+     && r.p0===1400 && r.notes.length===1 && r.cust, r);
   w = await goPage('../access.html?cb=' + Math.random());
   r = await ev(w,`return {chips:document.querySelectorAll('#chips .chip').length, rap:!!document.querySelector('#chips .chip[data-id="rap"]')};`);
   ok('registreringssidan följer inställningen (dold inriktning syns inte)', r.chips===11 && r.rap===false, r);

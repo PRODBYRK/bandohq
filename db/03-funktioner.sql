@@ -1623,9 +1623,14 @@ language sql immutable as $$
       jsonb_build_object('title','Strategi & artistutveckling','text','Få vägledning kring din musik, dina projekt och kommande releaser.'),
       jsonb_build_object('title','A&R-feedback','text','Möjlighet att skicka in musik för professionell feedback, även från A&R-kontakter på stora skivbolag.'),
       jsonb_build_object('title','Merch & egna projekt','text','Få hjälp med att utveckla och producera egna kläder, merchandise och kreativa produkter.')),
+    /* studiopaketen — Bandos prislista (2026-10): 1 session = 3 timmar */
+    'packages', (select jsonb_agg(jsonb_build_object('sessions', n, 'hours', n * 3, 'price', p) order by n)
+                   from unnest(array[1500,2200,2900,3800,4500,5200,5800,6500]) with ordinality x(p, n)),
+    'notes', jsonb_build_array('1 session är 3 timmar.',
+      '2 st mix & mastering ingår vid paketköp över 8 sessions (ordinarie pris 1 500 kr/låt).'),
     /* tjänstepriserna: price = ordinarie, access = med Bando HQ Access (null = fråga oss) */
     'services', jsonb_build_array(
-      jsonb_build_object('id','mix','name','Mix & master','price',null,'access',null,'unit','per låt'),
+      jsonb_build_object('id','mix','name','Mix & master','price',1500,'access',null,'unit','per låt'),
       jsonb_build_object('id','photo','name','Foto','price',null,'access',null,'unit',''),
       jsonb_build_object('id','video','name','Musikvideo','price',null,'access',null,'unit',''),
       jsonb_build_object('id','content','name','Content','price',null,'access',null,'unit',''),
@@ -1634,7 +1639,8 @@ $$;
 create or replace function bs_acfg() returns jsonb
 language sql stable security definer set search_path = public as $$
   select bs_access_default() || coalesce((select jsonb_strip_nulls(jsonb_build_object(
-           'interests', data->'interests', 'perks', data->'perks', 'services', data->'services'))
+           'interests', data->'interests', 'perks', data->'perks', 'services', data->'services',
+           'packages', data->'packages', 'notes', data->'notes'))
          from records where kind = 'setting' and id = 'access' and not del), '{}'::jsonb)
 $$;
 /* Inriktningarna som går att välja (dolda ligger kvar för dem som redan valt dem). */

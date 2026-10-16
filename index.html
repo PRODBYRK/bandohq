@@ -182,6 +182,13 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .dayhead .ln{flex:1;height:1px;background:var(--line)}
 
 /* ---------- chips ---------- */
+.plcard{padding:18px 18px 14px}
+.pltitle{font-size:11px;font-weight:700;letter-spacing:.34em;text-transform:uppercase;color:#ff8fd8;text-align:center;padding-bottom:12px;border-bottom:2px solid rgba(255,106,216,.75);box-shadow:0 1px 0 rgba(255,62,191,.12)}
+.plist{margin:6px 0 8px}
+.plrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:8px 1px;font-size:12px;font-weight:650;letter-spacing:.24em;text-transform:uppercase;color:var(--txt)}
+.plrow i{font-style:normal;color:var(--mut);letter-spacing:.12em}
+.plrow b{font-weight:700;letter-spacing:.14em;color:#ff8fd8;white-space:nowrap}
+.plnote{font-size:12px;color:var(--mut);text-align:center;line-height:1.5;margin-top:6px}
 .perklist{margin-top:10px;border-top:1px solid var(--line)}
 .perkrow{display:flex;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
 .perkrow i{font-style:normal;font-size:11px;font-weight:700;letter-spacing:.1em;color:#ff8fd8;padding-top:2px;flex:none;width:18px}
@@ -1970,10 +1977,22 @@ const ACFG = {
     ['A&R-feedback','Möjlighet att skicka in musik för professionell feedback, även från A&R-kontakter på stora skivbolag.'],
     ['Merch & egna projekt','Få hjälp med att utveckla och producera egna kläder, merchandise och kreativa produkter.']]
     .map(([title, text])=>({title, text})),
-  services:[['mix','Mix & master','per låt'], ['photo','Foto',''], ['video','Musikvideo',''], ['content','Content',''], ['marketing','Marknadsföring','']]
-    .map(([id, name, unit])=>({id, name, price:null, access:null, unit}))};
-const acfg = () => { const c = S.accessCfg || {}, pick = k => Array.isArray(c[k]) && (k==='services' || c[k].length) ? c[k] : ACFG[k];
-  return {interests:pick('interests'), perks:pick('perks'), services:pick('services')}; };
+  services:[['mix','Mix & master','per låt',1500], ['photo','Foto',''], ['video','Musikvideo',''], ['content','Content',''], ['marketing','Marknadsföring','']]
+    .map(([id, name, unit, price])=>({id, name, price:price||null, access:null, unit})),
+  /* studiopaketen — Bandos prislista (2026-10): 1 session = 3 timmar */
+  packages:[1500,2200,2900,3800,4500,5200,5800,6500].map((price, i)=>({sessions:i+1, hours:(i+1)*3, price})),
+  notes:['1 session är 3 timmar.', '2 st mix & mastering ingår vid paketköp över 8 sessions (ordinarie pris 1 500 kr/låt).']};
+const acfg = () => { const c = S.accessCfg || {}, pick = k => Array.isArray(c[k]) && (['services','packages','notes'].includes(k) || c[k].length) ? c[k] : ACFG[k];
+  return {interests:pick('interests'), perks:pick('perks'), services:pick('services'), packages:pick('packages'), notes:pick('notes')}; };
+/* prislistan: "1 SESSION (3 H) … 1 500 KR", som Bandos prislista */
+const pkgs = () => acfg().packages.filter(p=>+p.sessions > 0 && hasNum(p.price)).sort((a,b)=>a.sessions-b.sessions);
+function priceList(){
+  const pk = pkgs(), notes = acfg().notes.filter(n=>String(n||'').trim());
+  if(!pk.length) return '';
+  return `<div class="plist" id="priceList">${pk.map(p=>`<div class="plrow"><span>${p.sessions} ${+p.sessions===1 ? 'session' : 'sessions'}
+      <i>(${fmtH(+p.hours)} h)</i></span><b>${kr(p.price)}</b></div>`).join('')}</div>
+    ${notes.map(n=>`<div class="plnote">${esc(n)}</div>`).join('')}`;
+}
 const interestOf = id => acfg().interests.find(i=>i.id===id) || {id, label:id, subject:''};
 const interestText = ids => (ids||[]).map(id=>interestOf(id).label).join(', ');
 const subjectsOf = ids => [...new Set((ids||[]).map(id=>interestOf(id).subject).filter(Boolean))];
@@ -2117,10 +2136,12 @@ function svcPrice(x){
   return hasNum(x.price) ? kr(x.price) + u : 'fråga oss';
 }
 function accessCard(){
-  const m = me(), rate = rateFor(m.n), cfg = acfg(), svc = cfg.services.filter(x=>x.name);
+  const m = me(), rate = (S.rates.per||{})[m.n] != null ? rateFor(m.n) : 0, cfg = acfg(), svc = cfg.services.filter(x=>x.name), pl = priceList();
   return `<div class="eyebrow">DINA PRISER OCH FÖRMÅNER<span class="ln"></span></div>
+    ${pl ? `<div class="card plcard"><div class="pltitle">Prislista · studiotid</div>${pl}</div>` : ''}
     <div class="card" id="myPrices">
-      <div class="kv"${svc.length ? '' : ' style="border:0"'}><span>STUDIOTID</span><b>${rate ? `${kr(rate*3)} per pass · ${kr(rate)}/h` : 'enligt överenskommelse'}</b></div>
+      ${rate ? `<div class="kv"><span>DITT PRIS</span><b>${kr(rate*3)} per session · ${kr(rate)}/h</b></div>`
+        : pl ? '' : `<div class="kv"${svc.length ? '' : ' style="border:0"'}><span>STUDIOTID</span><b>${rateFor(m.n) ? `${kr(rateFor(m.n)*3)} per pass · ${kr(rateFor(m.n))}/h` : 'enligt överenskommelse'}</b></div>`}
       ${svc.map((x,i)=>`<div class="kv"${i===svc.length-1 ? ' style="border:0"' : ''}><span>${esc(x.name.toUpperCase())}</span><b>${svcPrice(x)}</b></div>`).join('')}</div>
     <div class="perklist">${cfg.perks.map((p,i)=>`<div class="perkrow"><i>${String(i+1).padStart(2,'0')}</i><div><b>${esc(p.title)}</b><span>${esc(p.text)}</span></div></div>`).join('')}</div>`;
 }
@@ -2165,7 +2186,7 @@ function profilePanel(a, bs){
     <div class="kv"><span>GENOMFÖRDA</span><b>${nt(done.length,'pass','pass')}</b></div>
     <div class="kv" style="border:0"><span>SENASTE / NÄSTA</span><b>${done[0] ? esc(dayShort(done[0].date)) : '—'} / ${next[0] ? esc(dayShort(next[0].date)) : '—'}</b></div>
     <div class="eyebrow">PRISER OCH FÖRMÅNER<span class="ln"></span></div>
-    <div class="kv"><span>STUDIOTID</span><b>${rate ? kr(rate) + '/h' : 'enligt överenskommelse'}</b></div>
+    <div class="kv"><span>STUDIOTID</span><b>${(S.rates.per||{})[a.n] != null ? 'eget pris ' + kr(rate) + '/h' : pkgs().length ? 'prislistan, från ' + kr(pkgs()[0].price) + ' per session' : rate ? kr(rate) + '/h' : 'enligt överenskommelse'}</b></div>
     ${lvl ? `<div class="kv"><span>NIVÅ</span><b>${esc(lvl.name)}${lvl.perks ? ' · ' + esc(lvl.perks) : ''}</b></div>` : ''}
     ${acfg().services.filter(x=>x.name).map(x=>`<div class="kv"><span>${esc(x.name.toUpperCase())}</span><b>${svcPrice(x)}</b></div>`).join('')}
     <div class="tiny muted" style="margin-top:8px">Priserna och förmånerna för Access ändras under Mer → Rewards → Access.</div>`;
@@ -2201,6 +2222,16 @@ function accessCfgPanel(){
       <textarea oninput="accDraft.perks[${i}].text=this.value" aria-label="Förmånens text" style="min-height:52px">${esc(x.text)}</textarea>
       <button class="linkbtn" style="margin:0" onclick="accDraft.perks.splice(${i},1);render()">Ta bort</button></div>`).join('')}
     <button class="linkbtn" onclick="accDraft.perks.push({title:'',text:''});render()">+ förmån</button>
+    <div class="eyebrow">PRISLISTA · STUDIOPAKET<span class="ln"></span></div>
+    ${d.packages.map((x,i)=>`<div class="accrow">
+      <input inputmode="numeric" value="${n(x.sessions)}" oninput="accDraft.packages[${i}].sessions=this.value===''?null:+this.value" aria-label="Antal sessions" placeholder="Sessions" class="narrow">
+      <input inputmode="decimal" value="${n(x.hours)}" oninput="accDraft.packages[${i}].hours=this.value===''?null:+String(this.value).replace(',','.')" aria-label="Timmar" placeholder="Timmar" class="narrow">
+      <input inputmode="numeric" value="${n(x.price)}" oninput="accDraft.packages[${i}].price=this.value===''?null:+this.value" aria-label="Pris kr" placeholder="Pris kr">
+      <button class="linkbtn" style="margin:0;flex:none" onclick="accDraft.packages.splice(${i},1);render()" aria-label="Ta bort paketet">✕</button></div>`).join('')}
+    <button class="linkbtn" onclick="const l=accDraft.packages[accDraft.packages.length-1]||{sessions:0,hours:0};accDraft.packages.push({sessions:+l.sessions+1,hours:+l.hours+3,price:null});render()">+ paket</button>
+    <label class="lbl" for="accNotes">TEXT UNDER PRISLISTAN <span class="muted">(en rad per stycke)</span></label>
+    <textarea id="accNotes" oninput="accDraft.notes=this.value.split('\\n')" style="min-height:76px">${esc(d.notes.join('\n'))}</textarea>
+    <div class="tiny muted">Sessions · timmar · pris. Kunden ser prislistan under Dina priser och förmåner. Ett eget pris per kund sätts under Priser.</div>
     <div class="eyebrow">TJÄNSTEPRISER<span class="ln"></span></div>
     ${d.services.map((x,i)=>`<div class="accrow col">
       <input value="${esc(x.name)}" oninput="accDraft.services[${i}].name=this.value" aria-label="Tjänst" placeholder="Tjänst, t.ex. Mix & master">
@@ -2226,6 +2257,11 @@ function saveAccessCfg(){
   if(d.perks.some(x=>!x.title || !x.text)) return msg('Varje förmån behöver rubrik och text');
   if(!d.perks.length) return msg('Minst en förmån');
   if(d.services.some(x=>(x.price!=null && x.price<0) || (x.access!=null && x.access<0))) return msg('Priserna kan inte vara negativa');
+  d.packages = (d.packages||[]).filter(x=>hasNum(x.sessions) || hasNum(x.price)).map(x=>({sessions:+x.sessions, hours:+x.hours, price:hasNum(x.price) ? +x.price : null}));
+  if(d.packages.some(x=>!(x.sessions >= 1) || x.sessions % 1 || !(x.hours > 0) || x.price == null || x.price < 0)) return msg('Varje paket behöver antal sessions, timmar och pris');
+  if(new Set(d.packages.map(x=>x.sessions)).size !== d.packages.length) return msg('Två paket har samma antal sessions');
+  d.packages.sort((a,b)=>a.sessions-b.sessions);
+  d.notes = (d.notes||[]).map(x=>String(x).trim()).filter(Boolean);
   S.accessCfg = Object.assign(d, {up:Date.now()}); accDraft = null;
   save(); sync(true); render(); toast('Sparat — gäller direkt på registreringssidan och i kundvyn');
 }
@@ -6943,7 +6979,7 @@ function vCustomer(){
   return `
     ${profileBanner()}
     <div class="h1">Boka studiotid</div>
-    <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':'pris enligt överenskommelse'}</div>
+    <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':pkgs().length?'från '+kr(pkgs()[0].price)+' per session':'pris enligt överenskommelse'}</div>
 
     ${slotPicker({list, days, day, dayJs:d=>`bookDay='${d}';render()`, startJs:(d,hm)=>`openSlot('${d}','${hm}')`,
       mine:b=>b.who===m.n && !b.busy, mineLabel:'Din tid'})}
