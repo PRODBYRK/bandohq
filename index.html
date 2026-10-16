@@ -182,6 +182,18 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .dayhead .ln{flex:1;height:1px;background:var(--line)}
 
 /* ---------- chips ---------- */
+.perklist{margin-top:10px;border-top:1px solid var(--line)}
+.perkrow{display:flex;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
+.perkrow i{font-style:normal;font-size:11px;font-weight:700;letter-spacing:.1em;color:#ff8fd8;padding-top:2px;flex:none;width:18px}
+.perkrow b{display:block;font-size:13.5px;font-weight:650;letter-spacing:.02em}
+.perkrow span{display:block;font-size:12.5px;color:var(--mut);line-height:1.5;margin-top:2px}
+.profcta{display:flex;align-items:center;gap:12px;width:100%;border:1px solid rgba(255,62,191,.45);background:rgba(255,62,191,.07);margin-bottom:14px;cursor:pointer;color:var(--txt);font:inherit}
+.accrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+.accrow input{flex:1;min-width:0}
+.accrow input.narrow{flex:0 0 34%}
+.accrow.col{flex-direction:column;align-items:stretch;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.accon{display:flex;gap:4px;align-items:center;flex:none;color:var(--mut)}
+.accon input{width:auto;flex:none}
 .chips{display:flex;gap:7px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;-ms-overflow-style:none}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid var(--line);
@@ -829,8 +841,8 @@ function blank(){
        Håller sig medvetet isär från crewet: crewet är användare med
        inloggning, programdeltagarna är POSTER som crewet hanterar.
        Därför kan ingen deltagare ändra sina egna timmar — de har inget
-       konto. Personnummer lagras inte här; de hör hemma i
-       rapporteringsunderlaget, inte i en app som ligger i telefonen. */
+       konto. Personnummer lagras aldrig här — de ligger krypterade på
+       servern (member_pnr) och syns bara maskerade, och bara för admin. */
     circles:[], curricula:[], courses:[],
     /* ---- v5: crewets arbetsyta ----
        artists   artisterna crewet jobbar med, rankade #1…N (fältet rank)
@@ -845,6 +857,7 @@ function blank(){
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
     circleCfg:{up:0},                                      /* cirklarnas regler (setting/circles) — tomt = standard */
     rewardsCfg:{up:0},                                     /* poängtrappan m.m. (setting/rewards) — tomt = standard */
+    accessCfg:{up:0},                                      /* Access: inriktningar, förmåner, tjänstepriser (setting/access) */
     signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
     reports:{},                                            /* kontrollerade/rapporterade cirkelpass (session_reports) */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
@@ -886,6 +899,7 @@ function heal(s){
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
   s.circleCfg = Object.assign(blank().circleCfg, s.circleCfg||{});
   s.rewardsCfg = Object.assign(blank().rewardsCfg, s.rewardsCfg||{});
+  s.accessCfg = Object.assign(blank().accessCfg, s.accessCfg||{});
   if(!Array.isArray(s.signups)) s.signups = [];
   if(!s.reports || typeof s.reports !== 'object') s.reports = {};
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
@@ -1146,18 +1160,24 @@ async function reportSessions(ids){
   } else {
     try{ snaps = await sbRpc('report_sessions', {p_ids:ids}); await refreshReports(); }catch(e){ return toast(e.message); }
   }
-  await saveBlob(reportCsv(snaps), `cirkelrapport-${snaps.map(s=>s.date).sort()[0]}-${snaps.map(s=>s.date).sort().pop()}.csv`);
+  await saveBlob(await reportCsv(snaps), `cirkelrapport-${snaps.map(s=>s.date).sort()[0]}-${snaps.map(s=>s.date).sort().pop()}.csv`);
   render(); toast(`${nt(snaps.length,'pass rapporterat','pass rapporterade')} · underlaget sparat`);
   return snaps;
 }
-/* Underlaget till studieförbundet: en rad per närvarande deltagare. Personnummer fylls i från
-   kalkylarket (anmälningarna). Svensk Excel: BOM och semikolon. */
-function reportCsv(snaps){
+/* Underlaget till studieförbundet: en rad per närvarande deltagare, med personnumret (Access) — hämtas
+   från servern när filen tas ut, bara för admin, och varje uttag loggas. Svensk Excel: BOM och semikolon. */
+async function reportCsv(snaps){
   const q = v => /[;"\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : String(v==null?'':v);
-  const rows = [['Datum','Start','Slut','Timmar','Grupp','Ämne','Lektion','Ledare','Deltagare','Telefon','E-post']];
+  const ids = [...new Set(snaps.flatMap(x=>(x.present||[]).map(p=>p.id)).filter(Boolean))];
+  let pn = {};
+  if(can('manageCrew') && ids.length){
+    if(PREVIEW_LOGIN) ids.forEach(id=>{ const a = byId(id); if(a && a.pnr) pn[id] = a.pnr; });
+    else { try{ pn = (await sbRpc('report_pnrs', {p_members:ids})) || {}; }catch(e){ toast('Personnumren kunde inte hämtas: ' + e.message); } }
+  }
+  const rows = [['Datum','Start','Slut','Timmar','Grupp','Ämne','Lektion','Ledare','Deltagare','Personnummer','Telefon','E-post']];
   snaps.slice().sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start)).forEach(s=>{
     const base = [s.date, s.start, s.end, String(s.hours).replace('.', ','), s.circle, s.subject||'', s.lesson||'', s.leader||''];
-    (s.present && s.present.length ? s.present : [{name:'', phone:'', email:''}]).forEach(p=>rows.push(base.concat([p.name, p.phone||'', p.email||''])));
+    (s.present && s.present.length ? s.present : [{name:'', phone:'', email:''}]).forEach(p=>rows.push(base.concat([p.name, pn[p.id]||'', p.phone||'', p.email||''])));
   });
   return new Blob(['﻿' + rows.map(r=>r.map(q).join(';')).join('\n')], {type:'text/csv;charset=utf-8'});
 }
@@ -1166,7 +1186,7 @@ async function downloadReported(from, to){
   if(PREVIEW_LOGIN) snaps = Object.values(S.reports||{}).filter(r=>r.status==='reported' && r.snapshot && r.snapshot.date>=from && r.snapshot.date<=to).map(r=>r.snapshot);
   else { try{ snaps = await sbRpc('report_snapshots', {p_from:from, p_to:to}); }catch(e){ return toast(e.message); } }
   if(!snaps.length) return toast('Inget rapporterat den veckan');
-  await saveBlob(reportCsv(snaps), `cirkelrapport-${from}-${to}.csv`);
+  await saveBlob(await reportCsv(snaps), `cirkelrapport-${from}-${to}.csv`);
 }
 async function unlockSession(id){
   const reason = prompt('Varför ska passet låsas upp? (sparas i historiken)');
@@ -1686,16 +1706,16 @@ function pointsRows(h){
 function openPointsHistory(){ openSheet(`${X}<h2>Poänghistorik</h2><div style="margin-top:12px">${pointsRows((rwMine||{}).history)}</div>`); }
 
 /* ---------- artistprofilen (crewet) ---------- */
-let apId = null, apTab = 'bookings', apData = {};
+let apId = null, apTab = 'profile', apData = {};
 function artistTabs(){
-  return canIntel() ? [['bookings','Bokningar'],['rewards','Rewards'],['level','Nivå'],['notes','Anteckningar'],['intel','Intelligence']]
-                    : [['bookings','Bokningar'],['notes','Anteckningar']];
+  return canIntel() ? [['profile','Profil'],['bookings','Bokningar'],['rewards','Rewards'],['level','Nivå'],['notes','Anteckningar'],['intel','Intelligence']]
+                    : [['profile','Profil'],['bookings','Bokningar'],['notes','Anteckningar']];
 }
 async function openArtistProfile(id, tab){
-  apId = id; apTab = tab || 'bookings'; apData = {};
+  apId = id; apTab = tab || 'profile'; apData = {};
   paintArtist();
   try{
-    const jobs = [rw('artist_notes_for', {p_member:id}).then(x=>apData.notes = x)];
+    const jobs = [rw('artist_notes_for', {p_member:id}).then(x=>apData.notes = x), loadPnr()];
     if(canIntel()) jobs.push(rw('points_summary', {p_member:id}).then(x=>apData.sum = x), rw('artist_intel', {}).then(x=>apData.intel = (x||[]).find(r=>r.id===id)||null),
       rw('rewards_catalog', {}).then(x=>apData.cat = x));
     await Promise.all(jobs);
@@ -1706,7 +1726,8 @@ function paintArtist(){
   const a = byId(apId); if(!a) return;
   const tabs = artistTabs(), t = apTab, d = apData, today = new Date();
   const bs = live().filter(b=>!b.circleId && b.who===a.n && !['declined'].includes(b.status)).sort((x,y)=>startAt(y)-startAt(x));
-  const body = t==='bookings' ? (bs.length ? bs.map(b=>`<div class="srow ${b.status==='request'?'req':''}">
+  const body = t==='profile' ? profilePanel(a, bs)
+    : t==='bookings' ? (bs.length ? bs.map(b=>`<div class="srow ${b.status==='request'?'req':''}">
         <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
         <div class="grow" style="min-width:0"><div class="srow-t">${b.start}–${b.end}${b.studio?' · '+esc(S.studios[b.studio]):''}</div>
           <div class="srow-m">${b.status==='request' ? 'förfrågan' : b.closed ? (b.paid ? `avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'avslutat, ej betalt') : startAt(b) < today ? 'inte avslutat' : 'kommande'}</div></div>
@@ -1729,7 +1750,7 @@ function paintArtist(){
           ${NOTE_FIELDS.filter(([k])=>n[k]).map(([k,l])=>`<div class="lsub">${l}</div><p>${esc(n[k])}</p>`).join('')}</div>`).join('')
           : '<div class="empty">Inga omdömen än.</div>') : '<div class="skel" style="height:120px"></div>'}`
     : (d.intel ? intelPanel(d.intel) : d.intel===null ? '<div class="empty">Ingen data.</div>' : '<div class="skel" style="height:120px"></div>');
-  openSheet(`${X}<h2>${esc(a.n)}</h2><div class="sub">Kund${a.producer && byId(a.producer) ? ' · producent ' + esc(byId(a.producer).n) : ''}${a.email?' · '+esc(a.email):''}</div>
+  openSheet(`${X}<h2>${esc(a.n)}</h2><div class="sub">Kund${isPart(a)?' och cirkeldeltagare':''}${a.producer && byId(a.producer) ? ' · producent ' + esc(byId(a.producer).n) : ''}</div>
     <div class="seg ${tabs.length>4?'many':''}" role="tablist" style="margin:14px 0">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="apTab='${k}';paintArtist()">${n}</button>`).join('')}</div>
     ${d.err ? `<div class="warn">${esc(d.err)}</div>` : ''}${body}`);
 }
@@ -1808,7 +1829,8 @@ async function loadRwAdmin(){
 function vRewards(){
   if(!canIntel()) return `<div class="empty">Rewards syns bara för admin.</div>`;
   if(!rwAdmin.cat && !rwAdmin.err){ loadRwAdmin(); }
-  const adm = can('manageCrew'), tabs = [['redeem','Inlösen'],['rewards','Belöningar'],['levels','Nivåer'],['points','Poäng'],['intel','Intelligence']];
+  const adm = can('manageCrew'), tabs = [['redeem','Inlösen'],['rewards','Belöningar'],['levels','Nivåer'],['points','Poäng'],['intel','Intelligence']]
+    .concat(adm ? [['access','Access']] : []);
   const d = rwAdmin, t = rwTab;
   const body = d.err ? `<div class="warn">${esc(d.err)}</div>` : !d.cat ? '<div class="skel" style="height:160px"></div>'
     : t==='redeem' ? (d.pend.length ? d.pend.map(r=>`<div class="member" style="cursor:default">
@@ -1824,8 +1846,9 @@ function vRewards(){
           <div class="grow"><div class="mname">${esc(l.name)}${l.active===false?' <span class="badge warn">AV</span>':''}</div><div class="mrole">${critText(l.criteria)}${l.perks?' · '+esc(l.perks):''}</div></div></button>`).join('')}</div>
         <div class="note">Nivån räknas fram automatiskt: den högsta nivå vars alla krav artisten uppfyller. Gränserna är exempel — ändra dem.</div>`
     : t==='points' ? pointsCfgPanel(adm)
+    : t==='access' && adm ? accessCfgPanel()
     : intelPanelList();
-  return `<div class="h1">Rewards</div><div class="sub">Poäng, belöningar, nivåer och Artist Intelligence.</div>
+  return `<div class="h1">Rewards</div><div class="sub">Poäng, belöningar, nivåer, Artist Intelligence och Bando HQ Access.</div>
     <div class="seg many" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="rwTab='${k}';${k==='intel'?'loadRwAdmin();':''}render()">${n}${k==='redeem'&&d.pend&&d.pend.length?` <span class="dot-n">${d.pend.length}</span>`:''}</button>`).join('')}</div>
     ${body}`;
 }
@@ -1926,6 +1949,312 @@ function customersSection(){
         <span style="color:var(--mut2);font-size:18px">›</span></button>`; }).join('')}`;
 }
 
+/* ===================== BANDO HQ ACCESS =====================
+   Registreringen (access.html, bakom QR-koden i studion) gör personen till kund OCH
+   cirkeldeltagare. Inriktningar, förmåner och tjänstepriser ligger i setting/access — admin
+   ändrar dem under Mer → Rewards → Access; det som saknas tas härifrån (samma som
+   bs_access_default i databasen). Personnumret finns bara på servern, krypterat. Appen ser
+   det maskerat och bara för admin; i förhandsläget sparas bara det maskerade. */
+const ACFG = {
+  interests:[['songwriting','Låtskrivning & textförfattande','Musikproduktion'], ['rap','Rap, flow & delivery','Artistutveckling'],
+    ['vocals','Sång & vokalteknik','Artistutveckling'], ['production','Musikproduktion & beatmaking','Musikproduktion'],
+    ['recording','Inspelning & studioteknik','Musikproduktion'], ['mixing','Mixning & mastering','Musikproduktion'],
+    ['artistdev','Artistutveckling & sound','Artistutveckling'], ['performance','Scennärvaro & performance','Artistutveckling'],
+    ['content','Content & sociala medier','Marknadsföring'], ['film','Foto, film & musikvideo','Foto och film'],
+    ['marketing','Marknadsföring & release','Marknadsföring'], ['industry','A&R, management & musikbranschen','Management']]
+    .map(([id, label, subject])=>({id, label, subject})),
+  perks:[['Studiobokningar','Boka sessions smidigt och till förmånliga priser.'],
+    ['Rabatter på tjänster','Ta del av bättre priser på mix & master, foto, musikvideo, content och marknadsföring.'],
+    ['Kreativa samarbeten','Få tillgång till erbjudanden från producenter, filmare och andra kreatörer inom Bandos nätverk.'],
+    ['Strategi & artistutveckling','Få vägledning kring din musik, dina projekt och kommande releaser.'],
+    ['A&R-feedback','Möjlighet att skicka in musik för professionell feedback, även från A&R-kontakter på stora skivbolag.'],
+    ['Merch & egna projekt','Få hjälp med att utveckla och producera egna kläder, merchandise och kreativa produkter.']]
+    .map(([title, text])=>({title, text})),
+  services:[['mix','Mix & master','per låt'], ['photo','Foto',''], ['video','Musikvideo',''], ['content','Content',''], ['marketing','Marknadsföring','']]
+    .map(([id, name, unit])=>({id, name, price:null, access:null, unit}))};
+const acfg = () => { const c = S.accessCfg || {}, pick = k => Array.isArray(c[k]) && (k==='services' || c[k].length) ? c[k] : ACFG[k];
+  return {interests:pick('interests'), perks:pick('perks'), services:pick('services')}; };
+const interestOf = id => acfg().interests.find(i=>i.id===id) || {id, label:id, subject:''};
+const interestText = ids => (ids||[]).map(id=>interestOf(id).label).join(', ');
+const subjectsOf = ids => [...new Set((ids||[]).map(id=>interestOf(id).subject).filter(Boolean))];
+/* Cirkeldeltagare: rollen deltagare, eller kund (alla kunder är det, om inte admin stängt av det). */
+const isPart = a => !!a && !a.del && a.active!==false && (a.r==='participant' || (a.r==='customer' && a.part!==false));
+const accessUrl = () => new URL('access.html', location.href).href;
+function goAccess(hash){ const u = accessUrl() + (hash||''); if(window.__nav) return window.__nav(u); location.href = u; }
+let accessLanding = '', profileAsked = false;
+
+/* Personnummer: samma kontroll som på registreringssidan och i databasen (bs_pnr). */
+function pnr12(p){
+  const raw = String(p||'').replace(/\s/g, '');
+  if(!/^(\d{6}|\d{8})[-+]?\d{4}$/.test(raw)) return null;
+  let d = raw.replace(/[-+]/g, ''); const now = new Date();
+  if(d.length===10) d = ((+d.slice(0,2) > now.getFullYear() % 100 ? 19 : 20) - (raw.includes('+') ? 1 : 0)) + d;
+  const y = +d.slice(0,4), m = +d.slice(4,6); let dd = +d.slice(6,8); if(dd > 60) dd -= 60;
+  const dt = new Date(y, m-1, dd);
+  if(m<1 || m>12 || dd<1 || dt.getMonth()!==m-1 || dt.getDate()!==dd || dt > now || y < now.getFullYear()-120) return null;
+  let s = 0; [...d.slice(2)].forEach((c,i)=>{ const x = +c * (i%2===0 ? 2 : 1); s += Math.floor(x/10) + x%10; });
+  return s % 10 === 0 ? d : null;
+}
+const pnrMask = p => { const d = pnr12(p); return d ? d.slice(2,8) + '-••••' : ''; };
+let PNR = {}, pnrAt = 0;
+function loadPnr(force){
+  if(PREVIEW_LOGIN || !can('manageCrew') || (!force && Date.now() - pnrAt < 120000)) return Promise.resolve(PNR);
+  pnrAt = Date.now();
+  return sbRpc('pnr_masks', {}).then(x=>{ PNR = x || {}; return PNR; }).catch(()=>PNR);
+}
+const pnrOf = a => !a ? '' : PREVIEW_LOGIN ? a.pnr || '' : PNR[a.id] || '';
+
+/* Vad saknas i profilen? Kunder och deltagare från tiden före Access fyller i det vid inloggning. */
+function profileGaps(a){
+  a = a || me(); if(!a || !['customer','participant'].includes(a.r)) return null;
+  const pnr = remoteRole() && a.id===(me()||{}).id ? (S.profile ? !!S.profile.pnr : true) : !!pnrOf(a);
+  const g = {pnr:!pnr, interests:!(a.interests||[]).length, consent:!a.consent, phone:!normPhone(a.phone)};
+  return Object.values(g).some(Boolean) ? g : null;
+}
+const pickInt = {};
+function interestChips(k){
+  const sel = pickInt[k];
+  return acfg().interests.filter(i=>!i.off || sel.has(i.id)).map(i=>`<button type="button" class="chip ${sel.has(i.id)?'on':''}" aria-pressed="${sel.has(i.id)}"
+    onclick="toggleInt('${k}','${esc(i.id)}',this)">${esc(i.label)}</button>`).join('');
+}
+function toggleInt(k, id, el){
+  const s1 = pickInt[k]; s1.has(id) ? s1.delete(id) : s1.add(id);
+  el.classList.toggle('on', s1.has(id)); el.setAttribute('aria-pressed', s1.has(id));
+}
+const CHIPWRAP = 'style="flex-wrap:wrap;overflow:visible"';
+function openProfileSheet(forBooking){
+  const a = me(), g = profileGaps(a); if(!a || !g) return;
+  pickInt.pf = new Set(a.interests||[]);
+  const needPnr = g.pnr || g.consent;
+  openSheet(`${X}<h2>Komplettera din profil</h2>
+    <div class="sub">${forBooking ? 'Innan du bokar: ' : ''}Bando HQ Access gäller nu alla som bokar hos oss — och alla som bokar är också
+      deltagare i våra studiocirklar.</div>
+    ${g.phone ? `<label class="lbl" for="pfP">MOBILNUMMER</label><input id="pfP" type="tel" inputmode="tel" autocomplete="tel" value="${esc(a.phone||'')}" placeholder="070-123 45 67">` : ''}
+    ${needPnr ? `<label class="lbl" for="pfN">PERSONNUMMER</label><input id="pfN" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="ÅÅÅÅMMDD-XXXX">
+      <div class="tiny muted" style="margin-top:5px;line-height:1.5">Behövs för att rapportera studiecirklarna till studieförbundet. Lagras krypterat och syns bara för Bandos administratörer.</div>` : ''}
+    <label class="lbl">DIN INRIKTNING</label>
+    <div class="chips" id="pfI" ${CHIPWRAP}>${interestChips('pf')}</div>
+    ${needPnr ? `<label class="consent" style="margin-top:14px"><input type="checkbox" id="pfC"><span>Jag godkänner
+      <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur Bando hanterar mina uppgifter</a> och att jag är deltagare i Bandos studiocirklar.</span></label>` : ''}
+    <div id="pfMsg"></div>
+    <button class="btn" style="margin-top:20px" onclick="saveProfile()">SPARA PROFILEN</button>`);
+}
+async function saveProfile(){
+  const a = me(), g = profileGaps(a) || {}, v = id => ((document.getElementById(id)||{}).value || '').trim();
+  const ints = [...(pickInt.pf||[])], needPnr = g.pnr || g.consent, phone = g.phone ? v('pfP') : '';
+  const msg = t => { document.getElementById('pfMsg').innerHTML = `<div class="warn" role="alert">${esc(t)}</div>`; };
+  if(g.phone && !normPhone(phone)) return msg('Fyll i ett giltigt mobilnummer');
+  if(needPnr && !pnr12(v('pfN'))) return msg('Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX');
+  if(!ints.length) return msg('Välj minst en inriktning');
+  if(needPnr && !(document.getElementById('pfC')||{}).checked) return msg('Godkänn hur vi hanterar dina uppgifter');
+  try{
+    if(PREVIEW_LOGIN){
+      Object.assign(a, {interests:ints, phone:phone || a.phone, consent:true, part:true, reg:a.reg || new Date().toISOString(),
+        source:a.source || 'app'}, needPnr ? {pnr:pnrMask(v('pfN'))} : {});
+      bump(a); save();
+    } else {
+      if(needPnr) await sbRpc('register_access', {p_name:a.n, p_phone:phone, p_pnr:v('pfN'), p_interests:ints, p_consent:true, p_url:appUrl()});
+      else await sbRpc('set_my_interests', {p_interests:ints});
+      if(remoteRole()) await cloudView(); else await cloudPull();
+    }
+    closeSheet(); render(); toast('Profilen är klar');
+  }catch(e){ msg(e.message); }
+}
+function openInterests(id){
+  const a = id ? byId(id) : me(); if(!a) return;
+  pickInt.me = new Set(a.interests||[]);
+  openSheet(`${X}<h2>${id ? esc(a.n) : 'Din inriktning'}</h2>
+    <div class="sub">${id ? 'Inriktningarna personen valt — styr vilken grupp Fördela föreslår.' : 'Det du vill utvecklas inom. Vi använder det när vi placerar dig i en grupp.'}</div>
+    <div class="chips" style="flex-wrap:wrap;overflow:visible;margin-top:14px">${interestChips('me')}</div>
+    <button class="btn" style="margin-top:20px" onclick="saveInterests('${id||''}')">SPARA</button>`);
+}
+async function saveInterests(id){
+  const ints = [...pickInt.me]; if(!ints.length) return toast('Välj minst en inriktning');
+  const a = id ? byId(id) : me(); if(!a) return;
+  try{
+    if(PREVIEW_LOGIN || (id && can('manageCrew'))){ a.interests = ints; bump(a); save(); if(!PREVIEW_LOGIN) sync(true); }
+    else { await sbRpc('set_my_interests', {p_interests:ints}); if(remoteRole()) await cloudView(); else await cloudPull(); }
+    closeSheet(); render(); if(id && apId===id) openArtistProfile(id, 'profile'); toast('Inriktningen sparad');
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- kundens vy: gruppen, priserna och förmånerna ---------- */
+function myCircleInfo(){
+  const m = me(); if(!m || m.r!=='customer') return null;
+  if(remoteRole()) return S.myCircle || {circle:null};
+  const c = lcircle().find(x=>(x.members||[]).includes(m.id)); if(!c) return {circle:null};
+  const l = c.leader ? byName(c.leader) : null, today = iso(new Date());
+  return {circle:{id:c.id, n:c.n, subject:c.subject||'', leader:c.leader||'', size:(c.members||[]).length},
+    leader: l ? {name:l.n, email:l.email||'', phone:l.phone||''} : null,
+    group: live().filter(b=>b.circleId===c.id && !b.status && b.date>=today).sort((x,y)=>startAt(x)-startAt(y)),
+    hours: hoursFor(m.id)};
+}
+const dayShort = d => `${DAY2[fromIso(d).getDay()]} ${fromIso(d).getDate()} ${MON[fromIso(d).getMonth()]}`;
+function circleCardFor(){
+  const ci = myCircleInfo(), m = me(); if(!ci || m.part===false) return '';
+  const c = ci.circle;
+  if(!c) return `<div class="eyebrow">DIN STUDIOCIRKEL<span class="ln"></span></div>
+    <div class="card"><div class="mname">Vi placerar dig i en grupp</div>
+      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Utifrån din inriktning${(m.interests||[]).length ? ' (' + esc(interestText(m.interests)) + ')' : ''}.
+        När du är placerad ser du din grupp, din ansvariga producent och gruppens pass här.</div></div>`;
+  const next = (ci.group||[]).filter(b=>endAt(b) > new Date()).slice(0, 4);
+  return `<div class="eyebrow">DIN STUDIOCIRKEL<span class="ln"></span></div>
+    <div class="card" id="myCircle">
+      ${c.subject ? `<div class="studio-name">${esc(c.subject.toUpperCase())}</div>` : ''}
+      <div class="live-title" style="font-size:20px;margin-top:4px">${esc(c.n)}</div>
+      <div class="kv" style="margin-top:10px"><span>ANSVARIG PRODUCENT</span><b>${esc(c.leader || 'utses snart')}</b></div>
+      <div class="kv"><span>NÄSTA GRUPPASS</span><b>${next.length ? esc(dayShort(next[0].date)) + ' ' + next[0].start + '–' + next[0].end : 'inte planerat än'}</b></div>
+      <div class="kv" style="border:0"><span>DINA CIRKELTIMMAR</span><b>${fmtH(ci.hours||0)} h</b></div>
+      ${next.length > 1 ? `<div class="tiny muted" style="margin-top:4px">Sedan ${next.slice(1).map(b=>esc(dayShort(b.date)) + ' ' + b.start).join(' · ')}</div>` : ''}
+      <div class="tiny muted" style="margin-top:8px;line-height:1.5">Gruppens pass planerar din producent. Dina egna sessions bokar du som vanligt ovan.</div></div>
+    ${ci.leader && (ci.leader.phone || ci.leader.email) ? `<div class="card person"><div class="mname">${esc(ci.leader.name)}</div>${contactLinks(ci.leader)}</div>` : ''}`;
+}
+const kr = n => Math.round(+n).toLocaleString('sv-SE') + ' kr';
+const hasNum = v => v !== null && v !== undefined && v !== '' && !isNaN(+v);
+function svcPrice(x){
+  const u = x.unit ? ' ' + esc(x.unit) : '';
+  if(hasNum(x.access)) return `${hasNum(x.price) && +x.price > +x.access ? `<s class="muted" style="font-weight:500">${kr(x.price)}</s> ` : ''}${kr(x.access)}${u}`;
+  return hasNum(x.price) ? kr(x.price) + u : 'fråga oss';
+}
+function accessCard(){
+  const m = me(), rate = rateFor(m.n), cfg = acfg(), svc = cfg.services.filter(x=>x.name);
+  return `<div class="eyebrow">DINA PRISER OCH FÖRMÅNER<span class="ln"></span></div>
+    <div class="card" id="myPrices">
+      <div class="kv"${svc.length ? '' : ' style="border:0"'}><span>STUDIOTID</span><b>${rate ? `${kr(rate*3)} per pass · ${kr(rate)}/h` : 'enligt överenskommelse'}</b></div>
+      ${svc.map((x,i)=>`<div class="kv"${i===svc.length-1 ? ' style="border:0"' : ''}><span>${esc(x.name.toUpperCase())}</span><b>${svcPrice(x)}</b></div>`).join('')}</div>
+    <div class="perklist">${cfg.perks.map((p,i)=>`<div class="perkrow"><i>${String(i+1).padStart(2,'0')}</i><div><b>${esc(p.title)}</b><span>${esc(p.text)}</span></div></div>`).join('')}</div>`;
+}
+function interestsCard(){
+  const m = me(); if(m.part===false && m.r==='customer') return '';
+  return `<div class="eyebrow">DIN INRIKTNING<span class="ln"></span></div>
+    <button class="member" id="myInterests" onclick="openInterests()"><div class="grow" style="min-width:0">
+      <div class="mname" style="font-size:14px;letter-spacing:.01em">${(m.interests||[]).length ? esc(interestText(m.interests)) : 'Ingen vald än'}</div>
+      <div class="mrole">Det du vill utvecklas inom i studiocirklarna · ändra</div></div><span class="chev">›</span></button>`;
+}
+function profileBanner(){
+  const g = profileGaps(); if(!g) return '';
+  if(!profileAsked){ profileAsked = true; setTimeout(()=>{ if(!document.getElementById('sheet').classList.contains('on') && profileGaps()) openProfileSheet(); }, 500); }
+  return `<button class="card profcta" id="profBanner" onclick="openProfileSheet()">
+    <div class="grow" style="text-align:left"><div class="mname">Komplettera din profil</div>
+      <div class="tiny muted" style="margin-top:4px;line-height:1.5">${[g.pnr && 'personnummer', g.interests && 'inriktning', g.phone && 'mobilnummer', g.consent && 'godkännande']
+        .filter(Boolean).join(', ').replace(/^./, c=>c.toUpperCase())} saknas — behövs för Bando HQ Access.</div></div><span class="chev">›</span></button>`;
+}
+
+/* ---------- personens profil (crewet): fliken Profil i artistprofilen ---------- */
+function profilePanel(a, bs){
+  const today = new Date(), adm = can('manageCrew'), inC = lcircle().filter(c=>(c.members||[]).includes(a.id));
+  const done = bs.filter(b=>b.status!=='request' && startAt(b) < today), next = bs.filter(b=>b.status!=='request' && startAt(b) >= today).sort((x,y)=>startAt(x)-startAt(y));
+  const mask = pnrOf(a), rate = rateFor(a.n), lvl = apData.sum && apData.sum.level;
+  const regd = a.reg ? new Date(a.reg).toLocaleDateString('sv-SE', {day:'numeric', month:'short', year:'numeric'}) : '';
+  return `<div class="card">
+      <div class="kv"><span>E-POST</span><b>${a.email ? `<a href="mailto:${esc(a.email)}" style="color:var(--txt)">${esc(a.email)}</a>` : '—'}</b></div>
+      <div class="kv"><span>TELEFON</span><b>${a.phone ? `<a href="${telHref(a.phone)}" style="color:var(--txt)">${esc(a.phone)}</a>` : '—'}</b></div>
+      <div class="kv"><span>REGISTRERAD</span><b>${regd ? esc(regd) + (a.source==='access' ? ' · via Access' : '') : 'före Access'}</b></div>
+      ${adm ? `<div class="kv"><span>PERSONNUMMER</span><b id="pnrV">${mask ? `${esc(mask)} <button class="linkbtn" style="display:inline;margin:0;padding:0 0 0 8px" onclick="revealPnr('${a.id}')">Visa</button>`
+        : '<span style="color:var(--warn)">saknas</span>'}</b></div>` : ''}
+      <div class="kv" style="border:0"><span>SAMTYCKE</span><b>${a.consent ? 'lämnat' : '<span style="color:var(--warn)">inte än</span>'}</b></div></div>
+    <div class="eyebrow">INRIKTNING<span class="ln"></span></div>
+    ${(a.interests||[]).length ? `<div class="chips" ${CHIPWRAP}>${a.interests.map(id=>`<span class="chip on" style="cursor:default">${esc(interestOf(id).label)}</span>`).join('')}</div>`
+      : '<div class="empty">Ingen inriktning vald än.</div>'}
+    ${adm ? `<button class="linkbtn" onclick="openInterests('${a.id}')">Ändra inriktning</button>` : ''}
+    <div class="eyebrow">STUDIOCIRKEL<span class="ln"></span></div>
+    ${a.part===false && a.r==='customer' ? '<div class="empty">Inte deltagare i studiocirklarna.</div>'
+      : inC.length ? inC.map(c=>`<div class="kv"><span>${esc(c.n)}</span><b>${esc(c.leader ? 'ansvarig ' + c.leader : 'ingen ledare än')}</b></div>`).join('')
+      : `<div class="note">Inte placerad i en grupp än.${can('manageCircles') ? ` <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();closeSheet();openDistribute()">Fördela</a>` : ''}</div>`}
+    <div class="eyebrow">BOKNINGAR<span class="ln"></span></div>
+    <div class="kv"><span>GENOMFÖRDA</span><b>${nt(done.length,'pass','pass')}</b></div>
+    <div class="kv" style="border:0"><span>SENASTE / NÄSTA</span><b>${done[0] ? esc(dayShort(done[0].date)) : '—'} / ${next[0] ? esc(dayShort(next[0].date)) : '—'}</b></div>
+    <div class="eyebrow">PRISER OCH FÖRMÅNER<span class="ln"></span></div>
+    <div class="kv"><span>STUDIOTID</span><b>${rate ? kr(rate) + '/h' : 'enligt överenskommelse'}</b></div>
+    ${lvl ? `<div class="kv"><span>NIVÅ</span><b>${esc(lvl.name)}${lvl.perks ? ' · ' + esc(lvl.perks) : ''}</b></div>` : ''}
+    ${acfg().services.filter(x=>x.name).map(x=>`<div class="kv"><span>${esc(x.name.toUpperCase())}</span><b>${svcPrice(x)}</b></div>`).join('')}
+    <div class="tiny muted" style="margin-top:8px">Priserna och förmånerna för Access ändras under Mer → Rewards → Access.</div>`;
+}
+async function revealPnr(id){
+  const el = document.getElementById('pnrV'); if(!el || !can('manageCrew')) return;
+  if(PREVIEW_LOGIN) return toast('I förhandsläget sparas bara det maskerade numret');
+  try{
+    const v = await sbRpc('reveal_pnr', {p_member:id});
+    el.textContent = v;
+    setTimeout(()=>{ const e2 = document.getElementById('pnrV'); if(e2 && apId===id) paintArtist(); }, 30000);
+  }catch(e){ toast(e.message); }
+}
+
+/* ---------- Mer → Rewards → Access (admin) ---------- */
+let accDraft = null;
+function accessCfgPanel(){
+  if(!accDraft) accDraft = JSON.parse(JSON.stringify(acfg()));
+  const d = accDraft, n = v => hasNum(v) ? v : '';
+  return `<div class="tiny muted" style="margin-bottom:10px;line-height:1.55">Det här visas på <a href="${esc(accessUrl())}" target="_blank" rel="noopener" style="color:var(--pur3)">registreringssidan</a>
+      och i kundens vy. Ändringar gäller direkt — ingen kod behöver ändras. Studiopriset ändras under Priser.</div>
+    <div class="eyebrow" style="margin-top:0">INRIKTNINGAR<span class="ln"></span></div>
+    ${d.interests.map((x,i)=>`<div class="accrow col">
+      <input value="${esc(x.label)}" oninput="accDraft.interests[${i}].label=this.value" aria-label="Inriktning" placeholder="Inriktning">
+      <div class="accrow" style="margin-top:0"><input value="${esc(x.subject||'')}" oninput="accDraft.interests[${i}].subject=this.value" aria-label="Ämne för grupperna" placeholder="Ämne för grupperna" list="accSubj">
+        <label class="tiny accon"><input type="checkbox" ${x.off?'':'checked'} onchange="accDraft.interests[${i}].off=!this.checked"> visas</label></div></div>`).join('')}
+    <datalist id="accSubj">${[...new Set(lcircle().map(c=>c.subject).concat(lcourses().map(k=>k.subject), d.interests.map(x=>x.subject)).filter(Boolean))].map(v=>`<option value="${esc(v)}">`).join('')}</datalist>
+    <button class="linkbtn" onclick="accDraft.interests.push({id:'i_'+uid().slice(0,8),label:'',subject:''});render()">+ inriktning</button>
+    <div class="tiny muted">Ämnet styr vilken grupp Fördela föreslår. En inriktning tas inte bort — dölj den, så behåller de som valt den den.</div>
+    <div class="eyebrow">FÖRMÅNER<span class="ln"></span></div>
+    ${d.perks.map((x,i)=>`<div class="accrow col">
+      <input value="${esc(x.title)}" oninput="accDraft.perks[${i}].title=this.value" aria-label="Förmånens rubrik" placeholder="Rubrik">
+      <textarea oninput="accDraft.perks[${i}].text=this.value" aria-label="Förmånens text" style="min-height:52px">${esc(x.text)}</textarea>
+      <button class="linkbtn" style="margin:0" onclick="accDraft.perks.splice(${i},1);render()">Ta bort</button></div>`).join('')}
+    <button class="linkbtn" onclick="accDraft.perks.push({title:'',text:''});render()">+ förmån</button>
+    <div class="eyebrow">TJÄNSTEPRISER<span class="ln"></span></div>
+    ${d.services.map((x,i)=>`<div class="accrow col">
+      <input value="${esc(x.name)}" oninput="accDraft.services[${i}].name=this.value" aria-label="Tjänst" placeholder="Tjänst, t.ex. Mix & master">
+      <div class="two"><input inputmode="numeric" value="${n(x.price)}" oninput="accDraft.services[${i}].price=this.value===''?null:+this.value" aria-label="Ordinarie pris" placeholder="Ordinarie kr">
+        <input inputmode="numeric" value="${n(x.access)}" oninput="accDraft.services[${i}].access=this.value===''?null:+this.value" aria-label="Pris med Access" placeholder="Med Access kr"></div>
+      <div class="two"><input value="${esc(x.unit||'')}" oninput="accDraft.services[${i}].unit=this.value" aria-label="Per" placeholder="per låt, per timme …">
+        <button class="linkbtn" style="margin:0" onclick="accDraft.services.splice(${i},1);render()">Ta bort</button></div></div>`).join('')}
+    <button class="linkbtn" onclick="accDraft.services.push({id:'s_'+uid().slice(0,8),name:'',price:null,access:null,unit:''});render()">+ tjänst</button>
+    <div class="tiny muted">Utan pris står det "fråga oss". Med båda priserna visas det ordinarie överstruket.</div>
+    <div id="accMsg"></div>
+    <button class="btn" style="margin-top:20px" onclick="saveAccessCfg()">SPARA</button>
+    ${accDraft && JSON.stringify(accDraft)!==JSON.stringify(acfg()) ? `<button class="btn ghost" style="margin-top:9px" onclick="accDraft=null;render()">ÅNGRA ÄNDRINGARNA</button>` : ''}`;
+}
+function saveAccessCfg(){
+  if(!can('manageCrew')) return;
+  const d = JSON.parse(JSON.stringify(accDraft || acfg())), msg = t => { document.getElementById('accMsg').innerHTML = `<div class="warn" role="alert">${esc(t)}</div>`; };
+  d.interests = d.interests.filter(x=>String(x.label||'').trim()).map(x=>Object.assign(x, {label:x.label.trim(), subject:String(x.subject||'').trim()}));
+  d.perks = d.perks.filter(x=>String(x.title||'').trim() || String(x.text||'').trim()).map(x=>({title:String(x.title||'').trim(), text:String(x.text||'').trim()}));
+  d.services = d.services.filter(x=>String(x.name||'').trim()).map(x=>Object.assign(x, {name:x.name.trim(), unit:String(x.unit||'').trim(),
+    price:hasNum(x.price) ? +x.price : null, access:hasNum(x.access) ? +x.access : null}));
+  if(!d.interests.some(x=>!x.off)) return msg('Minst en inriktning måste visas');
+  if(new Set(d.interests.map(x=>x.id)).size !== d.interests.length) return msg('Två inriktningar har samma id');
+  if(d.perks.some(x=>!x.title || !x.text)) return msg('Varje förmån behöver rubrik och text');
+  if(!d.perks.length) return msg('Minst en förmån');
+  if(d.services.some(x=>(x.price!=null && x.price<0) || (x.access!=null && x.access<0))) return msg('Priserna kan inte vara negativa');
+  S.accessCfg = Object.assign(d, {up:Date.now()}); accDraft = null;
+  save(); sync(true); render(); toast('Sparat — gäller direkt på registreringssidan och i kundvyn');
+}
+
+/* ---------- tillbaka från registreringen ---------- */
+/* Förhandsläget: registreringssidan lämnar uppgifterna här (inget personnummer, bara det maskerade). */
+function takeAccessPreview(){
+  let p = null; try{ p = JSON.parse(localStorage.getItem('bandohq_access_preview')||'null'); }catch(_){}
+  localStorage.removeItem('bandohq_access_preview');
+  if(!p || !p.name) return;
+  const em = String(p.email||'').toLowerCase();
+  let a = em && accounts().find(x=>(x.email||'').toLowerCase()===em && ['customer','participant'].includes(x.r));
+  if(!a){
+    let n = p.name, i = 1; while(accounts().some(x=>x.n.toLowerCase()===n.toLowerCase())) n = p.name + ' ' + (++i);
+    a = {id:'m_' + uid(), n, r:'customer', email:em, phone:'', c:'#6633b8', g:'#9d5cf5', active:true, del:false};
+    S.accounts.push(a);
+  }
+  Object.assign(a, {r:'customer', part:true, interests:p.interests||[], pnr:p.pnr||'', consent:true, phone:p.phone || a.phone || '',
+    reg:a.reg || new Date(p.at || Date.now()).toISOString(), source:a.source || 'access'});
+  bump(a);
+  S.session = {email:a.email||'', name:a.n, picture:'', member:a.n, ts:Date.now(), via:'preview'};
+  save();
+}
+function afterAccess(){
+  const k = accessLanding; accessLanding = '';
+  if(k==='profil' && profileGaps()) return openProfileSheet();
+  if(k==='welcome'){ const m = me(); profileAsked = true; toast('Välkommen till Bando HQ' + (m ? ', ' + String(m.n).split(' ')[0] : '')); }
+}
+
 async function circlePlanCheck(cid, dates, start, studio){
   if(PREVIEW_LOGIN) return circlePlanLocal(cid, dates, start, studio);
   return sbRpc('circle_plan_check', {p_circle:cid, p_dates:dates, p_start:start, p_studio:studio||null});
@@ -1980,7 +2309,7 @@ const activeAcc = () => accounts().filter(a => a.active !== false);
 /* "Crewet" är numera ett filter på rollen, inte en egen lista. */
 const crew      = () => activeAcc().filter(a => isCrewRole(a.r));
 const producers = () => activeAcc().filter(a => a.r === 'producer');
-const lpeople   = () => activeAcc().filter(a => a.r === 'participant');
+const lpeople   = () => activeAcc().filter(isPart);     /* deltagare + kunder (Access: alla kunder är cirkeldeltagare) */
 const customers = () => activeAcc().filter(a => a.r === 'customer');
 const cameras   = () => activeAcc().filter(a => a.r === 'camera');
 const teamAcc   = () => activeAcc().filter(a => isTeamRole(a.r));
@@ -2209,7 +2538,6 @@ function renderGate(){
   const tag = document.getElementById('gateTag');
   const b = document.getElementById('gateBody');
   if(joinToken) return renderJoin(tag, b);
-  if(gateMode==='public') return renderPublic(tag, b);
   if(recoverToken){
     tag.textContent = 'Välj ett nytt lösenord.';
     b.innerHTML = `<form class="gate-form" onsubmit="event.preventDefault();doRecover()">
@@ -2252,8 +2580,8 @@ function renderGate(){
       return;
     }
     tag.textContent = 'Logga in för att fortsätta.';
-    /* i appen är bokningen lika viktig som inloggningen — det är det nya kunder kommer för */
-    const bookBtn = `<button class="btn ${isNative()?'':'ghost'}" style="margin-top:${isNative()?'0':'14px'}" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID${isNative()?'':' UTAN KONTO'}</button>`;
+    /* Bando HQ Access: nya registrerar sig (och blir kund och cirkeldeltagare) — i appen lika viktigt som inloggningen */
+    const bookBtn = `<a class="btn ${isNative()?'':'ghost'}" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:${isNative()?'0':'14px'}" href="${esc(accessUrl())}">REGISTRERA DIG</a>`;
     b.innerHTML = `${isNative() ? bookBtn + `<div class="gate-or">har du ett konto?</div>` : ''}<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
         <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
         <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
@@ -2263,7 +2591,7 @@ function renderGate(){
         ${gateErrBox()}
       </form>
       <button class="linkbtn" onclick="gateEmail=(document.getElementById('gE')||{}).value||gateEmail;gateMode='forgot';gateErr='';renderGate()">Glömt lösenordet?</button>
-      <div class="gate-foot">Nytt här? Du behöver en <b>inbjudningslänk</b> från oss. ·
+      <div class="gate-foot">Ny här? <a href="${esc(accessUrl())}">Registrera dig för Bando HQ Access</a> ·
         <a href="#integritet" onclick="event.preventDefault();openPrivacy()">Integritet</a> ·
         <a href="#support" onclick="event.preventDefault();openSupport()">Hjälp</a></div>
       ${isNative() ? '' : bookBtn}`;
@@ -2284,7 +2612,7 @@ function renderGate(){
           <span class="chev">›</span>
         </button>`).join('')}</div>`).join('')}
     ${gateErrBox()}
-    <button class="btn ghost" style="margin-top:18px" onclick="gateMode='public';gateErr='';renderGate()">BOKA STUDIOTID UTAN KONTO</button>
+    <a class="btn ghost" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:18px" href="${esc(accessUrl())}">REGISTRERA DIG (BANDO HQ ACCESS)</a>
     ${DEMO ? `<div class="note">Demoläget visar appen med påhittade personer, pass och artister — producent, admin,
         kamerateam, cirkelledare, deltagare och kund. Inget sparas på servern.</div>
       <button class="btn ghost" style="margin-top:9px" onclick="leaveDemo()">AVSLUTA DEMOLÄGET</button>`
@@ -2563,6 +2891,9 @@ function memberToAcc(m){
     team:m.team||'', ig:m.ig||'', producer:m.producer||'',
     login: !!m.user_id, username: m.username||'',          /* har personen loggat in? (inbjudningarna) */
     perms: Array.isArray(m.perms) ? m.perms : [],           /* t.ex. artist_intel (Rewards, omdömen, CRM) */
+    /* Access: kunden är också cirkeldeltagare, med inriktningar; registreringen sätts bara av servern */
+    part: m.participant!==false, interests: Array.isArray(m.interests) ? m.interests : [],
+    reg: m.registered_at||'', consent: !!m.consent_at, source: m.source||'',
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
     active: m.active!==false, del:false, up:+m.up||0};
@@ -2592,7 +2923,8 @@ async function cloudEnter(){
     if(AUTH.meta) AUTH.meta.invite = '';
     rows = await sb('/members?select=*&user_id=eq.' + AUTH.uid);
   }
-  if(!rows.length) throw new Error('Inloggningen fungerade, men inget konto är kopplat. Be AZ om en inbjudningslänk.');
+  /* Access: bekräftad e-post men ingen profil än (fliken stängdes) — slutför på registreringssidan */
+  if(!rows.length){ goAccess(); throw new Error('Inloggningen fungerade, men registreringen är inte klar — slutför den på registreringssidan.'); }
   const m = rows[0];
   if(m.active===false) throw new Error('Kontot är avstängt. Prata med AZ.');
   S = cloudBlank();                    /* börja tomt — inget från en tidigare användare på enheten */
@@ -2624,6 +2956,7 @@ async function cloudPush(){
   setting('rates', S.rates, S.rates.up);
   if(can('manageCircles')){ const {up:cu, ...cfg} = S.circleCfg; setting('circles', cfg, cu); }
   if(can('manageCrew')){ const {up:ru, ...rc} = S.rewardsCfg; setting('rewards', rc, ru); }
+  if(can('manageCrew')){ const {up:au, ...ac} = S.accessCfg; setting('access', ac, au); }
   setting('dropbox', {appKey:S.dropbox.appKey||'', sharedId:S.dropbox.sharedId||'', setupAt:S.dropbox.setupAt||0}, S.dropbox.up);
   setting('push', {publicKey:S.pushCfg.publicKey||''}, S.pushCfg.up);
   setting('backup', {at:S.backupCfg.at||0, by:S.backupCfg.by||''}, S.backupCfg.up);
@@ -2639,7 +2972,8 @@ async function cloudPush(){
 }
 /* Kontot i appen → raden i databasen. user_id och användarnamnet skickas aldrig härifrån. */
 const memberRow = a => ({id:a.id, role:a.r, name:a.n, email:a.email||null, phone:a.phone||null, color:a.c||null,
-  glow:a.g||null, team:a.team||null, ig:a.ig||null, producer:a.producer||null, active:a.active!==false && !a.del, up:a.up||0});
+  glow:a.g||null, team:a.team||null, ig:a.ig||null, producer:a.producer||null, active:a.active!==false && !a.del, up:a.up||0,
+  participant:a.part!==false, interests:a.interests||[]});
 /* En person sparas direkt — en inbjudan kopplas till raden och den måste finnas först. */
 async function pushMember(a){
   await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
@@ -2659,6 +2993,7 @@ function applyRecord(r){
     if(r.id==='backup'  && up > (S.backupCfg.up||0)) S.backupCfg = Object.assign({}, S.backupCfg, r.data, {up});
     if(r.id==='circles' && up > (S.circleCfg.up||0)) S.circleCfg = Object.assign({}, r.data, {up});
     if(r.id==='rewards' && up > (S.rewardsCfg.up||0)) S.rewardsCfg = Object.assign({}, r.data, {up});
+    if(r.id==='access'  && up > (S.accessCfg.up||0))  S.accessCfg = Object.assign({}, r.data, {up});
     return;
   }
   const coll = KINDS[r.kind]; if(!coll) return;
@@ -2704,6 +3039,10 @@ async function cloudView(){
   S.leaderHours = v.leaderHours || null;    /* ledarens timbank (i år och nästa år), räknad på servern */
   S.reports = Object.fromEntries(Object.entries(v.reports || {}).map(([k,st])=>[k, {status:st}]));
   S.contact = v.contact || null;          /* kundens producent — för avbokning med kort varsel */
+  /* Access (kunden): profilen, gruppen och priserna */
+  S.profile = v.profile || null;
+  S.myCircle = 'circle' in v ? {circle:v.circle||null, leader:v.leaderContact||null, group:v.group||[], hours:+v.circleHours||0} : null;
+  if(v.access) S.accessCfg = Object.assign({up:0}, v.access);
   save();
 }
 
@@ -2868,6 +3207,8 @@ async function joinWithInvite(f){
   localStorage.setItem('bandosesh_invite', JSON.stringify({token:f.token, name, username, email}));
   const j = await sbAuth('/signup', {email, password:f.password,
     data:{name, username, invite:String(f.token).toUpperCase()}});
+  /* Supabase svarar utan fel men utan identities när adressen redan har ett bekräftat konto */
+  if(j && Array.isArray(j.identities) && !j.identities.length) throw new Error('Det finns redan ett konto med den e-posten — logga in i stället');
   if(!takeSession(j)) return 'code';
   await cloudEnter(); showApp(); return 'ok';
 }
@@ -5108,26 +5449,35 @@ function openPrivacy(){
     <div class="sub">${esc(ORG.name)} ansvarar för uppgifterna. Frågor och radering: ${contact}.</div>
     <div class="privacy">
       <h3>Vad vi sparar</h3>
-      <p>Namn, e-post, användarnamn, telefon om du lämnat det, och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
-        uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Nya kunder: det som fylls i på
-        bokningssidan. Kunder: poäng och inlösta belöningar i Bando Rewards, och producenternas interna omdömen
-        och uppföljning efter passen. <b>Vi sparar inte personnummer.</b></p>
+      <p>Namn, e-post, användarnamn, telefon och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
+        uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Kunder: poäng och inlösta belöningar i
+        Bando Rewards, och producenternas interna omdömen och uppföljning efter passen.</p>
+      <p><b>Bando HQ Access:</b> när du registrerar dig sparar vi också dina valda inriktningar, när du registrerade dig
+        och att du godkänt den här texten — och ditt <b>personnummer</b>.</p>
       <h3>Varför</h3>
-      <p>För att boka studion, driva studiecirklarna (timmarna rapporteras till studieförbundet), svara på
-        bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.</p>
+      <p>För att ge dig tillgång till Bando HQ, boka studion, driva studiecirklarna, svara på
+        bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.
+        Registrerar du dig för Access blir du också deltagare i våra studiocirklar — det är så Access fungerar.</p>
+      <h3>Personnumret</h3>
+      <p>Studiecirklarna rapporteras till studieförbundet, och rapporten kräver deltagarnas personnummer — därför behöver vi det.
+        Den rättsliga grunden är vårt avtal med dig om Access och studiecirklarna. Personnumret används bara till den
+        rapporteringen och till att se till att samma person inte får två konton.</p>
+      <p>Det lagras <b>krypterat</b> i en egen tabell som bara Bandos administratörer når, och då maskerat (bara födelsedatumet).
+        Hela numret visas för en administratör bara när det behövs, och varje gång loggas. Producenter, cirkelledare och
+        andra deltagare ser det aldrig. Det skickas aldrig med mejl eller notiser.</p>
       <h3>Vem ser vad</h3>
       <p>Crewet och admins ser schemat och kontona. En cirkelledare ser sina deltagares namn, telefon och e-post.
         Deltagare ser sin ledares namn och kontaktuppgifter. Kunder ser bara sina egna bokningar och lediga tider.
         Mål och personliga planer ser bara du och managern. Interna omdömen och uppföljning om kunder ser bara
         admin, den med särskild behörighet och producenten som var med på passet — aldrig kunden själv eller andra
-        kunder. Kunden ser sina egna poäng och sin nivå.</p>
+        kunder. Kunden ser sina egna poäng och sin nivå. Personnumret ser bara admin (se ovan).</p>
       <h3>Var det ligger</h3>
       <p>Konton och data hos Supabase (servrar i Stockholm). Filer i Bando Collectives Dropbox.
         Mejl skickas via Resend. Notiser via Apple och Google — innehållet är krypterat
         hela vägen till din telefon.</p>
       <h3>Hur länge</h3>
-      <p>Så länge du är med. När du slutar, eller ber om det, raderas ditt konto. Timmar i studiecirklar kan behöva
-        sparas för rapporteringen — då tas ditt namn bort från dem.</p>
+      <p>Så länge du är med. När du slutar, eller ber om det, raderas ditt konto — och personnumret med det. Timmar i studiecirklar
+        och det som redan rapporterats till studieförbundet kan behöva sparas för rapporteringen — då tas ditt namn bort från timmarna här.</p>
       <h3>Dina rättigheter</h3>
       <p>Du får veta vad vi har om dig, rätta det, och be oss radera det. Hör av dig till ${contact}.</p>
     </div>
@@ -5929,24 +6279,42 @@ function vCircleGroups(){
 
 function vCirclePeople(){
   const all = lpeople(), sg = newSignups();
+  if(can('manageCrew')) loadPnr().then(()=>{ if(view==='circles' && circTab==='people' && Object.keys(PNR).length) paintPeoplePnr(); });
+  /* Access: registrerade (och befintliga kunder) som väntar på en grupp — nyast först */
+  const inAny = new Set(lcircle().flatMap(c=>c.members||[]));
+  const waiting = all.filter(p=>p.r==='customer' && !inAny.has(p.id)).sort((a,b)=>String(b.reg||'').localeCompare(String(a.reg||'')) || a.n.localeCompare(b.n,'sv'));
   return `
-    ${sg.length?`<div class="eyebrow" style="margin-top:0">NYA ANMÄLNINGAR<span class="ln"></span><span style="color:var(--warn)">${sg.length}</span></div>
+    ${waiting.length?`<div class="eyebrow" style="margin-top:0">VÄNTAR PÅ EN GRUPP<span class="ln"></span><span style="color:var(--warn)">${waiting.length}</span></div>
+      ${waiting.slice(0, 12).map(p=>`<button class="member" onclick="openArtistProfile('${p.id}','profile')">
+        ${pav(p)}
+        <div class="grow" style="min-width:0"><div class="mname">${esc(p.n)}${p.source==='access'?' <span class="badge" style="background:rgba(255,62,191,.14);color:#ff8fd8">ACCESS</span>':''}</div>
+          <div class="mrole">${(p.interests||[]).length ? esc(interestText(p.interests)) : '<span style="color:var(--warn)">ingen inriktning än</span>'}${p.reg?' · '+esc(new Date(p.reg).toLocaleDateString('sv-SE',{day:'numeric',month:'short'})):''}</div></div>
+        <span class="chev">›</span></button>`).join('')}
+      ${waiting.length > 12 ? `<div class="tiny muted" style="margin:4px 2px">+ ${waiting.length - 12} till</div>` : ''}
+      ${can('manageCircles') ? `<button class="btn" style="margin-top:10px" onclick="openDistribute()">FÖRDELA I GRUPPER</button>` : ''}`:''}
+    ${sg.length?`<div class="eyebrow"${waiting.length?'':' style="margin-top:0"'}>NYA ANMÄLNINGAR<span class="ln"></span><span style="color:var(--warn)">${sg.length}</span></div>
       ${sg.map(x=>`<div class="member" style="cursor:default">
         <div class="grow" style="min-width:0"><div class="mname">${esc(x.name)} <span class="badge warn" style="margin-left:4px">ANMÄLAN</span></div>
           <div class="mrole">${[x.subject, x.email, x.phone].filter(Boolean).map(esc).join(' · ')||'—'}</div></div>
         <button class="btn slim" style="width:auto;flex:none;padding:9px 12px" onclick="openPlace('${x.id}')">PLACERA</button></div>`).join('')}`:''}
-    <div class="eyebrow"${sg.length?'':' style="margin-top:0"'}>DELTAGARE I PROGRAMMET<span class="ln"></span><span style="color:var(--mut2)">${all.length}</span></div>
+    <div class="eyebrow"${sg.length||waiting.length?'':' style="margin-top:0"'}>DELTAGARE I PROGRAMMET<span class="ln"></span><span style="color:var(--mut2)">${all.length}</span></div>
     <button class="btn ghost" onclick="openPersonEdit()">+ LÄGG TILL DELTAGARE</button>
     <div style="margin-top:12px">${all.length ? all.slice().sort((a,b)=>a.n.localeCompare(b.n,'sv')).map(p=>{
       const hrs = hoursFor(p.id), inC = lcircle().filter(c=>(c.members||[]).includes(p.id));
-      return `<button class="member" onclick="openPersonEdit('${p.id}')">
+      return `<button class="member" data-pid="${p.id}" onclick="${p.r==='customer' ? `openArtistProfile('${p.id}','profile')` : `openPersonEdit('${p.id}')`}">
         ${pav(p)}
-        <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(p.n)}</div>
-          <div class="mrole">${inC.length ? inC.map(c=>esc(c.n)).join(', ') : '<span style="color:var(--warn)">ingen grupp</span>'}${p.email?' · '+esc(p.email):''}</div></div>
+        <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(p.n)}${p.r==='customer'?' <span class="muted" style="font-weight:500;font-size:11px">KUND</span>':''}</div>
+          <div class="mrole">${inC.length ? inC.map(c=>esc(c.n)).join(', ') : '<span style="color:var(--warn)">ingen grupp</span>'}${p.email?' · '+esc(p.email):''}</div>
+          ${can('manageCrew') ? `<div class="mrole pnrm" style="white-space:nowrap">${pnrOf(p) ? esc(pnrOf(p)) : '<span style="color:var(--warn)">personnummer saknas</span>'}</div>` : ''}</div>
         ${hoursBar(hrs)}</button>`;
     }).join('') : `<div class="empty">Inga deltagare inlagda än.</div>`}</div>
-    <div class="note">Programdeltagarna sköts här. <b>Personnummer lagras inte i appen</b> — de finns i kalkylarket
-      från anmälningsformuläret och fylls i där när underlaget rapporteras.</div>`;
+    <div class="note">Programdeltagarna sköts här — alla kunder är också deltagare (Bando HQ Access). <b>Personnumren</b> lämnas vid
+      registreringen, lagras krypterat på servern och syns bara maskerade, och bara för admin. De fylls i rapportunderlaget automatiskt.</div>`;
+}
+/* personnumren kommer efter att listan ritats (en fråga till servern) */
+function paintPeoplePnr(){
+  document.querySelectorAll('.member[data-pid]').forEach(el=>{ const a = byId(el.dataset.pid), x = el.querySelector('.pnrm');
+    if(a && x) x.innerHTML = pnrOf(a) ? esc(pnrOf(a)) : '<span style="color:var(--warn)">personnummer saknas</span>'; });
 }
 
 /* ---------- kalendern: veckans cirkelpass med filter ---------- */
@@ -6020,13 +6388,21 @@ function saveCircleRules(){
 function distributeCandidates(){
   const inAny = new Set(lcircle().flatMap(c=>c.members||[]));
   return newSignups().map(x=>({kind:'signup', id:x.id, n:x.name, subject:x.subject||''}))
-    .concat(lpeople().filter(p=>!inAny.has(p.id)).map(p=>({kind:'person', id:p.id, n:p.n, subject:''})));
+    .concat(lpeople().filter(p=>!inAny.has(p.id))
+      .sort((a,b)=>String(a.reg||'9').localeCompare(String(b.reg||'9')) || a.n.localeCompare(b.n,'sv'))   /* först registrerad först */
+      .map(p=>({kind:'person', id:p.id, n:p.n, subjects:subjectsOf(p.interests), subject:subjectsOf(p.interests)[0]||'',
+        interests:p.interests||[], access:p.source==='access'})));
 }
 /* samma ämne först, sedan gruppen med flest lediga platser */
+/* (Access: personens inriktningar ger ämnena, i den ordning de valts) */
 function suggestCircle(cand, load){
   const g = ccfg().groupSize, open = lcircle().filter(c=>(load[c.id]||0) < g);
-  const same = open.filter(c=>cand.subject && String(c.subject||'').toLowerCase()===String(cand.subject).toLowerCase());
-  return (same.length ? same : open).sort((a,b)=>(load[a.id]||0)-(load[b.id]||0) || a.n.localeCompare(b.n,'sv'))[0] || null;
+  const by = list => list.slice().sort((a,b)=>(load[a.id]||0)-(load[b.id]||0) || a.n.localeCompare(b.n,'sv'))[0] || null;
+  for(const sub of (cand.subjects && cand.subjects.length ? cand.subjects : [cand.subject]).filter(Boolean)){
+    const same = open.filter(c=>String(c.subject||'').toLowerCase()===String(sub).toLowerCase());
+    if(same.length) return by(same);
+  }
+  return by(open);
 }
 function openDistribute(){
   if(!can('manageCircles')) return;
@@ -6035,10 +6411,10 @@ function openDistribute(){
   const opts = sel => `<option value="">Ingen grupp än</option>${lcircle().map(c=>
     `<option value="${c.id}" ${sel===c.id?'selected':''}>${esc(c.n)} (${membersOf(c.id).length}/${ccfg().groupSize})</option>`).join('')}`;
   openSheet(`${X}<h2>Fördela deltagare</h2>
-    <div class="sub">Förslag: samma ämne först, sedan gruppen med flest lediga platser. Ändra där det behövs.</div>
+    <div class="sub">Förslag: samma ämne som personens inriktning först, sedan gruppen med flest lediga platser. Ändra där det behövs.</div>
     ${distPlan.length ? distPlan.map((x,i)=>`<div class="distrow">
-      <div class="grow" style="min-width:0"><div class="mname" style="font-size:14px">${esc(x.n)}${x.kind==='signup'?' <span class="badge warn">ANMÄLAN</span>':''}</div>
-        ${x.subject?`<div class="mrole">${esc(x.subject)}</div>`:''}</div>
+      <div class="grow" style="min-width:0"><div class="mname" style="font-size:14px">${esc(x.n)}${x.kind==='signup'?' <span class="badge warn">ANMÄLAN</span>':x.access?' <span class="badge" style="background:rgba(255,62,191,.14);color:#ff8fd8">ACCESS</span>':''}</div>
+        ${(x.interests||[]).length?`<div class="mrole">${esc(interestText(x.interests))}</div>`:x.subject?`<div class="mrole">${esc(x.subject)}</div>`:''}</div>
       <select onchange="distPlan[${i}].circle=this.value" aria-label="Grupp för ${esc(x.n)}">${opts(x.circle)}</select></div>`).join('')
       + `<button class="btn" style="margin-top:20px" onclick="doDistribute()">PLACERA</button>`
       : `<div class="empty">Ingen väntar på en plats.</div>`}`);
@@ -6253,7 +6629,7 @@ function sessionLine(b, extra){
 function vParticipant(){
   const m = me();
   const cs = myCirclesAsMember();
-  if(!cs.length) return `
+  if(!cs.length) return `${profileBanner()}
     <div class="h1">Hej ${esc(m.n.split(' ')[0])}</div>
     <div class="sub">Du är inte inlagd i någon cirkel än.</div>
     <div class="empty">Så fort du kopplas till en grupp kan du boka pass här.</div>`;
@@ -6271,7 +6647,7 @@ function vParticipant(){
     : b.status==='done' ? 'Genomfört'
     : (b.studio ? esc(S.studios[b.studio]||'') : 'Studio ej satt') + (b.reqBy===m.id ? ' · ditt förslag' : '');
 
-  return `
+  return `${profileBanner()}
     <div class="h1" style="font-size:${c.n.length>22?'22px':'26px'};overflow-wrap:anywhere">${esc(c.n)}</div>
     <div class="sub">Din cirkelledare är
       <b style="color:${glow(c.leader)}">${esc(c.leader||'inte satt än')}</b> · ett pass är 3 timmar</div>
@@ -6563,7 +6939,9 @@ function vCustomer(){
   const rate = rateFor(m.n), days = bookDays(14), day = pickBookDay(list, days), p = myContact();
   const sub = b => b.status==='request' ? 'Väntar på svar · studion väljs när den godkänns'
     : esc(S.studios[b.studio]||'') + (rate ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
+  const ci = myCircleInfo(), leadIsContact = p && ci && ci.circle && p.name===ci.circle.leader;
   return `
+    ${profileBanner()}
     <div class="h1">Boka studiotid</div>
     <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':'pris enligt överenskommelse'}</div>
 
@@ -6579,14 +6957,18 @@ function vCustomer(){
     <div class="tiny muted" style="margin-top:4px;line-height:1.55">Avboka senast en timme innan. Efter det: hör av dig till
       ${esc(p ? p.name : 'din producent')}.</div>
     ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
+    ${circleCardFor()}
+    ${accessCard()}
+    ${interestsCard()}
     ${rewardsCard()}
-    ${contactCard(p, 'DIN PRODUCENT')}`;
+    ${leadIsContact ? '' : contactCard(p, 'DIN PRODUCENT')}`;
 }
 
 /* Förfrågan från kund (request_customer_slot) eller deltagare (request_session).
    Bara starttiden väljs — slutet är alltid tre timmar senare. */
 function openSlot(date, hm){
   const m = me(), cust = m.r==='customer', c = cust ? null : circleById(simpleCircle);
+  if(cust && profileGaps(m)) return openProfileSheet(true);
   if(!cust && (!c || !can('requestSession', c))) return toast('Du är inte med i den cirkeln');
   openSheet(`${X}<h2>${cust ? 'Skicka förfrågan' : 'Föreslå en tid'}</h2>
     <div class="sub">${esc(longDate(date))}${cust ? '' : ' · ' + esc(c.n) + ' · går till <b>' + esc(c.leader) + '</b>'}</div>
@@ -6702,97 +7084,8 @@ async function declineLead(id){
   }catch(e){ toast(e.message); }
 }
 
-/* ---------- BOKNINGSSIDAN FÖR NYA KUNDER (#boka) ----------
-   Ingen inloggning. Lediga tider utan namn, en förfrågan, kvitto och svar på mejlen. */
-let pubDraft = null, pubBusy = null;
-async function renderPublic(tag, b){
-  tag.innerHTML = `Boka studiotid. Ett pass är tre timmar — vi bekräftar och hör av oss.`;
-  if(!pubDraft) pubDraft = {day:null, start:'', done:false};
-  const d = pubDraft;
-  if(d.done){
-    b.innerHTML = `<div class="okbox"><b>Tack!</b> Vi har fått din förfrågan för ${esc(longDate(d.day))} ${d.start}–${d.end}.
-      ${d.email ? `Ett kvitto och svaret kommer på mejlen till <b>${esc(d.email)}</b>.` : `Vi hör av oss på <b>${esc(d.phone)}</b>.`}</div>
-      <button class="btn ghost" style="margin-top:14px" onclick="Object.assign(pubDraft,{day:null,start:'',done:false});renderGate()">SKICKA EN TILL</button>
-      <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
-    return;
-  }
-  const from = iso(new Date()), to = iso(addDays(new Date(), 30));
-  if(!pubBusy){
-    b.innerHTML = `<div class="skel" style="height:140px"></div>`;
-    if(!PREVIEW_LOGIN) try{
-      const r = await fetch(CLOUD.url + '/rest/v1/rpc/studio_info', {method:'POST',
-        headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:'{}'});
-      if(r.ok) S.studios = Object.assign({}, S.studios, await r.json());
-    }catch(_){}
-    try{ pubBusy = PREVIEW_LOGIN ? booked().map(x=>({studio:x.studio, date:x.date, start:x.start, end:x.end}))
-                                 : await (async()=>{ const r = await fetch(CLOUD.url + '/rest/v1/rpc/free_slots', {method:'POST',
-                                     headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
-                                     body:JSON.stringify({p_from:from, p_to:to})}); if(!r.ok) throw new Error(await sbErr(r)); return r.json(); })(); }
-    catch(e){ pubBusy = null; b.innerHTML = `<div class="warn">${esc(e.message)}</div>`; return; }
-  }
-  const days = bookDays(21);
-  if(!d.day || !days.includes(d.day)) d.day = days.find(x=>dayState(x, pubBusy)==='free') || days[0];
-  /* fälten sparas i pubDraft medan man skriver — sidan ritas om när man byter tid */
-  const keep = k => `oninput="pubDraft.${k}=this.value"`;
-  b.innerHTML = `
-    ${slotPicker({list:pubBusy, days, day:d.day, sel:d.start,
-      dayJs:x=>`pubDraft.day='${x}';pubDraft.start='';renderGate()`, startJs:(x,hm)=>`pubDraft.start='${hm}';renderGate()`})}
-    ${d.start ? `<form class="gate-form" onsubmit="event.preventDefault();sendPublic()">
-      <label class="lbl" for="puS">STARTTID</label>
-      <div class="two"><input type="time" id="puS" value="${d.start}" step="1800"
-        oninput="pubDraft.start=this.value;paintSlot(pubDraft.day, pubBusy, 'pu')"><div class="slot-end" id="puE"></div></div>
-      <div id="puW"></div>
-      <label class="lbl" for="puN">NAMN</label>
-      <input id="puN" autocomplete="name" maxlength="60" required value="${esc(d.name||'')}" ${keep('name')}>
-      <label class="lbl" for="puP">TELEFON</label>
-      <input id="puP" type="tel" autocomplete="tel" inputmode="tel" maxlength="20" value="${esc(d.phone||'')}" ${keep('phone')}>
-      <label class="lbl" for="puM">E-POST</label>
-      <input id="puM" type="email" autocomplete="email" maxlength="120" value="${esc(d.email||'')}" ${keep('email')}>
-      <div class="tiny muted" style="margin-top:7px;line-height:1.5">Fyll i telefon eller e-post — gärna båda. Med e-post får du ett kvitto direkt.</div>
-      <label class="lbl" for="puX">VAD SKA DU GÖRA? <span class="muted">(valfritt)</span></label>
-      <textarea id="puX" maxlength="300" placeholder="Inspelning, mix, hur många ni är…" ${keep('msg')}>${esc(d.msg||'')}</textarea>
-      <input id="puH" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px" aria-hidden="true">
-      <label class="consent"><input type="checkbox" id="puC" required ${d.agreed?'checked':''} onchange="pubDraft.agreed=this.checked">
-        <span>Jag har läst <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur mina uppgifter hanteras</a></span></label>
-      <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKICKAR…':'SKICKA FÖRFRÅGAN'}</button>
-      ${gateErrBox()}</form>` : ''}
-    <button class="linkbtn" onclick="leavePublic()">Har du ett konto? Logga in</button>`;
-  if(d.start) paintSlot(d.day, pubBusy, 'pu');
-}
-function sendPublic(){
-  const d = pubDraft, v = id => ((document.getElementById(id)||{}).value || '').trim();
-  Object.assign(d, {start:v('puS'), name:v('puN'), phone:v('puP'), email:v('puM').toLowerCase(), msg:v('puX'),
-    agreed:!!(document.getElementById('puC')||{}).checked});
-  const hp = v('puH');
-  return gateRun(async ()=>{
-    if(!d.agreed) throw new Error('Kryssa i att du läst hur dina uppgifter hanteras');
-    const st = slotState(d.day, pubBusy, d.start);
-    if(st!=='ok') throw new Error(slotWhy(st));
-    if(d.name.length < 2) throw new Error('Fyll i ditt namn');
-    if(!d.phone && !d.email) throw new Error('Fyll i telefonnummer eller e-post, så att vi kan nå dig');
-    if(d.phone && !normPhone(d.phone)) throw new Error('Telefonnumret ser fel ut');
-    if(d.email && !EMAIL_RE.test(d.email)) throw new Error('E-postadressen ser fel ut');
-    const end = plusSlot(d.start);
-    if(PREVIEW_LOGIN){
-      if(hp) return;
-      S.leads = (S.leads||[]).concat({id:'l_'+uid(), name:d.name, email:d.email||null, phone:normPhone(d.phone)||'', date:d.day,
-        start_t:d.start, end_t:end, studio:null, message:d.msg, status:'new', created_at:new Date().toISOString()});
-      save();
-    } else {
-      const r = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST',
-        headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
-        body:JSON.stringify({p_name:d.name, p_email:d.email, p_phone:d.phone, p_date:d.day, p_start:d.start, p_end:end,
-          p_studio:'', p_message:d.msg, p_hp:hp})});
-      if(!r.ok) throw new Error(await sbErr(r));
-    }
-    Object.assign(d, {done:true, end});
-  });
-}
-function leavePublic(){
-  gateMode = 'login'; pubDraft = null; pubBusy = null; gateErr = '';
-  if(location.hash==='#boka') history.replaceState(null, '', location.pathname + location.search);
-  renderGate();
-}
+/* Bokningssidan utan konto (#boka) är ersatt av Bando HQ Access (access.html): man registrerar
+   sig och bokar inloggad. Förfrågningar som kom in före bytet besvaras ovan som förut. */
 
 /* ---------- FÖRFRÅGNINGAR ---------- */
 /* Cirkelförfrågan: ledaren. Kundförfrågan: admins och kundens producent. */
@@ -6965,11 +7258,13 @@ function openSupport(){
     <div class="privacy">
       <h3>Kontakt</h3>
       <p>Mejla <a href="mailto:${esc(ORG.email)}">${esc(ORG.email)}</a> — vi svarar inom ett par dagar.</p>
-      <h3>Boka studiotid</h3>
-      <p>Utan konto: tryck <b>Boka studiotid</b> vid inloggningen, välj en dag och en starttid och skicka en förfrågan.
-        Ett pass är tre timmar. Vi bekräftar på mejlen eller per telefon.</p>
+      <h3>Bli medlem och boka</h3>
+      <p>Registrera dig för <b>Bando HQ Access</b> på <a href="${esc(accessUrl())}">bandohq.se/access</a> (eller tryck <b>Registrera dig</b>
+        vid inloggningen). Då kan du boka sessions, se dina bokningar, priser och förmåner, och du blir deltagare i våra studiocirklar.
+        Ett pass är tre timmar och du avbokar själv fram till en timme innan.</p>
       <h3>Konto</h3>
-      <p>Konton skapas med en inbjudan från oss. Glömt lösenordet? Tryck <b>Glömt lösenordet?</b> vid inloggningen.</p>
+      <p>Du loggar in med din e-post och ditt lösenord. Crewet får sina konton via en inbjudan. Glömt lösenordet? Tryck
+        <b>Glömt lösenordet?</b> vid inloggningen.</p>
       <h3>Radera ditt konto</h3>
       <p>Tryck på ditt namn uppe till höger och sedan <b>Radera mitt konto</b> — eller mejla oss.</p>
     </div>${privacyLink()}`);
@@ -6998,7 +7293,7 @@ async function openLanding(url){
   history.replaceState(null, '', location.pathname + u.search + u.hash);
   gateErr = '';
   await readLanding();
-  if(joinToken || recoverToken || gateMode==='public') showGate();
+  if(joinToken || recoverToken) showGate();
   else if(S.session) render();
 }
 function demoBanner(){
@@ -7167,6 +7462,8 @@ function openAccount(id){
     </div>
     <label class="lbl" for="acK">KUNDENS PRODUCENT <span class="muted">(kund)</span></label>
     <select id="acK"><option value="">Ingen särskild</option>${producers().map(c=>`<option value="${c.id}" ${a&&a.producer===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>
+    <label class="consent" style="margin-top:14px"><input type="checkbox" id="acPart" ${!a || a.part!==false ? 'checked' : ''}>
+      <span><b>Cirkeldeltagare</b> <span class="muted">(kund)</span> — alla som bokar är med i studiocirklarna (Bando HQ Access). Stäng bara av i undantagsfall.</span></label>
 
     ${leads.length?`<div class="eyebrow">LEDER<span class="ln"></span></div>
       ${leads.map(c=>`<div class="kv"><span>CIRKEL</span><b>${esc(c.n)}</b></div>`).join('')}`:''}
@@ -7222,7 +7519,7 @@ function saveAccount(id){
       if(S.session && S.session.member===m.n) S.session.member = nn;
       m.n = nn;
     }
-    Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, up:Date.now()});
+    Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, part:document.getElementById('acPart').checked, up:Date.now()});
     const px = document.getElementById('acX');
     if(px && px.checked !== (m.perms||[]).includes('artist_intel')){
       const perms = px.checked ? (m.perms||[]).concat('artist_intel') : (m.perms||[]).filter(x=>x!=='artist_intel');
@@ -7230,7 +7527,7 @@ function saveAccount(id){
     }
   } else {
     S.accounts.push({id:uid(), n:nn, r:nr, email:ne, phone:np, team:nt_, ig:ni, producer:nk,
-      c:'#6633b8', g:'#9d5cf5',
+      part:document.getElementById('acPart').checked, interests:[], c:'#6633b8', g:'#9d5cf5',
       active:true, del:false, up:Date.now()});
   }
   save(); closeSheet(); buildNav(); render(); toast('Sparat'); sync(true);
@@ -8151,7 +8448,14 @@ async function readLanding(){
       setTimeout(()=>toast(`Hämtade in schemat · ${r.add} nya · ${r.upd} uppdaterade`), 500);
     }catch(e){}
   }
-  if(h==='#boka') gateMode = 'public';
+  /* gamla bokningslänkar och QR-koder: registreringen */
+  if(h==='#boka'){ clean(); return goAccess(); }
+  /* tillbaka från registreringen: inloggad, in i appen */
+  if(h==='#welcome' || h==='#profil'){
+    clean(); accessLanding = h.slice(1);
+    if(PREVIEW_LOGIN) takeAccessPreview();
+    else if(AUTH){ try{ await cloudEnter(); }catch(e){ gateErr = e.message; } }
+  }
   if(h==='#integritet'){ clean(); setTimeout(openPrivacy, 300); }
   if(h==='#support'){ clean(); setTimeout(openSupport, 300); }
   if(h.startsWith('#join=')){
@@ -8200,8 +8504,9 @@ async function readLanding(){
   syncState = (cloudOn() || dbxReady()) ? 'ok' : 'off';
 
   /* I skarpt läge räcker inte en sparad session — Supabase-inloggningen måste finnas också. */
-  const signedIn = S.session && byName(S.session.member) && (PREVIEW_LOGIN || AUTH) && !joinToken && !recoverToken && gateMode!=='public';
+  const signedIn = S.session && byName(S.session.member) && (PREVIEW_LOGIN || AUTH) && !joinToken && !recoverToken;
   if(signedIn) showApp(); else showGate();
+  if(signedIn && accessLanding) setTimeout(afterAccess, 400);
 
   /* IDAG är tidskänslig: rita om varje minut så pågår-kortet stämmer */
   setInterval(()=>{ if(view==='today' && S.session) render(); }, 60000);

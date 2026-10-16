@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<title>BANDO HQ ACCESS — affisch</title>
+<!-- A5-affischen till studion (skrivs ut i 100 %). Tas om med:
+     Chrome --headless --print-to-pdf (A5) och --screenshot (1748 × 2480 = A5 i 300 dpi), se README.md i qr/.
+     ?dela=1 ger delningsbilden 1200 × 630 (og:image för bandohq.se/access). -->
+<style>
+@font-face { font-family: "Barlow Condensed"; src: url("../fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Barlow Condensed"; src: url("../fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 600; font-display: block; }
+@font-face { font-family: "Barlow"; src: url("../fonts/barlow-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
+@page { size: A5; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: "Barlow", sans-serif; }
+.page { width: 148mm; height: 210mm; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: 16mm 14mm 11mm; text-align: center; position: relative; overflow: hidden; }
+.page::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 34% at 50% 20%, rgba(255,62,191,.2), transparent 70%); }
+.title { width: 100%; position: relative; }
+.title svg { display: block; width: 100%; height: auto; overflow: visible; }
+.title text { font-family: "Barlow Condensed"; font-weight: 800; letter-spacing: 3px; }
+.off, .on { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 3.4px; }
+.off { stroke: rgba(255,150,230,.13); } .on { stroke: #ff6ad8; }
+.lead { position: relative; font-size: 4.3mm; line-height: 1.45; color: #e6e0ec; max-width: 108mm; }
+.lead b { color: #fff; font-weight: 500; }
+.qr { position: relative; background: #fff; padding: 4.5mm; border-radius: 2mm; box-shadow: 0 0 0 0.5mm #ff6ad8, 0 0 9mm rgba(255,62,191,.55); }
+.qr img { display: block; width: 58mm; height: 58mm; }
+.scan { position: relative; font-family: "Barlow Condensed"; font-weight: 600; font-size: 5mm; letter-spacing: .2em; text-transform: uppercase; }
+.url { position: relative; font-family: "Barlow Condensed"; font-weight: 800; font-size: 9mm; letter-spacing: .04em; color: #fff; margin-top: 1mm; }
+.foot { position: relative; font-family: "Barlow Condensed"; font-weight: 600; font-size: 3.2mm; letter-spacing: .24em; color: #8f879a; text-transform: uppercase; }
+/* delningsbilden */
+.share { width: 1200px; height: 630px; display: grid; grid-template-columns: 1fr 300px; align-items: center; gap: 64px; padding: 64px 80px; position: relative; overflow: hidden; }
+.share::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 60% at 34% 45%, rgba(255,62,191,.2), transparent 70%); }
+.share .title { width: 100%; }
+.share .side { position: relative; display: grid; gap: 18px; justify-items: center; }
+.share .qr img { width: 230px; height: 230px; }
+.share .qr { padding: 18px; border-radius: 6px; box-shadow: 0 0 0 2px #ff6ad8, 0 0 40px rgba(255,62,191,.55); }
+.share .url { font-size: 34px; }
+.share .lead { font-size: 23px; margin-top: 26px; max-width: none; text-align: left; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs><filter id="g" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="11" result="a2"/><feFlood flood-color="#9d4dff" flood-opacity="0.7"/><feComposite in2="a2" operator="in" result="g2"/>
+    <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="a1"/><feFlood flood-color="#ff3ebf" flood-opacity="0.95"/><feComposite in2="a1" operator="in" result="g1"/>
+    <feMerge><feMergeNode in="g2"/><feMergeNode in="g1"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+</svg>
+<template id="titleT"><div class="title"><svg viewBox="0 0 1000 560" aria-label="BANDO HQ ACCESS">
+  <g class="off"><text x="500" y="250" text-anchor="middle">BANDO HQ</text><text x="500" y="540" text-anchor="middle">ACCESS</text></g>
+  <g class="on" filter="url(#g)"><text x="500" y="250" text-anchor="middle">BANDO HQ</text><text x="500" y="540" text-anchor="middle">ACCESS</text></g></svg></div></template>
+
+<div class="page" id="a5">
+  <div class="slot"></div>
+  <p class="lead"><b>Boka sessions, ta del av priser och förmåner</b> och bli deltagare i Bandos studiocirklar.</p>
+  <div class="qr"><img src="bando-hq-access-qr.svg" alt="QR-kod till bandohq.se/access"></div>
+  <div><p class="scan">Skanna och registrera dig</p><p class="url">bandohq.se/access</p></div>
+  <p class="foot">Bando Collective</p>
+</div>
+<div class="share" id="share" hidden>
+  <div><div class="slot"></div><p class="lead">Boka sessions, ta del av priser och förmåner och bli deltagare i Bandos studiocirklar.</p></div>
+  <div class="side"><div class="qr"><img src="bando-hq-access-qr.svg" alt=""></div><p class="url">bandohq.se/access</p></div>
+</div>
+<script>
+const share = new URLSearchParams(location.search).has('dela');
+document.getElementById(share ? 'a5' : 'share').remove();
+const root = document.getElementById(share ? 'share' : 'a5'); root.hidden = false;
+root.querySelector('.slot').replaceWith(document.getElementById('titleT').content.cloneNode(true));
+/* båda raderna lika breda, som på registreringssidan (versalhöjd 0,70 em) */
+document.fonts.load('800 200px "Barlow Condensed"').then(() => {
+  const svg = root.querySelector('.title svg'), off = [...svg.querySelectorAll('.off text')], on = [...svg.querySelectorAll('.on text')];
+  let y = 0;
+  off.forEach((t, i) => { t.setAttribute('font-size', 200); const size = 200 * 980 / t.getBBox().width; y += (i ? 58 : 0) + size * 0.70;
+    [t, on[i]].forEach(x => { x.setAttribute('font-size', size.toFixed(1)); x.setAttribute('y', y.toFixed(1)); }); });
+  svg.setAttribute('viewBox', `0 -24 1000 ${Math.ceil(y + 48)}`);
+  document.title = 'READY';
+});
+</script>
+</body>
+</html>

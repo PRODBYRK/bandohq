@@ -233,12 +233,11 @@ som gått med och kan stänga en länk.
 inbjudan på mejlen. Kamerateamet kan inte lägga till någon, och producenterna kan bara bjuda in
 kunder och deltagare. Allt annat sköter admin.
 
-**Nya kunder** behöver ingen inbjudan. Lägg länken `https://bandohq.se/#boka`
-i Instagram-bion. Där ser de vilka tider som är bokade och skickar en förfrågan med namn och
-telefon eller e-post; studion väljer de inte. Förfrågan hamnar under **Väntar på svar** på IDAG.
-Med e-post får kunden ett kvitto direkt, och vid ett ja en bokningsbekräftelse med en länk för att
-skapa sitt konto. Har kunden bara lämnat telefonnummer får du efter godkännandet en färdig text
-med länken, som du skickar som sms.
+**Nya kunder** behöver ingen inbjudan. De registrerar sig själva för **Bando HQ Access** på
+`https://www.bandohq.se/access`, via QR-koden i studion (`qr/`) eller länken i Instagram-bion,
+och blir då kund och cirkeldeltagare på en gång. Se avsnittet *Bando HQ Access* nedan. Den
+gamla länken `#boka` leder dit. Förfrågningar som kom in före bytet står kvar under
+**Väntar på svar** och besvaras som förut.
 
 **Artister** (de som inte ska logga in) läggs in under **Mer → Artister** — eller importeras
 från ett kalkylark (se nedan).
@@ -496,6 +495,39 @@ saknar egna policys, så ingen läser dem direkt.
   - Under Rewards kan admin justera saldot (med anledning) och lösa in åt kunden.
 - **Cirkelledare, deltagare och kamerateam** ser ingenting av Rewards, omdömena eller Artist
   Intelligence. **Kunden** ser aldrig omdömen eller uppföljning.
+
+## Bando HQ Access (registreringen)
+
+**Flödet.** QR-koden i studion (eller länken) leder till `bandohq.se/access`. Där läser man om
+förmånerna och väljer en eller flera inriktningar. Sedan fyller man i namn, e-post, telefon,
+personnummer och lösenord, och bekräftar e-posten med en kod. Därefter är man inloggad i Bando HQ
+som **kund och cirkeldeltagare**. Det finns ingen ansökan, och man kan inte registrera sig bara
+för bokningar.
+
+**Admin, efteråt:**
+- **Cirklar → Deltagare → Väntar på en grupp**: alla nya, med inriktningar och datum. Admin får
+  också ett mejl, "Ny registrering".
+- **Fördela i grupper** föreslår gruppen vars ämne matchar personens inriktning.
+- Närvaron registreras aldrig automatiskt. Den markeras på gruppens pass, som förut.
+
+**Personens profil** (tryck på personen, fliken **Profil**) visar kontakt, registreringsdatum,
+inriktningar, grupp och ansvarig ledare, bokningar och priser. Personnumret visas maskerat
+(ÅÅMMDD-••••). **Visa** ger hela numret, och varje visning loggas.
+
+**Personnumret** krypteras på servern (pgcrypto). Nyckeln skapas i Supabase Vault första gången
+`db/03-funktioner.sql` körs och lämnar aldrig servern. Bara funktionerna når tabellen
+`member_pnr`, och ingen roll kan läsa den direkt. Rapportunderlaget (CSV) får personnumren
+automatiskt för admin, och varje uttag loggas.
+
+**Allt som står på sidan** (inriktningar, förmåner, tjänstepriser) ändras under **Mer → Rewards
+→ Access**, utan någon kodändring. Studiopriset ändras som förut under Priser.
+
+**Kunder och deltagare från tiden före Access** blir deltagare automatiskt. Vid nästa inloggning
+får de **Komplettera din profil** (personnummer, inriktning, godkännande), och de kan inte boka
+förrän det är gjort.
+
+**QR-koden**, affischen och delningsbilden ligger i `qr/` (se `qr/README.md`). Adressen ändras
+aldrig.
 
 ## Rollerna
 

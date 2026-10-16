@@ -625,7 +625,7 @@ $$;
 /* Allt en icke-crew-användare får se, i ett svar. */
 create or replace function my_view() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
-declare me members; cids text[]; res jsonb; studios jsonb; rates jsonb;
+declare me members; cids text[]; res jsonb; studios jsonb; rates jsonb; circ jsonb; lead members;
 begin
   me := bs_me();
   if me.id is null then raise exception 'Inget konto'; end if;
@@ -633,11 +633,31 @@ begin
   select data into rates   from records where kind = 'setting' and id = 'rates';
 
   if me.role = 'customer' then
+    /* Access: kunden är också cirkeldeltagare — gruppen, ansvarig producent och gruppens pass */
+    select data into circ from records where kind = 'circle' and not del and data->'members' ? me.id
+     order by coalesce((data->>'active')::boolean, true) desc, up desc limit 1;
+    select * into lead from members where active and circ is not null and name = circ->>'leader' limit 1;
     return jsonb_build_object('me', to_jsonb(me), 'studios', studios, 'rates', rates,
       'producer', (select name from members where id = me.producer and active),
-      /* den kunden hör av sig till om det är mindre än en timme kvar */
-      'contact', (select jsonb_build_object('name', name, 'email', email, 'phone', phone)
+      /* den kunden hör av sig till om det är mindre än en timme kvar: sin producent, annars gruppens ledare */
+      'contact', coalesce((select jsonb_build_object('name', name, 'email', email, 'phone', phone)
                     from members where id = me.producer and active),
+                  case when lead.id is not null then jsonb_build_object('name', lead.name, 'email', lead.email, 'phone', lead.phone) end),
+      'circle', case when circ is null then null else jsonb_build_object('id', circ->>'id', 'n', circ->>'n',
+                  'subject', circ->>'subject', 'leader', circ->>'leader', 'size', jsonb_array_length(coalesce(circ->'members','[]'::jsonb))) end,
+      'leaderContact', case when lead.id is null then null else jsonb_build_object('name', lead.name, 'email', lead.email, 'phone', lead.phone) end,
+      /* gruppens kommande pass (ledaren planerar dem; närvaron markeras där) */
+      'group', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'date', data->>'date', 'start', data->>'start',
+                  'end', data->>'end', 'studio', data->>'studio', 'title', data->>'title', 'lessonTitle', data->>'lessonTitle')
+                  order by data->>'date', data->>'start') from records
+                 where kind = 'booking' and not del and circ is not null and data->>'circleId' = circ->>'id'
+                   and coalesce(data->>'status','') = '' and (data->>'date')::date >= current_date), '[]'::jsonb),
+      'circleHours', coalesce((select sum((r.data->>'hours')::numeric) from records r
+                  where r.kind = 'booking' and not r.del and r.data->>'status' = 'done'
+                    and coalesce(r.data->'present','[]'::jsonb) ? me.id), 0),
+      'access', bs_acfg(),
+      'profile', jsonb_build_object('pnr', exists (select 1 from member_pnr where member_id = me.id),
+                  'registered', me.registered_at, 'consent', me.consent_at is not null),
       'bookings', coalesce((select jsonb_agg(data) from records
          where kind='booking' and not del and data->>'who' = me.name), '[]'),
       /* andras pass bara som upptagen tid — inga namn, ingen titel */
@@ -707,6 +727,11 @@ begin
         'studio',data->>'studio','date',data->>'date','start',data->>'start','end',data->>'end')) from records
        where kind='booking' and not del and coalesce(data->>'status','') not in ('request','declined')
          and coalesce(data->>'circleId','') <> all(cids)), '[]'));
+  end if;
+  /* Access: deltagaren kompletterar profilen (personnummer, inriktning) som kunderna */
+  if me.role = 'participant' then
+    res := res || jsonb_build_object('access', bs_acfg(), 'profile', jsonb_build_object(
+      'pnr', exists (select 1 from member_pnr where member_id = me.id), 'registered', me.registered_at, 'consent', me.consent_at is not null));
   end if;
   return res;
 end $$;
@@ -884,9 +909,7 @@ language plpgsql security definer set search_path = public as $$
 declare c jsonb; t bigint := now_ms();
 begin
   if not bs_leads(p_circle) then raise exception 'Bara admin eller cirkelns ledare kan lägga till deltagare'; end if;
-  if not exists (select 1 from members where id = p_member and role::text = 'participant') then
-    raise exception 'Personen är inte cirkeldeltagare';
-  end if;
+  if not bs_is_part(p_member) then raise exception 'Personen är inte cirkeldeltagare'; end if;
   select data into c from records where kind = 'circle' and id = p_circle and not del;
   if c is null then raise exception 'Cirkeln finns inte'; end if;
   if coalesce(c->'members','[]'::jsonb) ? p_member then return c; end if;
@@ -935,7 +958,7 @@ begin
     end if;
     mid := bs_uid('m_');
     insert into members(id, role, name, email, phone, up) values (mid, 'participant', sg.name, sg.email, sg.phone, now_ms());
-  elsif not exists (select 1 from members where id = mid and role::text = 'participant') then
+  elsif not bs_is_part(mid) then
     raise exception 'Personen är inte cirkeldeltagare';
   end if;
   if p_circle is not null then perform add_circle_member(p_circle, mid); end if;
@@ -1010,6 +1033,8 @@ declare ph text := bs_phone(nullif(trim(coalesce(p_phone,'')),'')); id text; nm 
         em text := lower(trim(coalesce(p_email,'')));
 begin
   if coalesce(p_hp,'') <> '' then return jsonb_build_object('ok', true); end if;      -- robot: säg ok, gör inget
+  /* Access (2026-10): man bokar inte längre utan konto — man registrerar sig */
+  raise exception 'Bokningen sker nu i Bando HQ — registrera dig på bandohq.se/access';
   if length(nm) < 2 then raise exception 'Fyll i ditt namn'; end if;
   if nullif(trim(coalesce(p_phone,'')),'') is not null and ph is null then raise exception 'Telefonnumret ser fel ut'; end if;
   if em <> '' and em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'E-postadressen ser fel ut'; end if;
@@ -1565,3 +1590,344 @@ grant execute on function close_session(text, boolean, jsonb), add_artist_note(t
   points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
   save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
   set_member_perms(text, jsonb), artist_intel() to authenticated;
+
+-- =====================================================================
+--  BANDO HQ ACCESS — registreringen bakom QR-koden (bandohq.se/access)
+--  Den som registrerar sig blir kund OCH cirkeldeltagare: bokar studiotid som
+--  kunder gör och placeras av admin i en studiocirkel. Personnumret behövs för
+--  rapporteringen av studiecirklarna till studieförbundet. Det lagras krypterat
+--  (member_pnr), syns bara för admin och då maskerat; varje visning loggas.
+-- =====================================================================
+/* Inriktningar, förmåner och tjänstepriser. Admin ändrar dem i appen (Mer → Rewards →
+   Access); det som saknas i setting/access tas härifrån. */
+create or replace function bs_access_default() returns jsonb
+language sql immutable as $$
+  select jsonb_build_object(
+    'interests', jsonb_build_array(
+      jsonb_build_object('id','songwriting','label','Låtskrivning & textförfattande','subject','Musikproduktion'),
+      jsonb_build_object('id','rap','label','Rap, flow & delivery','subject','Artistutveckling'),
+      jsonb_build_object('id','vocals','label','Sång & vokalteknik','subject','Artistutveckling'),
+      jsonb_build_object('id','production','label','Musikproduktion & beatmaking','subject','Musikproduktion'),
+      jsonb_build_object('id','recording','label','Inspelning & studioteknik','subject','Musikproduktion'),
+      jsonb_build_object('id','mixing','label','Mixning & mastering','subject','Musikproduktion'),
+      jsonb_build_object('id','artistdev','label','Artistutveckling & sound','subject','Artistutveckling'),
+      jsonb_build_object('id','performance','label','Scennärvaro & performance','subject','Artistutveckling'),
+      jsonb_build_object('id','content','label','Content & sociala medier','subject','Marknadsföring'),
+      jsonb_build_object('id','film','label','Foto, film & musikvideo','subject','Foto och film'),
+      jsonb_build_object('id','marketing','label','Marknadsföring & release','subject','Marknadsföring'),
+      jsonb_build_object('id','industry','label','A&R, management & musikbranschen','subject','Management')),
+    'perks', jsonb_build_array(
+      jsonb_build_object('title','Studiobokningar','text','Boka sessions smidigt och till förmånliga priser.'),
+      jsonb_build_object('title','Rabatter på tjänster','text','Ta del av bättre priser på mix & master, foto, musikvideo, content och marknadsföring.'),
+      jsonb_build_object('title','Kreativa samarbeten','text','Få tillgång till erbjudanden från producenter, filmare och andra kreatörer inom Bandos nätverk.'),
+      jsonb_build_object('title','Strategi & artistutveckling','text','Få vägledning kring din musik, dina projekt och kommande releaser.'),
+      jsonb_build_object('title','A&R-feedback','text','Möjlighet att skicka in musik för professionell feedback, även från A&R-kontakter på stora skivbolag.'),
+      jsonb_build_object('title','Merch & egna projekt','text','Få hjälp med att utveckla och producera egna kläder, merchandise och kreativa produkter.')),
+    /* tjänstepriserna: price = ordinarie, access = med Bando HQ Access (null = fråga oss) */
+    'services', jsonb_build_array(
+      jsonb_build_object('id','mix','name','Mix & master','price',null,'access',null,'unit','per låt'),
+      jsonb_build_object('id','photo','name','Foto','price',null,'access',null,'unit',''),
+      jsonb_build_object('id','video','name','Musikvideo','price',null,'access',null,'unit',''),
+      jsonb_build_object('id','content','name','Content','price',null,'access',null,'unit',''),
+      jsonb_build_object('id','marketing','name','Marknadsföring','price',null,'access',null,'unit','')))
+$$;
+create or replace function bs_acfg() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select bs_access_default() || coalesce((select jsonb_strip_nulls(jsonb_build_object(
+           'interests', data->'interests', 'perks', data->'perks', 'services', data->'services'))
+         from records where kind = 'setting' and id = 'access' and not del), '{}'::jsonb)
+$$;
+/* Inriktningarna som går att välja (dolda ligger kvar för dem som redan valt dem). */
+create or replace function bs_interest_ids() returns text[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(i->>'id'), '{}') from jsonb_array_elements(bs_acfg()->'interests') i
+   where not coalesce((i->>'off')::boolean, false)
+$$;
+
+/* Registreringssidan: inriktningar och förmåner. Inga priser — de syns inloggad. */
+create or replace function access_info() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'interests', coalesce((select jsonb_agg(jsonb_build_object('id', i->>'id', 'label', i->>'label')) from jsonb_array_elements(bs_acfg()->'interests') i
+                            where not coalesce((i->>'off')::boolean, false)), '[]'::jsonb),
+    'perks', bs_acfg()->'perks')
+$$;
+
+/* Nyckeln: Supabase Vault (skapas på servern första gången och lämnar den aldrig).
+   Utan Vault (testerna) ligger den i bs_secrets. */
+create or replace function bs_pnr_key() returns text
+language plpgsql stable security definer set search_path = public as $$
+declare k text;
+begin
+  if to_regclass('vault.decrypted_secrets') is not null then
+    execute 'select decrypted_secret from vault.decrypted_secrets where name = ''bandohq_pnr'' limit 1' into k;
+  end if;
+  if k is null then select value into k from bs_secrets where name = 'pnr_key'; end if;
+  if k is null or length(k) < 32 then raise exception 'Personnummernyckeln saknas — kör db/03-funktioner.sql igen'; end if;
+  return k;
+end $$;
+do $$ begin
+  if to_regclass('vault.secrets') is not null then
+    if not exists (select 1 from vault.secrets where name = 'bandohq_pnr') then
+      perform vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'bandohq_pnr', 'BANDOHQ: nyckeln till personnumren');
+    end if;
+  elsif not exists (select 1 from bs_secrets where name = 'pnr_key') then
+    insert into bs_secrets(name, value) values ('pnr_key', encode(extensions.gen_random_bytes(32), 'hex'));
+  end if;
+end $$;
+
+/* "19900101-1234", "900101-1234", "199001011234" → "199001011234", eller null om det inte
+   är ett giltigt personnummer (datum och kontrollsiffra). Samordningsnummer (dag + 60) går. */
+create or replace function bs_pnr(p text) returns text
+language plpgsql stable as $$
+declare raw text := regexp_replace(coalesce(p,''), '[\s]', '', 'g'); d text; full_ text; y int; mo int; dd int; s int := 0; k int; x int;
+begin
+  if raw !~ '^(\d{6}|\d{8})[-+]?\d{4}$' then return null; end if;
+  d := regexp_replace(raw, '[-+]', '', 'g');
+  if length(d) = 10 then
+    /* sekelskiftet: '+' betyder 100 år eller äldre, annars det senaste sekel som inte ligger i framtiden */
+    y := substr(d,1,2)::int;
+    full_ := (case when y > extract(year from current_date)::int % 100 then 19 else 20 end
+              - case when raw like '%+%' then 1 else 0 end)::text || d;
+  else full_ := d; end if;
+  y := substr(full_,1,4)::int; mo := substr(full_,5,2)::int; dd := substr(full_,7,2)::int;
+  if dd > 60 then dd := dd - 60; end if;
+  if mo < 1 or mo > 12 or dd < 1 then return null; end if;
+  begin
+    if make_date(y, mo, dd) > current_date or y < extract(year from current_date)::int - 120 then return null; end if;
+  exception when others then return null; end;
+  for k in 3..12 loop
+    x := substr(full_, k, 1)::int * case when k % 2 = 1 then 2 else 1 end;
+    s := s + x / 10 + x % 10;
+  end loop;
+  if s % 10 <> 0 then return null; end if;
+  return full_;
+end $$;
+create or replace function bs_pnr_hash(p12 text) returns text
+language sql stable security definer set search_path = public as $$
+  select encode(extensions.hmac(p12, bs_pnr_key(), 'sha256'), 'hex')
+$$;
+create or replace function bs_put_pnr(p_member text, p12 text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into member_pnr(member_id, pnr_enc, pnr_hash, birth)
+  values (p_member, extensions.pgp_sym_encrypt(p12, bs_pnr_key()), bs_pnr_hash(p12), substr(p12, 3, 6))
+  on conflict (member_id) do update set pnr_enc = excluded.pnr_enc, pnr_hash = excluded.pnr_hash,
+    birth = excluded.birth, created_at = now();
+end $$;
+/* "Ali  hassan-berg " → "Ali Hassan-Berg"? Nej — namnet skrivs som personen skrev det, bara
+   utan dubbla mellanslag. Jämförelser görs på gemener. */
+create or replace function bs_clean_name(p text) returns text
+language sql immutable as $$ select regexp_replace(trim(coalesce(p,'')), '\s+', ' ', 'g') $$;
+
+/* Är personen cirkeldeltagare? Rollen deltagare, eller kund (Access) som är deltagare. */
+create or replace function bs_is_part(p_member text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from members where id = p_member and active
+                    and (role::text = 'participant' or (role::text = 'customer' and participant)))
+$$;
+
+/* Registreringen. Körs av den som just skapat sin inloggning och bekräftat e-posten med
+   koden. Skapar kunden (och deltagaren), eller kopplar inloggningen till en person som
+   redan finns utan inloggning (inlagd av crewet eller via anmälningskön). Samma funktion
+   fyller i det som saknas för en befintlig kund ("Komplettera din profil").
+   Dubbletter: samma personnummer, eller e-post på ett konto som redan loggar in, ger
+   inget nytt konto — då tas den nya inloggningen bort igen och personen får logga in. */
+create or replace function register_access(p_name text, p_phone text, p_pnr text, p_interests jsonb,
+  p_consent boolean, p_url text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid(); em text; me members; nm text := bs_clean_name(p_name); ph text; p12 text; h text;
+        ints text[]; bad text; cand members; owner text; mid text; base text; n int := 1; linked boolean := false;
+        labels text; a record;
+begin
+  if uid is null then raise exception 'Skapa kontot först'; end if;
+  select lower(email) into em from auth.users where id = uid;
+  select * into me from members where user_id = uid;
+  if me.id is not null and not me.active then raise exception 'Kontot är avstängt — hör av dig till oss'; end if;
+
+  /* ---- kontrollerna (samma som på sidan) ---- */
+  if me.id is null then
+    if length(nm) < 3 or nm !~ '\S+\s+\S' then raise exception 'Fyll i för- och efternamn'; end if;
+    if length(nm) > 60 then raise exception 'Namnet är för långt'; end if;
+    if nm ~ '[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]' then raise exception 'Namnet får bara innehålla bokstäver'; end if;
+  end if;
+  ph := bs_phone(p_phone);
+  if ph is null and (me.id is null or nullif(trim(coalesce(p_phone,'')),'') is not null or bs_phone(me.phone) is null) then
+    raise exception 'Fyll i ett giltigt mobilnummer';
+  end if;
+  p12 := bs_pnr(p_pnr);
+  if p12 is null then raise exception 'Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX'; end if;
+  ints := array(select distinct x from jsonb_array_elements_text(case when jsonb_typeof(p_interests) = 'array' then p_interests else '[]'::jsonb end) x order by x);
+  if coalesce(array_length(ints, 1), 0) = 0 then raise exception 'Välj minst en inriktning'; end if;
+  select x into bad from unnest(ints) x where x <> all(bs_interest_ids()) limit 1;
+  if bad is not null then raise exception 'Okänd inriktning: %', bad; end if;
+  if not coalesce(p_consent, false) then raise exception 'Godkänn hur vi hanterar dina personuppgifter'; end if;
+  h := bs_pnr_hash(p12);
+  select member_id into owner from member_pnr where pnr_hash = h;
+
+  /* ---- befintlig kund: komplettera profilen ---- */
+  if me.id is not null then
+    if me.role::text not in ('customer','participant') then raise exception 'Ditt konto är ett crewkonto — Access gäller kunder'; end if;
+    if owner is not null and owner <> me.id then
+      raise exception 'Personnumret finns redan på ett annat konto — hör av dig till oss';
+    end if;
+    perform set_config('bs.link', '1', true);
+    update members set phone = coalesce(ph, phone), interests = ints, participant = true,
+           consent_at = now(), registered_at = coalesce(registered_at, now()),
+           source = coalesce(source, 'app'), up = now_ms()
+     where id = me.id;
+    perform set_config('bs.link', '', true);
+    perform bs_put_pnr(me.id, p12);
+    return jsonb_build_object('ok', true, 'id', me.id, 'name', me.name, 'completed', true);
+  end if;
+
+  /* ---- ny: finns personen redan? ---- */
+  if owner is not null then
+    select * into cand from members where id = owner;
+    if cand.user_id is not null then
+      delete from auth.users where id = uid;          /* den nya inloggningen behövs inte */
+      return jsonb_build_object('ok', false, 'exists', true,
+        'why', 'Du har redan ett konto hos oss. Logga in med det — har du glömt lösenordet kan du få ett nytt.');
+    end if;
+  end if;
+  if exists (select 1 from members where user_id is not null and lower(email) = em) then
+    delete from auth.users where id = uid;
+    return jsonb_build_object('ok', false, 'exists', true,
+      'why', 'Det finns redan ett konto med den e-postadressen. Logga in med det.');
+  end if;
+  /* en person utan inloggning: personnummer, e-post, telefon + namn, eller bara namnet
+     om crewet inte lagt in några kontaktuppgifter */
+  if cand.id is null then
+    select * into cand from members m where m.user_id is null and m.active and m.role::text in ('customer','participant')
+       and ((em is not null and lower(m.email) = em)
+         or (bs_phone(m.phone) = ph and lower(bs_clean_name(m.name)) = lower(nm))
+         or (lower(bs_clean_name(m.name)) = lower(nm) and coalesce(m.email,'') = '' and coalesce(m.phone,'') = ''))
+       and not exists (select 1 from member_pnr x where x.member_id = m.id and x.pnr_hash <> h)
+     order by (lower(m.email) = em) desc nulls last, (bs_phone(m.phone) = ph) desc nulls last limit 1;
+  end if;
+
+  if cand.id is not null then
+    perform set_config('bs.link', '1', true);
+    update members set user_id = uid, email = em, phone = ph, role = 'customer', participant = true,
+           interests = ints, registered_at = now(), consent_at = now(), source = 'access', active = true, up = now_ms()
+     where id = cand.id;
+    perform set_config('bs.link', '', true);
+    mid := cand.id; nm := cand.name; linked := true;
+  else
+    /* namnet är nyckeln på passen — finns det redan någon med samma namn får det en siffra */
+    base := nm;
+    while exists (select 1 from members where lower(name) = lower(nm)) loop
+      n := n + 1; nm := base || ' ' || n;
+    end loop;
+    mid := bs_uid('m_');
+    insert into members(id, user_id, role, name, email, phone, participant, interests, registered_at, consent_at, source, up)
+    values (mid, uid, 'customer', nm, em, ph, true, ints, now(), now(), 'access', now_ms());
+  end if;
+  perform bs_put_pnr(mid, p12);
+
+  /* ---- mejlen ---- */
+  select string_agg(i->>'label', ', ') into labels from jsonb_array_elements(bs_acfg()->'interests') i where i->>'id' = any(ints);
+  perform bs_notify(mid, em, 'Välkommen till Bando HQ',
+    'Hej ' || split_part(nm, ' ', 1) || '!' || E'\n\n'
+    || 'Ditt konto är klart. Du har nu tillgång till Bando HQ Access: boka sessions, se dina bokningar, priser och förmåner.'
+    || E'\n\n' || 'Du är också deltagare i våra studiocirklar. Vi placerar dig i en grupp utifrån det du valt ('
+    || coalesce(labels, '') || '), och du ser din grupp och ansvariga producent i Bando HQ.'
+    || E'\n\n' || 'Logga in med din e-postadress och lösenordet du valde.',
+    'welcome', 'welcome:' || mid, '0', coalesce(p_url, 'https://www.bandohq.se/'));
+  for a in select id from members where active and role::text in ('manager','admin') loop
+    perform bs_notify(a.id, null, 'Ny registrering: ' || nm,
+      'Ny registrering i Bando HQ Access: ' || nm || ' (' || concat_ws(', ', em, ph) || ').'
+      || E'\n\n' || 'Inriktning: ' || coalesce(labels, '—') || '.'
+      || case when linked then E'\n\n' || 'Personen fanns redan i BANDOHQ — inloggningen är kopplad till den raden.' else '' end
+      || E'\n\n' || 'Placera personen i en studiocirkel under Cirklar → Fördela.',
+      'access', 'access:' || mid || ':' || a.id, '0', coalesce(p_url, 'https://www.bandohq.se/'));
+  end loop;
+  return jsonb_build_object('ok', true, 'id', mid, 'name', nm, 'linked', linked);
+end $$;
+
+/* Är inloggningen kopplad till ett konto, och saknas något i profilen? (Registreringssidan
+   och appen frågar innan de visar formuläret.) */
+create or replace function access_status() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when auth.uid() is null then jsonb_build_object('login', false)
+    else coalesce((select jsonb_build_object('login', true, 'member', true, 'name', m.name, 'role', m.role,
+        'complete', m.role::text not in ('customer','participant')
+                    or (m.consent_at is not null and cardinality(m.interests) > 0 and exists (select 1 from member_pnr where member_id = m.id)),
+        'missing', jsonb_strip_nulls(jsonb_build_object(
+           'pnr', case when not exists (select 1 from member_pnr where member_id = m.id) then true end,
+           'interests', case when cardinality(m.interests) = 0 then true end,
+           'phone', case when bs_phone(m.phone) is null then true end,
+           'consent', case when m.consent_at is null then true end)))
+      from members m where m.user_id = auth.uid()), jsonb_build_object('login', true, 'member', false)) end
+$$;
+
+/* Kunden ändrar sina inriktningar. Admin ändrar dem på personen (vanlig synk). */
+create or replace function set_my_interests(p_interests jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me members := bs_me(); ints text[]; bad text;
+begin
+  if me.id is null then raise exception 'Inget konto'; end if;
+  ints := array(select distinct x from jsonb_array_elements_text(coalesce(p_interests,'[]'::jsonb)) x order by x);
+  if coalesce(array_length(ints, 1), 0) = 0 then raise exception 'Välj minst en inriktning'; end if;
+  select x into bad from unnest(ints) x where x <> all(bs_interest_ids()) and x <> all(me.interests) limit 1;
+  if bad is not null then raise exception 'Okänd inriktning: %', bad; end if;
+  perform set_config('bs.link', '1', true);
+  update members set interests = ints, up = now_ms() where id = me.id;
+  perform set_config('bs.link', '', true);
+  return to_jsonb(ints);
+end $$;
+
+/* Admin: vem har personnummer, och det maskerade (ÅÅMMDD-••••). Inget dekrypteras. */
+create or replace function pnr_masks() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not bs_is_admin() then '{}'::jsonb
+    else coalesce(jsonb_object_agg(member_id, birth || '-••••'), '{}'::jsonb) end from member_pnr
+$$;
+/* Admin visar ett personnummer. Varje visning loggas i historiken. */
+create or replace function reveal_pnr(p_member text) returns text
+language plpgsql security definer set search_path = public as $$
+declare v text;
+begin
+  if not bs_is_admin() then raise exception 'Bara admin ser personnummer'; end if;
+  select extensions.pgp_sym_decrypt(pnr_enc, bs_pnr_key()) into v from member_pnr where member_id = p_member;
+  if v is null then raise exception 'Inget personnummer registrerat'; end if;
+  insert into record_history(kind, rec_id, op, by_id) values ('member', p_member, 'personnummer visat', bs_my_id());
+  return substr(v, 1, 8) || '-' || substr(v, 9, 4);
+end $$;
+/* Personnumren till rapportunderlaget (CSV till studieförbundet) — bara admin, loggas per person. */
+create or replace function report_pnrs(p_members jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare out jsonb := '{}'; r record;
+begin
+  if not bs_is_admin() then raise exception 'Bara admin tar ut rapportunderlaget'; end if;
+  for r in select member_id, extensions.pgp_sym_decrypt(pnr_enc, bs_pnr_key()) v from member_pnr
+            where member_id in (select jsonb_array_elements_text(coalesce(p_members,'[]'::jsonb))) loop
+    out := out || jsonb_build_object(r.member_id, substr(r.v, 1, 8) || '-' || substr(r.v, 9, 4));
+    insert into record_history(kind, rec_id, op, by_id) values ('member', r.member_id, 'personnummer i rapport', bs_my_id());
+  end loop;
+  return out;
+end $$;
+/* Admin: registreringarna — när, källa och samtycke (det som inte synkas med kontona). */
+create or replace function access_people() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not bs_is_admin() then '[]'::jsonb else coalesce(jsonb_agg(jsonb_build_object(
+      'id', m.id, 'registered', m.registered_at, 'consent', m.consent_at, 'source', m.source,
+      'pnr', (select birth || '-••••' from member_pnr where member_id = m.id)) order by m.registered_at desc nulls last), '[]'::jsonb) end
+    from members m where m.role::text in ('customer','participant')
+$$;
+
+revoke all on function bs_access_default() from public, anon, authenticated;
+revoke all on function bs_acfg() from public, anon, authenticated;
+revoke all on function bs_interest_ids() from public, anon, authenticated;
+revoke all on function bs_pnr_key() from public, anon, authenticated;
+revoke all on function bs_pnr(text) from public, anon, authenticated;
+revoke all on function bs_pnr_hash(text) from public, anon, authenticated;
+revoke all on function bs_put_pnr(text, text) from public, anon, authenticated;
+revoke all on function bs_clean_name(text) from public, anon, authenticated;
+revoke all on function bs_is_part(text) from public, anon, authenticated;
+revoke all on function access_info() from public;
+grant execute on function access_info() to anon, authenticated;
+revoke all on function register_access(text, text, text, jsonb, boolean, text), access_status(), set_my_interests(jsonb),
+  pnr_masks(), reveal_pnr(text), report_pnrs(jsonb), access_people() from public, anon;
+grant execute on function register_access(text, text, text, jsonb, boolean, text), access_status(), set_my_interests(jsonb),
+  pnr_masks(), reveal_pnr(text), report_pnrs(jsonb), access_people() to authenticated;

@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BANDO HQ ACCESS</title>
+<meta name="description" content="Registrera dig för Bando HQ Access: boka sessions, hantera dina bokningar och ta del av priser och förmåner genom Bandos studiocirklar.">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://www.bandohq.se/access">
+<link rel="icon" href="icon-512.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="BANDO HQ ACCESS">
+<meta property="og:description" content="Boka sessions, ta del av priser och förmåner och bli deltagare i Bandos studiocirklar.">
+<meta property="og:url" content="https://www.bandohq.se/access">
+<meta property="og:image" content="https://www.bandohq.se/qr/bando-hq-access-dela.png">
+<link rel="preload" href="fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* BANDO HQ ACCESS — registreringen bakom QR-koden i studion.
+   Bando Collectives identitet: kolsvart, neonrosa som studioskylten, rubriken i skyltens
+   typsnitt (Barlow Condensed ExtraBold) ritad som neonrör, brödtext i Barlow. Få ytor,
+   tunna linjer, mobilen först. Sidan är fristående och lätt — appen laddas först efteråt. */
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+
+:root {
+  --bg: #000;
+  --line: #262029;
+  --line-2: #3f3649;
+  --text: #fff;
+  --text-2: #e6e0ec;
+  --dim: #b9b1c4;
+  --mute: #8f879a;
+  --pink: #ff3ebf;
+  --tube: #ff6ad8;
+  --violet: #9d4dff;
+  --btn: #d01b8c;
+  --btn-hover: #b9167f;
+  --glow: rgba(255, 62, 191, 0.5);
+  --err: #ff9db0;
+  --ok: #8ff0c0;
+  --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --sans: "Barlow", "Helvetica Neue", system-ui, sans-serif;
+  --pad: clamp(20px, 5vw, 56px);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; overflow-x: clip; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--sans); font-size: 18px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; overflow-x: clip;
+}
+h1, h2, h3, p, ol, ul, fieldset, figure { margin: 0; padding: 0; }
+ol, ul { list-style: none; }
+fieldset { border: 0; min-width: 0; }
+a { color: inherit; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+input, button { caret-color: var(--pink); }
+:focus-visible { outline: 2px solid var(--tube); outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--pad); }
+.h2 {
+  font-family: var(--display); font-weight: 800; text-transform: uppercase;
+  font-size: clamp(2.15rem, 8.4vw, 3.9rem); line-height: 0.95; letter-spacing: 0.01em;
+}
+.lead { color: var(--text-2); font-size: 18px; max-width: 34em; }
+section { padding: clamp(64px, 11vw, 120px) 0 0; }
+.sec-head { display: grid; gap: 16px; margin-bottom: clamp(28px, 5vw, 44px); }
+
+/* ---------- knappar ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 56px; padding: 14px 30px; border-radius: 2px; width: 100%; max-width: 420px;
+  font-family: var(--display); font-size: 18px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  text-decoration: none; text-align: center; background: var(--btn); color: #fff;
+  transition: transform 160ms var(--ease-out), background-color 180ms ease, box-shadow 240ms ease, opacity 180ms ease;
+  user-select: none;
+}
+.btn:active { transform: scale(0.97); }
+.btn[disabled] { opacity: 0.55; cursor: progress; }
+.btn--line { background: transparent; border: 1px solid rgba(255, 255, 255, 0.42); }
+.txtlink {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
+  font-family: var(--display); font-size: 16px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+  text-decoration: none; color: var(--dim); transition: color 160ms ease;
+}
+.txtlink b { color: #fff; font-weight: 600; margin-left: 8px; border-bottom: 1px solid var(--tube); }
+@media (hover: hover) and (pointer: fine) {
+  .btn:not([disabled]):hover { background: var(--btn-hover); box-shadow: 0 6px 28px -6px var(--glow); }
+  .btn--line:not([disabled]):hover { background: #fff; color: #000; box-shadow: none; }
+  .txtlink:hover { color: var(--tube); }
+}
+
+/* ---------- rubriken: neonrör ---------- */
+.hero {
+  min-height: min(100svh, 940px); display: flex; flex-direction: column; justify-content: center;
+  padding: max(56px, env(safe-area-inset-top)) 0 56px; text-align: center; position: relative; isolation: isolate;
+}
+.hero::before {          /* skenet från skylten, svagt, bakom rubriken */
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 70% 38% at 50% 34%, rgba(255, 62, 191, 0.16), transparent 70%);
+}
+.title { width: min(100%, 720px); margin: 0 auto; }
+.title svg { display: block; width: 100%; height: auto; overflow: visible; }
+.title text { font-family: var(--display); font-weight: 800; letter-spacing: 3px; }
+.tube-off, .tube-on { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 3.2px; }
+.tube-off { stroke: rgba(255, 150, 230, 0.13); }
+.tube-on { stroke: var(--tube); }
+.title:not(.fit) svg { visibility: hidden; }
+.js .tube-on .t1, .js .tube-on .t2 { opacity: 0; }
+.lit .tube-on .t1 { animation: ignite 1000ms steps(1, end) 120ms both; }
+.lit .tube-on .t2 { animation: ignite2 1100ms steps(1, end) 420ms both; }
+@keyframes ignite { 0% { opacity: 0; } 10% { opacity: 0.9; } 16% { opacity: 0.1; } 28% { opacity: 1; } 36% { opacity: 0.35; } 46%, 100% { opacity: 1; } }
+@keyframes ignite2 { 0% { opacity: 0; } 8% { opacity: 0.6; } 14% { opacity: 0; } 22% { opacity: 0.9; } 30% { opacity: 0.2; } 44% { opacity: 1; } 54% { opacity: 0.55; } 62%, 100% { opacity: 1; } }
+@keyframes fadeOn { from { opacity: 0; } to { opacity: 1; } }
+.hero-text { display: grid; gap: 14px; justify-items: center; margin: clamp(30px, 6vw, 48px) auto 0; max-width: 33em; }
+.hero-text p { color: var(--text-2); }
+.hero-text p:first-child { color: #fff; font-weight: 500; font-size: clamp(19px, 2.2vw, 21px); }
+.hero-cta { display: grid; justify-items: center; gap: 10px; margin-top: clamp(30px, 6vw, 44px); }
+.js .hero-text, .js .hero-cta { opacity: 0; transform: translateY(12px); }
+.lit .hero-text { animation: rise 700ms var(--ease-out) 900ms both; }
+.lit .hero-cta { animation: rise 700ms var(--ease-out) 1050ms both; }
+@keyframes rise { to { opacity: 1; transform: none; } }
+.scroll-hint { position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); width: 1px; height: 38px;
+  background: linear-gradient(var(--tube), transparent); opacity: 0.6; }
+
+/* ---------- vad ingår ---------- */
+.perks { display: grid; grid-template-columns: 1fr; border-top: 1px solid var(--line); }
+.perk { display: grid; grid-template-columns: 52px 1fr; align-content: start; gap: 4px 12px; padding: 22px 0 24px; border-bottom: 1px solid var(--line); }
+.perk-n { font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.12em; color: var(--tube); padding-top: 3px; }
+.perk h3 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.2; }
+.perk p { grid-column: 2; color: var(--dim); font-size: 17px; }
+.fine { color: var(--mute); font-size: 15px; margin-top: 18px; max-width: 40em; }
+
+/* ---------- inriktningar ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.24); text-align: left;
+  font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: 0.07em; text-transform: uppercase; line-height: 1.2;
+  color: var(--text-2); transition: border-color 160ms ease, color 160ms ease, box-shadow 220ms ease, background-color 160ms ease, transform 140ms var(--ease-out);
+}
+.chip:active { transform: scale(0.97); }
+.chip i { width: 16px; height: 16px; flex: none; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 2px; position: relative; transition: background-color 160ms ease, border-color 160ms ease; }
+.chip[aria-pressed="true"] { border-color: var(--tube); color: #fff; background: rgba(255, 62, 191, 0.08); box-shadow: 0 0 0 1px var(--tube) inset, 0 0 22px -8px var(--glow); }
+.chip[aria-pressed="true"] i { background: var(--tube); border-color: var(--tube); }
+.chip[aria-pressed="true"] i::after { content: ""; position: absolute; left: 4.5px; top: 1px; width: 5px; height: 9px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+@media (hover: hover) and (pointer: fine) { .chip:hover { border-color: rgba(255, 255, 255, 0.6); color: #fff; } .chip[aria-pressed="true"]:hover { border-color: var(--tube); } }
+@media (max-width: 559px) { .chip { width: 100%; } }
+.chips-count { margin-top: 16px; font-family: var(--display); font-weight: 600; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mute); }
+.chips-count b { color: var(--tube); font-weight: 600; }
+
+/* ---------- formuläret ---------- */
+.form { max-width: 760px; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 26px 28px; }
+.f { display: grid; gap: 6px; align-content: start; }
+.f > label:not(.consent), .f > .lbl { font-family: var(--display); font-size: 14px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); }
+.f input {
+  width: 100%; padding: 10px 0 12px; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0; background: transparent;
+  color: #fff; font: 400 19px/1.5 var(--sans); outline: none; -webkit-appearance: none; appearance: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.f input::placeholder { color: #6f6779; }
+.f input:focus { border-color: var(--tube); box-shadow: 0 1px 0 var(--tube); }
+.f input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 1px 0 var(--err); }
+.f input[readonly] { color: var(--dim); }
+.hint { font-size: 14px; color: var(--mute); }
+.err { font-size: 15px; color: var(--err); }
+.err:empty { display: none; }
+.pw { position: relative; }
+.pw input { padding-right: 64px; }
+.pw button { position: absolute; right: 0; bottom: 8px; min-height: 36px; padding: 0 2px; font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.picked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 12px 0 14px; border-bottom: 1px solid var(--line-2); font-size: 17px; color: var(--text-2); }
+.picked.none { color: #6f6779; }
+.picked a { font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--tube); text-decoration: none; }
+.consent { display: grid; grid-template-columns: 26px 1fr; gap: 14px; align-items: start; cursor: pointer; }
+.consent input { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin: 2px 0 0; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 2px; background: transparent; position: relative; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; }
+.consent input:checked { background: var(--tube); border-color: var(--tube); }
+.consent input:checked::after { content: ""; position: absolute; left: 7.5px; top: 3px; width: 6px; height: 12px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.consent input[aria-invalid="true"] { border-color: var(--err); }
+.consent span { font-size: 16px; color: var(--text-2); line-height: 1.55; }
+.consent a { color: var(--tube); }
+.gdpr { display: grid; gap: 8px; padding: 6px 0 2px; font-size: 15px; color: var(--dim); line-height: 1.55; }
+.gdpr b { color: #fff; font-weight: 600; }
+.form-foot { display: grid; gap: 16px; margin-top: 34px; }
+.form-foot .after { color: var(--dim); font-size: 16px; max-width: 30em; }
+.msg { font-size: 16px; padding: 14px 16px; border-left: 2px solid var(--err); background: rgba(255, 157, 176, 0.07); color: var(--text-2); }
+.msg:empty { display: none; }
+.msg.ok { border-color: var(--ok); background: rgba(143, 240, 192, 0.06); }
+.msg a { color: #fff; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+/* kodsteget och klart */
+.step { animation: blurIn 500ms var(--ease-out) both; }
+@keyframes blurIn { from { opacity: 0; filter: blur(4px); transform: translateY(6px); } }
+.code { font-family: var(--display) !important; font-weight: 600 !important; font-size: 34px !important; letter-spacing: 0.4em; }
+.step-links { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: 8px; }
+.done-title { font-family: var(--display); font-weight: 800; font-size: clamp(2.6rem, 11vw, 4.6rem); line-height: 0.95; text-transform: uppercase; color: #fff;
+  text-shadow: 0 0 18px rgba(255, 62, 191, 0.55); }
+.banner { display: grid; gap: 14px; padding: 22px 0; border-top: 1px solid var(--tube); border-bottom: 1px solid var(--line); }
+
+.foot { margin-top: clamp(80px, 12vw, 140px); padding: 28px 0 max(28px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.foot .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 24px; font-size: 14px; color: var(--mute); }
+.foot nav { display: flex; gap: 20px; }
+.foot a { text-decoration: none; color: var(--dim); }
+
+@media (min-width: 760px) {
+  .perks { grid-template-columns: 1fr 1fr; column-gap: 48px; border-top: 0; }
+  .perk { border-top: 1px solid var(--line); border-bottom: 0; }
+  .perks { border-bottom: 1px solid var(--line); }
+  .grid { grid-template-columns: 1fr 1fr; }
+  .f--full { grid-column: 1 / -1; }
+  .form-foot { grid-template-columns: auto 1fr; align-items: center; column-gap: 28px; }
+  .form-foot .btn { width: auto; min-width: 360px; }
+}
+@media (min-width: 1040px) { .perks { grid-template-columns: repeat(3, 1fr); } }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .lit .tube-on .t1, .lit .tube-on .t2 { animation: fadeOn 300ms ease both !important; }
+  .lit .hero-text, .lit .hero-cta { animation: fadeOn 300ms ease both !important; transform: none; }
+  .step { animation: none; }
+}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.add('js');</script>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="neonGlow" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="11" result="a2"/>
+      <feFlood flood-color="#9d4dff" flood-opacity="0.7"/><feComposite in2="a2" operator="in" result="g2"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="a1"/>
+      <feFlood flood-color="#ff3ebf" flood-opacity="0.95"/><feComposite in2="a1" operator="in" result="g1"/>
+      <feMerge><feMergeNode in="g2"/><feMergeNode in="g1"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<main>
+  <header class="hero" id="top">
+    <div class="wrap">
+      <h1 class="title" id="title"><span class="sr">BANDO HQ ACCESS</span>
+        <svg viewBox="0 0 1000 560" aria-hidden="true" focusable="false">
+          <g class="tube-off"><text class="t1" x="500" y="250" text-anchor="middle" font-size="250">BANDO HQ</text><text class="t2" x="500" y="540" text-anchor="middle" font-size="300">ACCESS</text></g>
+          <g class="tube-on" filter="url(#neonGlow)"><text class="t1" x="500" y="250" text-anchor="middle" font-size="250">BANDO HQ</text><text class="t2" x="500" y="540" text-anchor="middle" font-size="300">ACCESS</text></g>
+        </svg>
+      </h1>
+      <div class="hero-text">
+        <p>Välkommen till Bando HQ, vårt system för studiobokningar och kreativa tjänster.</p>
+        <p>Genom våra studiocirklar får du tillgång till Bando HQ Access, där du kan boka sessions, hantera dina bokningar och ta del av exklusiva priser och förmåner.</p>
+      </div>
+      <div class="hero-cta">
+        <a class="btn" href="#registrera" id="ctaTop">REGISTRERA DIG</a>
+        <a class="txtlink" href="./" id="loginTop">Har du redan ett konto?<b>Logga in</b></a>
+      </div>
+    </div>
+    <span class="scroll-hint" aria-hidden="true"></span>
+  </header>
+
+  <section id="ingar" aria-labelledby="ingarH">
+    <div class="wrap">
+      <div class="sec-head"><h2 class="h2" id="ingarH">Vad ingår i Bando HQ Access?</h2></div>
+      <ol class="perks" id="perks">
+        <li class="perk"><span class="perk-n">01</span><h3>Studiobokningar</h3><p>Boka sessions smidigt och till förmånliga priser.</p></li>
+        <li class="perk"><span class="perk-n">02</span><h3>Rabatter på tjänster</h3><p>Ta del av bättre priser på mix &amp; master, foto, musikvideo, content och marknadsföring.</p></li>
+        <li class="perk"><span class="perk-n">03</span><h3>Kreativa samarbeten</h3><p>Få tillgång till erbjudanden från producenter, filmare och andra kreatörer inom Bandos nätverk.</p></li>
+        <li class="perk"><span class="perk-n">04</span><h3>Strategi &amp; artistutveckling</h3><p>Få vägledning kring din musik, dina projekt och kommande releaser.</p></li>
+        <li class="perk"><span class="perk-n">05</span><h3>A&amp;R-feedback</h3><p>Möjlighet att skicka in musik för professionell feedback, även från A&amp;R-kontakter på stora skivbolag.</p></li>
+        <li class="perk"><span class="perk-n">06</span><h3>Merch &amp; egna projekt</h3><p>Få hjälp med att utveckla och producera egna kläder, merchandise och kreativa produkter.</p></li>
+      </ol>
+      <p class="fine">Samarbeten, feedback och hjälp med egna projekt erbjuds när det finns plats och passar det du arbetar med.</p>
+    </div>
+  </section>
+
+  <section id="inriktning" aria-labelledby="intH">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="h2" id="intH">Välj din inriktning</h2>
+        <p class="lead">Som deltagare i våra studiocirklar väljer du vilket område du vill utvecklas inom genom dina sessions.</p>
+      </div>
+      <div class="chips" id="chips" role="group" aria-labelledby="intH"></div>
+      <p class="chips-count" id="chipsCount" aria-live="polite">Välj en eller flera</p>
+    </div>
+  </section>
+
+  <section id="registrera" aria-labelledby="regH">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2 class="h2" id="regH">Registrera dig</h2>
+        <p class="lead" id="regLead">Skapa ditt konto för att få tillgång till Bando HQ Access och våra studiocirklar.</p>
+      </div>
+      <div id="stage"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <div class="wrap">
+      <span>Bando HQ · Bando Collective</span>
+      <nav><a href="./#integritet">Integritet</a><a href="./#support">Hjälp</a><a href="./">Logga in</a></nav>
+    </div>
+  </footer>
+</main>
+
+<script>
+/* =====================================================================
+   BANDO HQ ACCESS — flödet
+   1. formuläret kontrolleras här (samma regler som på servern)
+   2. kontot skapas hos Supabase (/signup). Personnumret skickas inte dit — det
+      finns bara i sidans minne tills profilen skapas.
+   3. koden från mejlet bekräftar e-posten (/verify)
+   4. register_access skapar kunden och deltagaren och sparar personnumret krypterat
+   5. inloggningen sparas där appen läser den, och sidan skickar vidare till Bando HQ
+   Utan Supabase (förhandsläget och testerna) görs allt i webbläsaren och appen tar
+   emot registreringen när man kommer dit.
+   ===================================================================== */
+const CLOUD_CONFIG = { url: 'https://gwvtqrbrkkfgyesamcfy.supabase.co', key: 'sb_publishable_jdhJX4ns98mvM2qSuUFCQg_rRUvmxpf' };
+const LS = k => { try{ return JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){ return null; } };
+const CLOUD = Object.assign({}, CLOUD_CONFIG, LS('bandosesh_cloud') || {});
+CLOUD.url = String(CLOUD.url || '').replace(/\/$/, '');
+const PREVIEW = !(CLOUD.url && CLOUD.key);
+const APP = new URL('./', location.href).href;            /* appen ligger bredvid sidan */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* Samma som setting/access på servern (bs_access_default) — visas tills servern svarat. */
+const DEFAULT_INTERESTS = [
+  ['songwriting','Låtskrivning & textförfattande'], ['rap','Rap, flow & delivery'], ['vocals','Sång & vokalteknik'],
+  ['production','Musikproduktion & beatmaking'], ['recording','Inspelning & studioteknik'], ['mixing','Mixning & mastering'],
+  ['artistdev','Artistutveckling & sound'], ['performance','Scennärvaro & performance'], ['content','Content & sociala medier'],
+  ['film','Foto, film & musikvideo'], ['marketing','Marknadsföring & release'], ['industry','A&R, management & musikbranschen']
+].map(([id, label]) => ({id, label}));
+let INTERESTS = DEFAULT_INTERESTS.slice();
+const picked = new Set();
+
+/* ---------- kontrollerna (speglar bs_phone, bs_pnr och register_access) ---------- */
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const cleanName = s => String(s || '').trim().replace(/\s+/g, ' ');
+function phoneE164(p){
+  const n = String(p || '').replace(/[\s\-().]/g, '');
+  if(/^\+[1-9]\d{7,14}$/.test(n)) return n;
+  if(/^00[1-9]\d{7,14}$/.test(n)) return '+' + n.slice(2);
+  if(/^0[1-9]\d{6,11}$/.test(n)) return '+46' + n.slice(1);
+  if(/^46[1-9]\d{6,11}$/.test(n)) return '+' + n;
+  return null;
+}
+/* "ÅÅÅÅMMDD-XXXX" (eller ÅÅMMDD-XXXX) → 12 siffror, eller null. Datum och kontrollsiffra. */
+function pnr12(p){
+  const raw = String(p || '').replace(/\s/g, '');
+  if(!/^(\d{6}|\d{8})[-+]?\d{4}$/.test(raw)) return null;
+  let d = raw.replace(/[-+]/g, '');
+  const now = new Date();
+  if(d.length === 10){
+    const yy = +d.slice(0, 2), cent = (yy > now.getFullYear() % 100 ? 19 : 20) - (raw.includes('+') ? 1 : 0);
+    d = cent + d;
+  }
+  const y = +d.slice(0, 4), m = +d.slice(4, 6); let dd = +d.slice(6, 8);
+  if(dd > 60) dd -= 60;                                   /* samordningsnummer */
+  if(m < 1 || m > 12 || dd < 1) return null;
+  const date = new Date(y, m - 1, dd);
+  if(date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== dd) return null;
+  if(date > now || y < now.getFullYear() - 120) return null;
+  let s = 0;
+  [...d.slice(2)].forEach((c, i) => { const x = +c * (i % 2 === 0 ? 2 : 1); s += Math.floor(x / 10) + x % 10; });
+  return s % 10 === 0 ? d : null;
+}
+const fmtPnr = d => d.slice(0, 8) + '-' + d.slice(8);
+const WEAK = ['12345678','123456789','1234567890','password','password1','losenord','lösenord1','qwerty123','abcd1234','bando123','bandohq1','bandohq123','studio123'];
+const CHECK = {
+  name: v => { const n = cleanName(v);
+    if(!/\S+\s+\S/.test(n) || n.length < 3) return 'Fyll i för- och efternamn';
+    if(n.length > 60) return 'Namnet är för långt';
+    if(/[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]/.test(n)) return 'Namnet får bara innehålla bokstäver'; return ''; },
+  email: v => EMAIL_RE.test(String(v).trim()) ? '' : 'Fyll i en giltig e-postadress',
+  phone: v => phoneE164(v) ? '' : 'Fyll i ett giltigt mobilnummer',
+  pnr: v => pnr12(v) ? '' : 'Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX',
+  password: (v, f) => { const p = String(v || '');
+    if(p.length < 8) return 'Minst 8 tecken';
+    if(!/[a-zåäö]/i.test(p) || !/\d/.test(p)) return 'Använd både bokstäver och siffror';
+    if(WEAK.includes(p.toLowerCase()) || (f && f.email && p.toLowerCase() === String(f.email).trim().toLowerCase())) return 'Lösenordet är för lätt att gissa';
+    return ''; },
+};
+
+/* ---------- servern ---------- */
+const AUTH_SV = [
+  [/token has expired or is invalid|otp_expired/i, 'Koden stämmer inte eller har gått ut — be om en ny'],
+  [/for security purposes|only request this after/i, 'Vänta en minut innan du ber om en ny kod'],
+  [/already registered|already been registered/i, 'Det finns redan ett konto med den e-postadressen — logga in i stället'],
+  [/password should|weak password|at least \d+ characters/i, 'Lösenordet är för svagt — minst 8 tecken, bokstäver och siffror'],
+  [/rate limit|too many/i, 'För många försök — vänta en stund'],
+  [/invalid email|unable to validate email/i, 'E-postadressen ser fel ut'],
+  [/Failed to fetch|NetworkError|Load failed/i, 'Ingen kontakt med servern — kolla uppkopplingen och försök igen']];
+const sv = m => { const hit = AUTH_SV.find(([re]) => re.test(m)); return hit ? hit[1] : m; };
+async function errOf(r){
+  let m = 'Servern svarade ' + r.status;
+  try{ const j = await r.json(); m = j.msg || j.message || j.error_description || j.error || m; }catch(e){}
+  return sv(m);
+}
+async function call(url, body, token, method){
+  let r;
+  try{
+    r = await fetch(url, {method: method || 'POST', headers: Object.assign({apikey: CLOUD.key, 'Content-Type': 'application/json'},
+      token ? {Authorization: 'Bearer ' + token} : {}), body: method === 'GET' ? null : JSON.stringify(body || {})});
+  }catch(e){ throw new Error(sv(e.message)); }
+  if(!r.ok) throw new Error(await errOf(r));
+  const t = await r.text(); return t ? JSON.parse(t) : null;
+}
+const authApi = (path, body) => call(CLOUD.url + '/auth/v1' + path, body);
+const rpc = async (fn, args) => call(CLOUD.url + '/rest/v1/rpc/' + fn, args, await token());
+/* Inloggningen sparas i samma form och under samma nyckel som appen använder. */
+const jwtSub = t => { try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub; }catch(e){ return ''; } };
+let AUTH = LS('bandosesh_auth');
+function saveAuth(j){
+  AUTH = j ? {access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000,
+    uid: jwtSub(j.access_token), email: (j.user && j.user.email) || '', meta: (j.user && j.user.user_metadata) || {}} : null;
+  try{ AUTH ? localStorage.setItem('bandosesh_auth', JSON.stringify(AUTH)) : localStorage.removeItem('bandosesh_auth'); }catch(e){}
+}
+async function token(){
+  if(!AUTH) return '';
+  if(AUTH.expires_at - Date.now() > 60000) return AUTH.access_token;
+  try{ saveAuth(await authApi('/token?grant_type=refresh_token', {refresh_token: AUTH.refresh_token})); }
+  catch(e){ saveAuth(null); return ''; }
+  return AUTH.access_token;
+}
+
+/* ---------- inriktningarna ---------- */
+function paintChips(){
+  $('chips').innerHTML = INTERESTS.map(i => `<button type="button" class="chip" data-id="${esc(i.id)}" aria-pressed="${picked.has(i.id)}"><i aria-hidden="true"></i>${esc(i.label)}</button>`).join('');
+  paintPicked();
+}
+function paintPicked(){
+  const n = picked.size, list = INTERESTS.filter(i => picked.has(i.id));
+  $('chipsCount').innerHTML = n ? `<b>${n}</b> ${n === 1 ? 'vald' : 'valda'}` : 'Välj en eller flera';
+  const p = $('picked'); if(!p) return;
+  p.classList.toggle('none', !n);
+  p.innerHTML = n ? `<span>${list.map(i => esc(i.label)).join(' · ')}</span><a href="#inriktning">Ändra</a>`
+                  : `<span>Ingen vald än</span><a href="#inriktning">Välj inriktning</a>`;
+  if(n) setErr('interests', '');
+}
+$('chips').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if(!b) return;
+  const id = b.dataset.id;
+  picked.has(id) ? picked.delete(id) : picked.add(id);
+  b.setAttribute('aria-pressed', picked.has(id));
+  paintPicked();
+});
+function paintPerks(perks){
+  if(!Array.isArray(perks) || !perks.length) return;
+  $('perks').innerHTML = perks.map((p, i) => `<li class="perk"><span class="perk-n">${String(i + 1).padStart(2, '0')}</span><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p></li>`).join('');
+}
+async function loadInfo(){
+  try{
+    let info = null;
+    if(PREVIEW){ const s = LS('bandosesh_v2'); info = s && s.accessCfg ? {interests: (s.accessCfg.interests || []).filter(i => !i.off), perks: s.accessCfg.perks} : null; }
+    else info = await call(CLOUD.url + '/rest/v1/rpc/access_info', {});
+    if(!info) return;
+    if(Array.isArray(info.interests) && info.interests.length){
+      INTERESTS = info.interests.map(i => ({id: i.id, label: i.label}));
+      [...picked].forEach(id => { if(!INTERESTS.some(i => i.id === id)) picked.delete(id); });
+      paintChips();
+    }
+    paintPerks(info.perks);
+  }catch(e){ /* standardtexterna står kvar */ }
+}
+
+/* ---------- stegen ---------- */
+let stage = 'form', draft = {name:'', email:'', phone:'', pnr:'', password:''}, mode = 'new', who = '', busy = false;
+const field = (k, label, attrs, hint, cls) => `<div class="f ${cls || ''}">
+  <label for="f_${k}">${label}</label>
+  ${k === 'password' ? `<div class="pw"><input id="f_${k}" name="${k}" ${attrs} aria-describedby="e_${k} h_${k}"><button type="button" id="pwToggle" aria-controls="f_password">Visa</button></div>`
+                     : `<input id="f_${k}" name="${k}" ${attrs} aria-describedby="e_${k}${hint ? ' h_' + k : ''}">`}
+  ${hint ? `<span class="hint" id="h_${k}">${hint}</span>` : ''}
+  <span class="err" id="e_${k}" role="alert"></span></div>`;
+function setErr(k, m){
+  const e = $('e_' + k), i = $('f_' + k);
+  if(e) e.textContent = m || '';
+  if(i) i.setAttribute('aria-invalid', m ? 'true' : 'false');
+}
+function render(){
+  const s = $('stage');
+  $('regLead').hidden = stage !== 'form';
+  if(stage === 'form'){
+    const full = mode === 'new';
+    s.innerHTML = `<form class="form step" id="form" novalidate autocomplete="on">
+      ${mode === 'finish' ? `<p class="msg ok" style="margin-bottom:28px">Din e-post är bekräftad${who ? ' (' + esc(who) + ')' : ''}. Fyll i resten så är kontot klart.</p>` : ''}
+      <div class="grid">
+        ${field('name', 'För- och efternamn', `type="text" autocomplete="name" autocapitalize="words" maxlength="60" required value="${esc(draft.name)}"`, '', 'f--full')}
+        ${full ? field('email', 'E-post', `type="email" autocomplete="email" autocapitalize="none" spellcheck="false" inputmode="email" maxlength="120" required value="${esc(draft.email)}"`) : ''}
+        ${field('phone', 'Mobilnummer', `type="tel" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="070-123 45 67" required value="${esc(draft.phone)}"`, '', full ? '' : 'f--full')}
+        ${field('pnr', 'Personnummer', `type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="ÅÅÅÅMMDD-XXXX" required value="${esc(draft.pnr)}"`,
+          'Behövs för rapporteringen av studiecirklarna. Lagras krypterat.', full ? '' : 'f--full')}
+        ${full ? field('password', 'Lösenord', `type="password" autocomplete="new-password" minlength="8" maxlength="72" required value="${esc(draft.password)}"`, 'Minst 8 tecken, med både bokstäver och siffror.') : ''}
+        <div class="f f--full"><span class="lbl" id="l_interests">Inriktning</span>
+          <div class="picked none" id="picked" aria-labelledby="l_interests"></div>
+          <span class="err" id="e_interests" role="alert"></span></div>
+        <div class="f f--full">
+          <div class="gdpr" id="gdpr">
+            <span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer, dina inriktningar och ditt
+              personnummer för att ge dig tillgång till Bando HQ och för att driva studiecirklarna.</span>
+            <span><b>Personnumret</b> behövs för att vi ska kunna rapportera studiecirklarna till studieförbundet. Det lagras krypterat,
+              syns bara för Bandos administratörer och raderas när du raderar ditt konto.</span>
+          </div>
+          <label class="consent" for="f_consent" style="margin-top:14px">
+            <input type="checkbox" id="f_consent" name="consent" aria-describedby="e_consent gdpr" ${draft.consent ? 'checked' : ''}>
+            <span>Jag godkänner att Bando Collective behandlar mina uppgifter så här, och att jag blir deltagare i Bandos studiocirklar.
+              <a href="./#integritet" target="_blank" rel="noopener">Läs hela integritetstexten</a></span>
+          </label>
+          <span class="err" id="e_consent" role="alert"></span>
+        </div>
+      </div>
+      <input class="hp" type="text" name="website" id="f_hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="form-foot">
+        <button class="btn" id="submit" ${busy ? 'disabled' : ''}>${busy ? 'SKAPAR KONTOT…' : 'SKAPA KONTO &amp; FÅ ACCESS'}</button>
+        <p class="after">Efter registrering får du tillgång till Bando HQ och placeras i en studiocirkel.</p>
+      </div>
+      <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
+    </form>`;
+    paintPicked();
+    $('form').addEventListener('submit', e => { e.preventDefault(); submit(); });
+    ['name','email','phone','pnr','password'].forEach(k => {
+      const i = $('f_' + k); if(!i) return;
+      i.addEventListener('input', () => { draft[k] = i.value; if(i.getAttribute('aria-invalid') === 'true') setErr(k, CHECK[k](i.value, draft)); });
+      i.addEventListener('blur', () => {
+        if(k === 'pnr' && pnr12(i.value)) i.value = draft.pnr = fmtPnr(pnr12(i.value));
+        if(i.value) setErr(k, CHECK[k](i.value, draft));
+      });
+    });
+    $('f_consent').addEventListener('change', e => { draft.consent = e.target.checked; if(e.target.checked) setErr('consent', ''); });
+    const t = $('pwToggle');
+    if(t) t.addEventListener('click', () => { const i = $('f_password'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; t.textContent = show ? 'Dölj' : 'Visa'; });
+  }
+  if(stage === 'code'){
+    s.innerHTML = `<form class="form step" id="codeForm" novalidate>
+      <p class="h2" style="font-size:clamp(1.9rem,7vw,2.8rem);margin-bottom:14px">Kolla din mejl</p>
+      <p class="lead" style="margin-bottom:28px">Vi har mejlat en kod till <b>${esc(draft.email)}</b>. Skriv in den här för att bekräfta din e-post.
+        ${PREVIEW ? '<br><span class="hint">Förhandsläge: vilka sex siffror som helst fungerar.</span>' : ''}</p>
+      <div class="f" style="max-width:320px">
+        <label for="f_code">Kod från mejlet</label>
+        <input id="f_code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••" aria-describedby="e_code" required>
+        <span class="err" id="e_code" role="alert"></span></div>
+      <div class="form-foot"><button class="btn" id="codeBtn" ${busy ? 'disabled' : ''}>${busy ? 'KOLLAR…' : 'BEKRÄFTA'}</button>
+        <p class="after">Kolla skräpposten om mejlet dröjer.</p></div>
+      <div class="step-links">
+        <button type="button" class="txtlink" id="resend">Skicka en ny kod</button>
+        <button type="button" class="txtlink" id="back">Fel e-post? Ändra</button></div>
+      <p class="msg" id="msg" role="alert" style="margin-top:18px"></p>
+    </form>`;
+    $('codeForm').addEventListener('submit', e => { e.preventDefault(); verify(); });
+    $('resend').addEventListener('click', resend);
+    $('back').addEventListener('click', () => { stage = 'form'; render(); });
+    setTimeout(() => $('f_code').focus(), 60);
+  }
+  if(stage === 'done'){
+    s.innerHTML = `<div class="step" id="done">
+      <p class="done-title">Välkommen in${who ? ', ' + esc(who.split(' ')[0]) : ''}</p>
+      <p class="lead" style="margin:18px 0 30px">Ditt konto är klart. Du har nu tillgång till Bando HQ Access, och vi placerar dig i en studiocirkel
+        utifrån det du valt. Du skickas vidare till Bando HQ…</p>
+      <a class="btn" href="${esc(APP)}#welcome" id="toApp">TILL BANDO HQ</a></div>`;
+  }
+  if(stage === 'member'){
+    s.innerHTML = `<div class="banner step" id="already">
+      <p class="lead">Du är redan inloggad${who ? ' som <b>' + esc(who) + '</b>' : ''} och har tillgång till Bando HQ Access.</p>
+      <a class="btn" href="${esc(APP)}" id="toApp">TILL BANDO HQ</a></div>`;
+  }
+}
+function showMsg(html, ok){ const m = $('msg'); if(!m) return; m.classList.toggle('ok', !!ok); m.innerHTML = html; if(html) m.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+
+/* ---------- 1–2: kontrollera och skapa kontot ---------- */
+async function submit(){
+  if(busy) return;
+  if(($('f_hp') || {}).value) return;                       /* robot */
+  const full = mode === 'new', errs = {};
+  ['name', 'phone', 'pnr'].concat(full ? ['email', 'password'] : []).forEach(k => { errs[k] = CHECK[k](draft[k], draft); });
+  errs.interests = picked.size ? '' : 'Välj minst en inriktning';
+  errs.consent = draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter';
+  Object.entries(errs).forEach(([k, m]) => setErr(k, m));
+  const first = ['name','email','phone','pnr','password','interests','consent'].find(k => errs[k]);
+  if(first){
+    showMsg('');
+    if(first === 'interests'){ $('picked').scrollIntoView({block:'center', behavior:'smooth'}); }
+    else { const i = $('f_' + first); if(i){ i.focus(); i.scrollIntoView({block:'center', behavior:'smooth'}); } }
+    return;
+  }
+  busy = true; render();
+  try{
+    if(!full){ await finish(); return; }
+    const email = draft.email.trim().toLowerCase();
+    draft.email = email;
+    if(PREVIEW){ stage = 'code'; busy = false; render(); return; }
+    const j = await authApi('/signup', {email, password: draft.password,
+      data: {name: cleanName(draft.name), phone: phoneE164(draft.phone), access: true}});
+    /* Supabase svarar utan fel men utan identities när adressen redan har ett bekräftat konto */
+    if(j && Array.isArray(j.identities) && !j.identities.length) throw Object.assign(new Error('exists'), {exists: true});
+    if(j && j.access_token){ saveAuth(j); await finish(); return; }
+    stage = 'code';
+  }catch(e){
+    busy = false; render();
+    e.exists ? existsMsg('Det finns redan ett konto med den e-postadressen.') : showMsg(esc(e.message));
+    return;
+  }
+  busy = false; if(stage === 'code') render();
+}
+function existsMsg(why){
+  showMsg(`${esc(why)} <a href="${esc(APP)}">Logga in</a> — har du glömt lösenordet kan du få ett nytt där.`);
+}
+
+/* ---------- 3: koden ---------- */
+async function verify(){
+  if(busy) return;
+  const code = String(($('f_code') || {}).value || '').replace(/\D/g, '');
+  if(code.length < 6){ setErr('code', 'Skriv in koden — sex siffror'); return; }
+  busy = true; render(); $('f_code').value = code;
+  try{
+    if(!PREVIEW) saveAuth(await authApi('/verify', {type: 'signup', email: draft.email, token: code}));
+  }catch(e){
+    busy = false; render(); $('f_code').value = code; setErr('code', e.message); return;
+  }
+  await finish();                                          /* ritar själv: klart, eller formuläret med meddelandet */
+}
+async function resend(){
+  try{
+    if(!PREVIEW) await authApi('/resend', {type: 'signup', email: draft.email});
+    showMsg('En ny kod är på väg till ' + esc(draft.email) + '.', true);
+  }catch(e){ showMsg(esc(e.message)); }
+}
+
+/* ---------- 4–5: profilen och vidare till appen ---------- */
+async function finish(){
+  const args = {p_name: cleanName(draft.name), p_phone: draft.phone, p_pnr: draft.pnr, p_interests: [...picked],
+    p_consent: true, p_url: APP};
+  let r;
+  if(PREVIEW){
+    /* appen tar emot registreringen när den öppnas (förhandsläget, inget lämnar webbläsaren) */
+    const p = pnr12(draft.pnr);
+    localStorage.setItem('bandohq_access_preview', JSON.stringify({name: args.p_name, email: draft.email, phone: phoneE164(draft.phone),
+      interests: args.p_interests, pnr: p.slice(2, 8) + '-••••', at: Date.now()}));
+    r = {ok: true, name: args.p_name};
+  } else {
+    try{ r = await rpc('register_access', args); }
+    catch(e){
+      /* inloggad men profilen inte skapad: rätta och försök igen, utan ny e-post eller kod */
+      mode = 'finish'; stage = 'form'; busy = false; render(); showMsg(esc(e.message)); return;
+    }
+    if(r && r.ok === false){
+      if(r.exists){ saveAuth(null); mode = 'new'; stage = 'form'; busy = false; render(); existsMsg(r.why); return; }
+      mode = 'finish'; stage = 'form'; busy = false; render(); showMsg(esc(r.why || 'Det gick inte att skapa kontot')); return;
+    }
+  }
+  draft.pnr = ''; draft.password = '';                    /* behövs inte längre */
+  who = (r && r.name) || args.p_name;
+  stage = 'done'; busy = false; render();
+  $('stage').scrollIntoView({block: 'start', behavior: 'smooth'});
+  setTimeout(() => { location.href = APP + '#welcome'; }, 2600);
+}
+
+/* ---------- start ---------- */
+async function start(){
+  paintChips(); render();
+  loadInfo();
+  if(PREVIEW || !AUTH) return;
+  /* redan inloggad på den här enheten: färdig, eller halvvägs (bekräftad men utan profil) */
+  try{
+    const st = await rpc('access_status', {});
+    if(!st || !st.login) return;
+    if(st.member){
+      who = st.name || '';
+      if(st.complete || !['customer','participant'].includes(st.role)){ stage = 'member'; render(); }
+      else { location.replace(APP + '#profil'); }          /* befintlig kund: kompletteras i appen */
+    } else {
+      mode = 'finish'; who = AUTH.email || ''; draft.name = (AUTH.meta && AUTH.meta.name) || draft.name;
+      draft.phone = (AUTH.meta && AUTH.meta.phone) || draft.phone; render();
+    }
+  }catch(e){ /* utloggad eller ingen kontakt: vanliga formuläret */ }
+}
+/* rubriken: båda raderna lika breda, som en skylt — mäts när typsnittet laddats */
+function fitTitle(){
+  const svg = document.querySelector('#title svg'); if(!svg) return;
+  const lines = [...svg.querySelectorAll('.tube-off text')], on = [...svg.querySelectorAll('.tube-on text')];
+  try{
+    /* Barlow Condensed: versalhöjden är 0,70 em */
+    const W = 980, gap = 58, CAP = 0.70; let y = 0;
+    lines.forEach((t, i) => {
+      t.setAttribute('font-size', 200); on[i].setAttribute('font-size', 200);
+      const size = 200 * W / t.getBBox().width;
+      y += (i ? gap : 0) + size * CAP;
+      [t, on[i]].forEach(x => { x.setAttribute('font-size', size.toFixed(1)); x.setAttribute('y', y.toFixed(1)); });
+    });
+    svg.setAttribute('viewBox', `0 -24 1000 ${Math.ceil(y + 48)}`);
+  }catch(e){}
+  $('title').classList.add('fit');
+  requestAnimationFrame(() => document.querySelector('.hero').classList.add('lit'));
+}
+(document.fonts && document.fonts.load ? Promise.race([document.fonts.load('800 200px "Barlow Condensed"'), new Promise(r => setTimeout(r, 1500))]) : Promise.resolve())
+  .then(fitTitle, fitTitle);
+$('ctaTop').addEventListener('click', e => { e.preventDefault(); $('registrera').scrollIntoView({behavior: 'smooth'}); setTimeout(() => { const i = $('f_name'); if(i) i.focus({preventScroll: true}); }, 500); });
+start();
+</script>
+</body>
+</html>

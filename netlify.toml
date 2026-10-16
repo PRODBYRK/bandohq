@@ -5,3 +5,22 @@
   [headers.values]
     Content-Type = "application/json"
     Cache-Control = "public, max-age=3600"
+
+# Bando HQ Access: QR-kodens adress (bandohq.se/access) ska aldrig ändras — den är tryckt.
+[[redirects]]
+  from = "/access"
+  to = "/access.html"
+  status = 200
+
+# med snedstreck sist skulle sidans relativa länkar (fonts/, ./) peka fel — skicka vidare
+[[redirects]]
+  from = "/access/"
+  to = "/access"
+  status = 301
+
+# Typsnitten (Bando Collectives Barlow) ändras aldrig under samma namn.
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Access-Control-Allow-Origin = "*"

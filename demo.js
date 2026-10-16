@@ -10,6 +10,8 @@ window.bandohqDemo = function(o){
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
   const A=(id,n,r,c,g,email,phone)=>({id,n,r,c,g,email:email||'',phone:phone||'',
     pinHash:'x',pinSalt:'s',active:true,del:false,up:1});
+  /* Bando HQ Access: inriktningar, godkännande och personnummer (bara det maskerade — påhittat) */
+  const ACC=(a,ints,pnr,reg,src)=>Object.assign(a,{part:true,interests:ints,consent:true,pnr,reg:reg?D(reg)+'T12:00:00Z':'',source:src||''});
   const accounts=[
     A('az','AZ','manager','#cbd5e1','#f1f5f9','az@bandocollective.com'),
     A('rkay','RKAY','producer','#7c3aed','#a855f7','rkay@bandocollective.com'),
@@ -18,11 +20,13 @@ window.bandohqDemo = function(o){
     A('gio','GIOVANNI','producer','#db2777','#f472b6','gio@bandocollective.com'),
     A('pkl','PKL','producer','#047857','#34d399','pkl@bandocollective.com'),
     A('lead1','Sofia Marks','leader','#6633b8','#9d5cf5','sofia@exempel.se','070-555 11 22'),
-    A('p1','William Ek','participant','#6633b8','#9d5cf5','william@exempel.se','070-000 01'),
-    A('p2','Nora Lind','participant','#6633b8','#9d5cf5','nora@exempel.se','070-000 02'),
-    A('p3','Sam Ahmed','participant','#6633b8','#9d5cf5','sam@exempel.se','070-000 03'),
-    A('p4','Ida Berg','participant','#6633b8','#9d5cf5','ida@exempel.se','070-000 04'),
-    Object.assign(A('k1','Studio Nord AB','customer','#0284c7','#38bdf8','bokning@studionord.se','070-123 45 67'),{producer:'rkay'}),
+    ACC(A('p1','William Ek','participant','#6633b8','#9d5cf5','william@exempel.se','070-000 01'),['production','mixing'],'040212-••••'),
+    ACC(A('p2','Nora Lind','participant','#6633b8','#9d5cf5','nora@exempel.se','070-000 02'),['vocals','songwriting'],'050830-••••'),
+    ACC(A('p3','Sam Ahmed','participant','#6633b8','#9d5cf5','sam@exempel.se','070-000 03'),['rap','artistdev'],'031119-••••'),
+    ACC(A('p4','Ida Berg','participant','#6633b8','#9d5cf5','ida@exempel.se','070-000 04'),['performance','vocals'],'060104-••••'),
+    ACC(Object.assign(A('k1','Studio Nord AB','customer','#0284c7','#38bdf8','bokning@studionord.se','070-123 45 67'),{producer:'rkay'}),['production','mixing'],'900412-••••',-40,'access'),
+    /* ny via QR-koden i går — väntar på en grupp */
+    ACC(A('k2','Lea Novak','customer','#db2777','#f472b6','lea.novak@exempel.se','073-456 78 90'),['vocals','artistdev','content'],'020317-••••',-1,'access'),
     /* v8: admins och kamerateam */
     A('costa','Costa','admin','#7c3aed','#a855f7','costa@bandocollective.com','070-200 00 01'),
     A('nabbe','Nabbe','admin','#0284c7','#38bdf8','nabbe@bandocollective.com','070-200 00 02'),

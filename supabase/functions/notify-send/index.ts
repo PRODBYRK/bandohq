@@ -129,11 +129,12 @@ export async function sendApns(target, payload, apns, urgent) {
 /* ---------- utskicket ---------- */
 const env = (k) => (globalThis.Deno ? Deno.env.get(k) : process.env[k]) || '';
 const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfrågan mottagen', answer: 'Svar på din förfrågan',
-  cancel: 'Avbokat', level: 'Ny nivå', reward: 'Inlösen', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ' };
+  cancel: 'Avbokat', level: 'Ny nivå', reward: 'Inlösen', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ',
+  welcome: 'Välkommen till Bando HQ', access: 'Ny registrering' };
 const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked', 'cancel'];
 /* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
-export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no'];
-const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto' };
+export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no', 'welcome', 'access'];
+const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto', welcome: 'Öppna Bando HQ' };
 
 /* Servernyckeln: den gamla service_role-JWT:n om den finns, annars en ny
    sb_secret_… ur SUPABASE_SECRET_KEYS. Nya nycklar får bara skickas som apikey. */

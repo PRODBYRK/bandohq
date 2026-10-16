@@ -1062,7 +1062,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(seed({bookings:[BK('cb1','A',day(3),'12:00','16:00','ADREY'), BK('cb2','B',day(3),'13:00','15:00','ADREY'),
     BK('cf1','A',day(4),'10:00','23:00','RKAY'), BK('cf2','B',day(4),'09:00','23:30','RKAY')]}));
   r = await ev(w,`
-    byId('p2').r='customer'; byId('p2').producer='rkay'; save();
+    byId('p2').r='customer'; byId('p2').producer='rkay';
+    Object.assign(byId('p2'), {interests:['rap'], consent:true, pnr:'990101-••••', phone:'070-222 22 22'}); save();   /* Access-profilen klar */
     const ss = slotStarts('${day(3)}', booked()).filter(s=>s.t%60===0);
     S.session.member='Nora Lind'; bookDay='${day(3)}'; render();
     const html = document.getElementById('view').innerHTML;
@@ -1116,59 +1117,33 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await cancelMine(mine.id); const gone = S.bookings.find(b=>b.id===mine.id).del;
     S.session.member='AZ';
     return {btns, lateSheet:/Mindre än en timme kvar/.test(lateSheet) && /RKAY/.test(lateSheet) && /mailto:rkay@b.se/.test(lateSheet), stillThere, gone,
-      contact:/DIN PRODUCENT/.test(html) && /rkay@b.se/.test(html)};`);
+      contact:(/DIN PRODUCENT/.test(html) || /ANSVARIG PRODUCENT/.test(html)) && /rkay@b.se/.test(html)};`);
   ok('med mindre än en timme kvar står det "Hör av dig" i stället för Avboka', /Hör av dig/.test(r.btns) && /Avboka/.test(r.btns), r.btns);
   ok('och kunden hänvisas till sin producent med kontaktuppgifter', r.lateSheet===true && r.stillThere===true, r);
   ok('i god tid avbokar kunden själv', r.gone===true);
-  ok('producentens kontaktuppgifter står i kundvyn', r.contact===true);
+  ok('producentens kontaktuppgifter står i kundvyn (i cirkelkortet när hen också leder gruppen)', r.contact===true);
 
+  /* Access: bokningssidan utan konto är borta — inloggningen visar registreringen, och förfrågningar
+     som kom in före bytet (S.leads) besvaras som förut */
   r = await ev(w,`
-    signOut(); gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); await new Promise(r=>setTimeout(r,60));
-    pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
-    const page = document.getElementById('gateBody').innerHTML;
-    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^10:00/.test(b.textContent)).click();
-    await new Promise(r=>setTimeout(r,30));
-    const form = {phone:!!document.getElementById('puP'), mail:!!document.getElementById('puM'), name:!!document.getElementById('puN'),
-      end:document.getElementById('puE').textContent, sel:/tl-sel/.test(document.getElementById('gateBody').innerHTML)};
-    const send = async (o) => { pubDraft.done=false; Object.entries(o).forEach(([k,v])=>{ const el=document.getElementById(k); if(el.type==='checkbox') el.checked=v; else el.value=v; });
-      await sendPublic(); await new Promise(r=>setTimeout(r,20)); return gateErr; };
-    const none = await send({puN:'Ingen Kontakt', puP:'', puM:'', puC:true});
-    const busy = await send({puS:'11:00', puN:'Vera Ny', puM:'vera@x.se', puC:true});
-    document.getElementById('puS').value='10:00';
-    await send({puS:'10:00', puN:'Vera Ny', puP:'', puM:'vera@x.se', puC:true});
-    const done = document.getElementById('gateBody').textContent;
-    const lead = (S.leads||[]).find(l=>l.name==='Vera Ny');
-    pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
-    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
-    await send({puN:'Olle Tel', puP:'070-123 45 67', puM:'', puC:true});
-    const doneTel = document.getElementById('gateBody').textContent;
-    const tel = (S.leads||[]).find(l=>l.name==='Olle Tel');
-    pubDraft=null; renderGate(); await new Promise(r=>setTimeout(r,30)); pubDraft.day='${day(3)}'; renderGate(); await new Promise(r=>setTimeout(r,30));
-    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); await new Promise(r=>setTimeout(r,30));
-    await send({puN:'Bot', puM:'b@x.se', puH:'spam', puC:true});
-    const bot = (S.leads||[]).some(l=>l.name==='Bot');
-    leavePublic();
+    signOut(); await new Promise(r=>setTimeout(r,30));
+    const gate = document.getElementById('gateBody').innerHTML, reg = document.getElementById('gateAccess');
+    S.leads = [{id:'l_v', name:'Vera Ny', email:'vera@x.se', phone:'', date:'${day(3)}', start_t:'10:00', end_t:'13:00', studio:null, message:'', status:'new', created_at:new Date().toISOString()},
+      {id:'l_o', name:'Olle Tel', email:null, phone:'+46701234567', date:'${day(3)}', start_t:'16:00', end_t:'19:00', studio:null, message:'', status:'new', created_at:new Date().toISOString()}];
+    save();
+    const lead = S.leads[0], tel = S.leads[1];
     signIn(byName('AZ')); go('today');
     const inbox = document.getElementById('view').innerHTML;
     openLead(lead.id); await approveLead(lead.id,'B');
     const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
     openLead(tel.id); const telSheet = document.getElementById('sheetBody').innerHTML;
     await approveLead(tel.id,'A'); const smsSheet = document.getElementById('sheetBody').innerHTML;
-    return {page:/tl-bar/.test(page) && !/spick/.test(page) && !/ADREY|Hemlig/.test(page), form, none, busy,
-      done:/Tack/.test(done) && /vera@x.se/.test(done) && /10:00–13:00/.test(done),
-      lead:lead && {email:lead.email, start:lead.start_t, end:lead.end_t, studio:lead.studio},
-      tel:tel && {email:tel.email, phone:tel.phone, end:tel.end_t}, doneTel:/Vi hör av oss på/.test(doneTel), bot,
+    return {noBook:!/BOKA STUDIOTID/.test(gate), reg:reg && /access\.html$/.test(reg.getAttribute('href')) && /REGISTRERA DIG/.test(reg.textContent),
       inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
       bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status,
       telSheet:/TELEFON/.test(telSheet) && !/E-POST/.test(telSheet) && /färdig text/.test(telSheet),
       sms:/SKICKA SOM SMS/.test(smsSheet) && /sms:\\+46701234567/.test(smsSheet) && /#join=/.test(leadText)};`);
-  ok('bokningssidan visar vad som är bokat utan namn och utan studioval', r.page===true);
-  ok('formuläret: namn, telefon och e-post — slutet räknas ut', r.form.phone && r.form.mail && r.form.name && /13:00/.test(r.form.end) && r.form.sel, r.form);
-  ok('utan både telefon och e-post går det inte', /telefonnummer eller e-post/.test(r.none||''), r.none);
-  ok('en bokad starttid går inte', /Båda studiorna är bokade/.test(r.busy||''), r.busy);
-  ok('med e-post: tack och kvitto på mejlen, 10–13 utan studio', r.done && r.lead && r.lead.email==='vera@x.se' && r.lead.start==='10:00' && r.lead.end==='13:00' && r.lead.studio===null, r);
-  ok('med bara telefon: numret sparas och vi hör av oss', r.tel && r.tel.email===null && r.tel.phone==='+46701234567' && r.tel.end==='19:00' && r.doneTel, r.tel);
-  ok('robotar (honeypot) sparas inte', r.bot===false);
+  ok('inloggningen: "Boka studiotid utan konto" är ersatt av Registrera dig (Bando HQ Access)', r.noBook && r.reg, r);
   ok('admin ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
   ok('ny kund utan e-post: admin får en färdig text med länken att sms:a', r.telSheet===true && r.sms===true, r);
@@ -1540,8 +1515,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('godkänn: bara pass utan fel blir kontrollerade', JSON.stringify(r.ap.checked)==='["w1","w4"]' && r.st==='checked,planned,done,checked', [r.ap, r.st]);
   ok('ett kontrollerat pass är låst — även för ledaren', /admin måste låsa upp/.test(r.lockedComplete) && /admin måste låsa upp/.test(r.lockedDel), r);
   ok('rapporten laddas ner som CSV för svensk Excel: en rad per närvarande', /^cirkelrapport-/.test(r.csv)
-     && /Datum;Start;Slut;Timmar;Grupp;Ämne;Lektion;Ledare;Deltagare;Telefon;E-post/.test(r.csv)
-     && (r.csv.match(/Musikproduktion – Grupp 1/g)||[]).length===3 && /William Ek;070-1;w@b.se/.test(r.csv), r.csv);
+     && /Datum;Start;Slut;Timmar;Grupp;Ämne;Lektion;Ledare;Deltagare;Personnummer;Telefon;E-post/.test(r.csv)
+     && (r.csv.match(/Musikproduktion – Grupp 1/g)||[]).length===3 && /William Ek;;070-1;w@b.se/.test(r.csv), r.csv);
   ok('och passen blir rapporterade', r.st2==='reported' && r.html2===true, r.st2);
   ok('admin låser upp med en anledning', r.st3==='done', r.st3);
 
@@ -1615,7 +1590,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(seed());
   r = await ev(w,`
     window.confirm = () => true;
-    byId('p2').r = 'customer'; byId('p2').producer = 'rkay'; save();
+    byId('p2').r = 'customer'; byId('p2').producer = 'rkay';
+    Object.assign(byId('p2'), {interests:['rap'], consent:true, pnr:'990101-••••', phone:'070-222 22 22'}); save();
     const D = n => iso(addDays(new Date(), n));
     const K = (id, d, o) => S.bookings.push(bump(Object.assign({id, studio:'A', date:D(d), start:'10:00', end:'13:00', who:'Nora Lind', title:'Studiotid',
       note:'', circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, del:false}, o)));
@@ -1657,7 +1633,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('kunden ser sina poäng (100 + 500), nivå och belöningarna', r.cust===true);
   ok('kunden löser in — poängen dras', r.after===100, r.after);
   ok('admin ser inlösningen och lämnar ut', r.red===true && r.delivered==='delivered', r);
-  ok('artistprofilen har fem flikar för admin', r.tabs==='bookings,rewards,level,notes,intel', r.tabs);
+  ok('artistprofilen har sex flikar för admin — Profil först', r.tabs==='profile,bookings,rewards,level,notes,intel', r.tabs);
   ok('omdömet syns under Anteckningar', r.notes===true);
   ok('Intelligence med aktivitet och uppföljning', r.intel===true && r.crm==='Ring om EP', r);
   ok('nivån uppdateras automatiskt (1 100 intjänat → Silver)', r.lvl==='Silver', r.lvl);
@@ -1665,6 +1641,131 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('Intelligence-listan filtreras', r.il===true);
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
+  /* ============ BANDO HQ ACCESS ============ */
+  log('\n── Bando HQ Access: registreringssidan, appen, Fördela, profilen, inställningarna ──');
+  const goPage = (url) => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 500); fr.src=url; });
+  w = await boot(seed());
+  await ev(w, `return true;`);
+  w = await goPage('../access.html?cb=' + Math.random());
+  r = await ev(w,`
+    const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+    const P = '19990315-123' + luhn('990315123');
+    const chips = document.querySelectorAll('#chips .chip').length;
+    const title = document.querySelector('#title .sr').textContent, h = [...document.querySelectorAll('h2')].map(x=>x.textContent.trim().toUpperCase());
+    const perks = [...document.querySelectorAll('#perks h3')].map(x=>x.textContent);
+    await submit();
+    const errs = ['name','email','phone','pnr','password','interests','consent'].map(k=>document.getElementById('e_'+k).textContent);
+    const focused = document.activeElement && document.activeElement.id;
+    document.querySelector('#chips .chip[data-id="production"]').click();
+    document.querySelector('#chips .chip[data-id="mixing"]').click();
+    const count = document.getElementById('chipsCount').textContent, picked1 = document.getElementById('picked').textContent;
+    const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('blur')); };
+    set('name','Alva'); const e1 = document.getElementById('e_name').textContent;
+    set('name','Alva Strand'); set('email','Alva@Acc.se'); set('phone','070-123 45 67');
+    set('pnr', P.slice(0,-1) + ((+P.slice(-1)+1)%10)); const e2 = document.getElementById('e_pnr').textContent;
+    set('pnr', P.replace('-','').slice(2)); const fmt = document.getElementById('f_pnr').value;
+    set('password','Password1'); const e3 = document.getElementById('e_password').textContent;
+    set('password','studio2026x');
+    await submit(); const noConsent = document.getElementById('e_consent').textContent, stillForm = !!document.getElementById('form');
+    document.getElementById('f_consent').click();
+    await submit();
+    const code = !!document.getElementById('f_code'), codeText = document.getElementById('stage').textContent;
+    document.getElementById('f_code').value = '12'; await verify(); const e4 = document.getElementById('e_code').textContent;
+    document.getElementById('f_code').value = '123456'; await verify();
+    const done = document.getElementById('stage').textContent;
+    const saved = localStorage.getItem('bandohq_access_preview');
+    const anywhere = JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k, localStorage.getItem(k)])));
+    return {chips, title, h, perks, errs, focused, count, picked1, e1, e2, fmt, e3, noConsent, stillForm, code, codeText, e4, done, saved,
+      leak: anywhere.includes(P.slice(-4) + '"') || anywhere.includes(P.replace('-','')), P};`);
+  ok('sidan: BANDO HQ ACCESS, tre rubriker och sex förmåner i specens ordning', r.title==='BANDO HQ ACCESS'
+     && r.h.join('|')==='VAD INGÅR I BANDO HQ ACCESS?|VÄLJ DIN INRIKTNING|REGISTRERA DIG' && r.perks.length===6 && r.perks[4]==='A&R-feedback', r);
+  ok('tolv inriktningar att välja bland — flera går att välja', r.chips===12 && /2 valda/.test(r.count) && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.picked1), r);
+  ok('tomt formulär: varje fält får sitt fel och första fältet får fokus', r.errs.every(Boolean) && r.focused==='f_name', r.errs);
+  ok('för- och efternamn krävs', /för- och efternamn/.test(r.e1));
+  ok('personnummer med fel kontrollsiffra nekas, ett rätt formateras ÅÅÅÅMMDD-XXXX', /stämmer inte/.test(r.e2) && r.fmt===r.P, r);
+  ok('för enkla lösenord nekas', /för lätt/.test(r.e3), r.e3);
+  ok('utan godkännande skapas inget konto', /Godkänn/.test(r.noConsent) && r.stillForm);
+  ok('sedan kodsteget: koden från mejlet bekräftar e-posten', r.code && /alva@acc.se/.test(r.codeText) && /sex siffror/.test(r.e4), r);
+  ok('klart: välkommen in, och vidare till Bando HQ', /Välkommen in, Alva/.test(r.done), r.done);
+  const sv = JSON.parse(r.saved||'{}');
+  ok('förhandsläget lämnar uppgifterna till appen — personnumret bara maskerat', sv.name==='Alva Strand' && sv.email==='alva@acc.se' && sv.pnr==='990315-••••'
+     && sv.interests.join()==='production,mixing' && sv.phone==='+46701234567' && r.leak===false, sv);
+  w = await goPage('../index.html?mock=1&cb=' + Math.random() + '#welcome');
+  r = await ev(w,`
+    await new Promise(r=>setTimeout(r,500));
+    const m = me(), html = document.getElementById('view').innerHTML;
+    return {who:m&&m.n, role:m&&m.r, part:m&&m.part, ints:(m&&m.interests||[]).join(), pnr:m&&m.pnr, consent:m&&m.consent, src:m&&m.source, view:roleView(),
+      circle:/Vi placerar dig i en grupp/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html) && /STUDIOTID/.test(html) && /MIX &amp; MASTER/.test(html) && /fråga oss/.test(html),
+      perks:/A&amp;R-feedback/.test(html), interests:/Musikproduktion &amp; beatmaking, Mixning &amp; mastering/.test(html), banner:!!document.getElementById('profBanner'),
+      left:localStorage.getItem('bandohq_access_preview'), hash:location.hash};`);
+  ok('appen tar emot registreringen: inloggad som kund och cirkeldeltagare', r.who==='Alva Strand' && r.role==='customer' && r.part===true && r.view==='customer'
+     && r.ints==='production,mixing' && r.pnr==='990315-••••' && r.consent===true && r.src==='access' && !r.left && !r.hash, r);
+  ok('kundvyn: "Vi placerar dig i en grupp", priser, förmåner och inriktningar — ingen komplettering', r.circle && r.prices && r.perks && r.interests && !r.banner, r);
+  r = await ev(w,`
+    const alva = byName('Alva Strand');
+    signIn(byName('AZ')); go('circles'); circTab='people'; render();
+    const people = document.getElementById('view').innerHTML;
+    openDistribute(); const plan = distPlan.find(x=>x.id===alva.id), sheet = document.getElementById('sheetBody').innerHTML;
+    distPlan.forEach(x=>{ if(x.id!==alva.id) x.circle=''; });
+    await doDistribute();
+    const placed = circleById('c1').members.includes(alva.id);
+    openArtistProfile(alva.id); await new Promise(r=>setTimeout(r,60));
+    const prof = document.getElementById('sheetBody').innerHTML;
+    S.session.member = 'Alva Strand'; render();
+    const cust = document.getElementById('view').innerHTML;
+    return {waiting:/VÄNTAR PÅ EN GRUPP/.test(people) && /Alva Strand/.test(people) && /ACCESS/.test(people) && /990315-••••/.test(people),
+      plan:plan && {c:plan.circle, s:plan.subject}, sheet:/Mixning &amp; mastering/.test(sheet), placed,
+      prof:/PERSONNUMMER/.test(prof) && /990315-••••/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof) && /Musikproduktion – Grupp 1/.test(prof) && /via Access/.test(prof),
+      cust:/DIN STUDIOCIRKEL/.test(cust) && /Musikproduktion – Grupp 1/.test(cust) && /ANSVARIG PRODUCENT/.test(cust) && /RKAY/.test(cust)};`);
+  ok('admin: den nya står under "Väntar på en grupp", med ACCESS och maskerat personnummer', r.waiting===true);
+  ok('Fördela föreslår gruppen med samma ämne som inriktningen', r.plan && r.plan.c==='c1' && r.plan.s==='Musikproduktion' && r.sheet, r.plan);
+  ok('och placerar personen i gruppen', r.placed===true);
+  ok('profilen: kontakt, registrering, personnummer (maskerat), inriktning och studiocirkel', r.prof===true);
+  ok('kunden ser sin grupp och sin ansvariga producent', r.cust===true);
+  r = await ev(w,`
+    signIn(byName('AZ')); go('rewards'); rwTab='access'; render(); await new Promise(r=>setTimeout(r,150)); render();
+    const tab = document.getElementById('view').innerHTML;
+    accDraft.services[0].price = 2000; accDraft.services[0].access = 1500; accDraft.interests[1].off = true;
+    accDraft.perks.push({title:'Ny förmån', text:''}); saveAccessCfg(); const bad = document.getElementById('accMsg').textContent;
+    accDraft.perks.pop(); saveAccessCfg();
+    const cfg = S.accessCfg;
+    S.session.member = 'Alva Strand'; render();
+    const cust = document.getElementById('view').innerHTML;
+    S.session.member = 'AZ'; save();
+    return {tab:/INRIKTNINGAR/.test(tab) && /TJÄNSTEPRISER/.test(tab) && /FÖRMÅNER/.test(tab), bad, mix:cfg.services[0], rapOff:cfg.interests[1].off===true,
+      price:/<s[^>]*>2(&nbsp;|\\s)000 kr<\\/s> 1(&nbsp;|\\s)500 kr per låt/.test(cust)};`);
+  ok('Mer → Rewards → Access: inriktningar, förmåner och tjänstepriser', r.tab===true);
+  ok('en förmån utan text sparas inte', /rubrik och text/.test(r.bad), r.bad);
+  ok('admin sätter priset — kunden ser det direkt, ordinarie överstruket', r.mix.access===1500 && r.mix.price===2000 && r.price===true, r);
+  w = await goPage('../access.html?cb=' + Math.random());
+  r = await ev(w,`return {chips:document.querySelectorAll('#chips .chip').length, rap:!!document.querySelector('#chips .chip[data-id="rap"]')};`);
+  ok('registreringssidan följer inställningen (dold inriktning syns inte)', r.chips===11 && r.rap===false, r);
+  w = await goPage('../index.html?mock=1&cb=' + Math.random());
+  r = await ev(w,`
+    const nora = byId('p2'); nora.r = 'customer'; nora.phone = '070-222 22 22'; nora.interests = []; nora.consent = false; nora.pnr = ''; save();
+    S.session.member = 'Nora Lind'; profileAsked = false; render();
+    const banner = !!document.getElementById('profBanner');
+    await new Promise(r=>setTimeout(r,650)); const auto = /Komplettera din profil/.test(document.getElementById('sheetBody').innerHTML) && document.getElementById('sheet').classList.contains('on');
+    closeSheet();
+    const d = new Date(); d.setDate(d.getDate()+5); const day = iso(d);
+    openSlot(day, '12:00'); const blocked = /Komplettera din profil/.test(document.getElementById('sheetBody').innerHTML) && /Innan du bokar/.test(document.getElementById('sheetBody').innerHTML);
+    document.getElementById('pfN').value = '19990315-0000'; await saveProfile(); const e1 = document.getElementById('pfMsg').textContent;
+    const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+    document.getElementById('pfN').value = '19850607-441' + luhn('850607441'); await saveProfile(); const e2 = document.getElementById('pfMsg').textContent;
+    document.querySelector('#pfI .chip').click(); await saveProfile(); const e3 = document.getElementById('pfMsg').textContent;
+    document.getElementById('pfC').checked = true; await saveProfile();
+    const after = profileGaps(), n2 = byId('p2');
+    openSlot(day, '12:00'); const slot = !!document.getElementById('slS');
+    closeSheet(); S.session.member = 'AZ'; save();
+    const csv = await (await reportCsv([{date:'2026-10-05', start:'10:00', end:'13:00', hours:3, circle:'G', subject:'', lesson:'', leader:'RKAY',
+      present:[{id:'p2', name:'Nora Lind', phone:'070', email:''}]}])).text();
+    return {banner, auto, blocked, e1, e2, e3, after, pnr:n2.pnr, ints:n2.interests.length, consent:n2.consent, slot, csv:/Nora Lind;850607-••••;070/.test(csv)};`);
+  ok('befintlig kund utan Access-uppgifter: "Komplettera din profil" visas — och öppnas vid inloggning', r.banner && r.auto, r);
+  ok('och kan inte boka förrän profilen är klar', r.blocked===true);
+  ok('kompletteringen kontrollerar personnummer, inriktning och godkännande', /stämmer inte/.test(r.e1) && /minst en inriktning/.test(r.e2) && /Godkänn/.test(r.e3), r);
+  ok('klar: profilen komplett och bokningen öppen', r.after===null && r.pnr==='850607-••••' && r.ints===1 && r.consent===true && r.slot===true, r);
+  ok('rapportunderlaget har personnumret (förhandsläget: maskerat)', r.csv===true);
+
   log('\n── iPhone-appen (låtsas-Capacitor), demoläget, radera mitt konto ──');
   w = await boot(seed());
   r = await ev(w,`
@@ -1685,10 +1786,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     exportArtists(); await new Promise(r=>setTimeout(r,60));
     openExternal('https://www.dropbox.com/home');
     signOut();
-    await L['app:appUrlOpen'][0]({url:'https://evil.example/#boka'}); const foreign = gateMode;
+    const nav = []; window.__nav = u => nav.push(u);
+    await L['app:appUrlOpen'][0]({url:'https://evil.example/#boka'}); const foreign = nav.length;
     await L['app:appUrlOpen'][0]({url:'https://bandohq.se/#boka'}); await new Promise(r=>setTimeout(r,60));
-    const boka = gateMode==='public' && document.getElementById('gate').classList.contains('on');
-    gateMode='login'; pubDraft=null;
+    const boka = nav.length===1 && /access\.html$/.test(nav[0]); delete window.__nav;
     await L['app:appUrlOpen'][0]({url:'https://bandohq.se/#join=ABCD-EFGH12'}); const join = joinToken;
     joinToken = null; delete window.Capacitor;
     return {native:env.native && env.standalone && env.ios, calls, saved, foreign, boka, join, cls:document.body.classList.contains('native')};`);
@@ -1697,7 +1798,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
      && r.calls.includes('rpc:save_device_token:{"p_token":"'+'ab'.repeat(32)+'","p_env":"production"}') && r.saved==='apns:'+'ab'.repeat(32), r.calls);
   ok('nedladdning blir en fil + delningsmenyn', r.calls.includes('fil:bandohq-artister.csv:CACHE:true') && r.calls.includes('dela:file:///c/bandohq-artister.csv'), r.calls);
   ok('Dropbox-länkar öppnas i Safari-vyn', r.calls.includes('safari:https://www.dropbox.com/home'));
-  ok('en bokningslänk från sms/mejl öppnar bokningen i appen', r.boka===true && r.foreign!=='public', r);
+  ok('en gammal bokningslänk (#boka) öppnar registreringen i appen — men inte från andra sajter', r.boka===true && r.foreign===0, r);
   ok('en inbjudningslänk öppnar inbjudan', r.join==='ABCD-EFGH12', r.join);
 
   r = await ev(w,`
@@ -1722,7 +1823,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const res = {demo:DEMO, me:(me()||{}).n, n:accounts().length, preview:PREVIEW_LOGIN, banner:/Demoläge/.test(html)};
     signOut(); res.gate = /DEMOLÄGE/.test(document.getElementById('gateTag').innerHTML) && document.querySelectorAll('#gateBody .member').length >= 10;
     return res;`);
-  ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===17 && r.preview===true && r.banner===true, r);
+  ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===18 && r.preview===true && r.banner===true, r);
   ok('och granskaren kan byta till alla roller', r.gate===true, r);
   r = await ev(w,`leaveDemo(); return true;`);
   await new Promise(r=>setTimeout(r,1500));

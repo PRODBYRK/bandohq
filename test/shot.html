@@ -23,5 +23,8 @@ fr.onload=()=>setTimeout(()=>{
   }catch(e){ document.title='ERR '+e.message; }
   setTimeout(()=>document.title='READY',300);
 },600);
-fr.src='../index.html?mock=1&cb='+Math.random()+(P.get('join')?'#join='+P.get('join'):'');
+/* page=access: registreringssidan (BANDO HQ ACCESS) i stället för appen; scroll=px rullar ner */
+if(P.get('scroll')) fr.addEventListener('load', ()=>setTimeout(()=>{ try{ fr.contentWindow.scrollTo(0, +P.get('scroll')); }catch(e){} }, 400));
+fr.src = P.get('page')==='access' ? '../access.html?cb='+Math.random()
+  : '../index.html?mock=1&cb='+Math.random()+(P.get('join')?'#join='+P.get('join'):'');
 </script>

@@ -27,6 +27,9 @@ alter table levels enable row level security;
 alter table level_history enable row level security;
 alter table artist_notes enable row level security;
 alter table artist_crm enable row level security;
+alter table member_pnr enable row level security;
+-- personnumren: ingen policy och inga rättigheter alls — bara funktionerna i 03 når dem
+revoke all on member_pnr from anon, authenticated;
 -- (Rewards-tabellerna har inga policys: bara funktionerna i 03 läser och skriver dem)
 
 -- ---------- hjälpare (security definer: går förbi RLS internt) ----------
@@ -102,7 +105,7 @@ language sql stable security definer set search_path = public as $$
     when bs_is_crew() then bs_can_read(p_kind, p_id, p_data)
          and p_kind not in ('circle','curriculum','course')
          and not (p_kind = 'booking' and coalesce(p_data->>'circleId','') <> '')
-         and not (p_kind = 'setting' and p_id = 'circles')
+         and not (p_kind = 'setting' and p_id in ('circles','access'))
     when bs_is_camera() then
          (p_kind = 'agenda' and coalesce(p_data->>'who','') in ('', (bs_me()).name))
       or (p_kind = 'media'  and p_data->>'by' = bs_my_id())
@@ -132,7 +135,8 @@ create policy members_admin on members for all to authenticated
    utan inloggning, och bara de två rollerna. Ändringar efteråt sköter admin. */
 drop policy if exists members_crew_clients on members;
 create policy members_crew_clients on members for insert to authenticated
-  with check (bs_is_crew() and role::text in ('customer','participant') and user_id is null);
+  with check (bs_is_crew() and role::text in ('customer','participant') and user_id is null
+              and consent_at is null and registered_at is null);
 
 drop policy if exists members_self on members;
 create policy members_self on members for update to authenticated
@@ -157,12 +161,17 @@ begin
       raise exception 'Bara managern kan ändra en manager';
     end if;
     new.user_id := old.user_id;
+    /* samtycket och registreringen kan inte ändras i efterhand, inte ens av admin */
+    new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
     return new;
   end if;
   new.id := old.id; new.role := old.role; new.name := old.name;
   new.active := old.active; new.user_id := old.user_id; new.email := old.email;
   new.team := old.team; new.producer := old.producer; new.username := old.username;
   new.perms := old.perms;
+  /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
+  new.participant := old.participant; new.interests := old.interests;
+  new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
   return new;
 end $$;
 drop trigger if exists members_guard on members;

@@ -28,6 +28,9 @@ function boot(hash){
 }
 const ev=(w,c)=>w.eval('(async()=>{window.confirm=()=>true;'+c+'})()');
 const wait = ms => `await new Promise(r=>setTimeout(r,${ms}));`;
+/* giltigt personnummer (Luhn) — ÅÅÅÅMMDD + tre siffror */
+const PNR = (ymd, nnn) => { const d = ymd.slice(2) + nnn; let x = 0; [...d].forEach((c,i)=>{ const v = +c * (i%2===0?2:1); x += Math.floor(v/10) + v%10; });
+  return ymd + '-' + nnn + ((10 - x%10) % 10); };
 const LOGIN = (em,pw) => `document.getElementById('gE').value='${em}'; document.getElementById('gP').value='${pw}'; await doLogin();`;
 const JOIN = (n,user,em,pw) => `${wait(150)} if(document.getElementById('jN')) document.getElementById('jN').value='${n}';
   document.getElementById('jU').value='${user}'; document.getElementById('jE').value='${em}';
@@ -211,6 +214,13 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`
     ${JOIN('Studio Nord AB','studionord','kund@b.se','kund12345')}
     const view = roleView();
+    ${wait(300)} await cloudView(); render();
+    /* Access: en kund som gått med via inbjudan kompletterar profilen innan den bokar */
+    const gaps = profileGaps(); openSlot('${D(4)}','12:00'); const blocked = /Komplettera din profil/.test(document.getElementById('sheetBody').innerHTML);
+    const askPhone = !!document.getElementById('pfP'); if(askPhone) document.getElementById('pfP').value = '070-555 66 77';
+    document.getElementById('pfN').value = '${PNR('19880808','321')}'; document.querySelector('#pfI .chip').click(); document.getElementById('pfC').checked = true;
+    await saveProfile(); const gapsAfter = profileGaps(), prof = S.profile, pfMsg = (document.getElementById('pfMsg')||{}).textContent || '';
+    if(gapsAfter) return {gapsAfter, pfMsg, prof};
     bookDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
     openSlot('${D(3)}','18:00'); const uiFull = paintSlot('${D(3)}', booked(), 'sl'); closeSheet();
     let clash = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(3)}',p_start:'18:00',p_end:'21:00',p_studio:'',p_note:''}); }catch(e){ clash = e.message; }
@@ -220,9 +230,14 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
     const last = mine.find(b=>b.date==='${D(5)}');
     await cancelMine(last.id);
-    return {view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
+    return {gaps:gaps && gaps.pnr && gaps.interests && gaps.consent, blocked, gapsAfter, prof, askPhone, phone:me().phone, prices:/DINA PRISER OCH FÖRMÅNER/.test(html), group:/Vi placerar dig i en grupp/.test(html),
+      view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
       noStudio:mine.every(b=>b.studio==='' && b.end==='15:00'), note:(last||{}).note,
       after:S.bookings.filter(b=>!b.busy && b.status==='request').length};`);
+  ok('Access: kunden från inbjudan saknar personnummer, inriktning och godkännande — och kan inte boka än', r.gaps===true && r.blocked===true, r);
+  ok('kompletterar profilen mot servern: personnumret sparas (krypterat), telefonen fylls i, inget saknas', r.gapsAfter===null && r.prof && r.prof.pnr===true
+     && r.prof.consent===true && r.askPhone===true && r.phone==='+46705556677', r);
+  ok('kundvyn har priser och förmåner och "Vi placerar dig i en grupp"', r.prices && r.group, r);
   ok('kunden landar i kundvyn: bokat syns, men inte vem eller vad', r.view==='customer' && r.free===true, r);
   ok('kan inte fråga om en fullbokad tid — varken i appen eller på servern', r.uiFull==='taken' && /fullbokad/.test(r.clash), r);
   ok('servern tar bara emot pass på tre timmar', /tre timmar/.test(r.short), r.short);
@@ -230,26 +245,17 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('och kan ta tillbaka en', r.after===1, r.after);
 
   /* ============ v8: NYA KUNDER OCH ADMIN — allt på mejlen ============ */
-  log('\n── v8: ny kund utan konto ──');
+  log('\n── v8: bokningen utan konto är stängd — förfrågningar från före Access besvaras ──');
   w = await boot();
   r = await ev(w,`
-    [...document.querySelectorAll('#gateBody button')].find(b=>/UTAN KONTO/.test(b.textContent)).click();
-    ${wait(400)}
-    const page = document.getElementById('gateBody').innerHTML;
-    pubDraft.day='${D(6)}'; renderGate(); ${wait(80)}
-    const page2 = document.getElementById('gateBody').innerHTML;
-    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^10:00/.test(b.textContent)).click(); ${wait(80)}
-    document.getElementById('puN').value='Vera Ny'; document.getElementById('puM').value='vera@x.se'; document.getElementById('puP').value='';
-    document.getElementById('puC').checked=true; await sendPublic();
-    const done = document.getElementById('gateBody').textContent, err = gateErr;
-    Object.assign(pubDraft,{day:'${D(6)}',start:'',done:false,name:'',email:'',phone:''}); renderGate(); ${wait(80)}
-    [...document.querySelectorAll('#gateBody .chip.slot')].find(b=>/^16:00/.test(b.textContent)).click(); ${wait(80)}
-    document.getElementById('puN').value='Olle Tel'; document.getElementById('puP').value='070-123 45 67'; document.getElementById('puM').value='';
-    document.getElementById('puC').checked=true; await sendPublic();
-    return {page:/tl-bar/.test(page2) && !/spick/.test(page2), done, err, telDone:document.getElementById('gateBody').textContent, telErr:gateErr};`);
-  ok('bokningssidan hämtar bokade tider från servern utan inloggning, utan studioval', r.page===true);
-  ok('förfrågan med e-post skickas och tackas', /Tack/.test(r.done) && /vera@x.se/.test(r.done) && /10:00–13:00/.test(r.done), r.err || r.done);
-  ok('och med bara telefonnummer', /Vi hör av oss på/.test(r.telDone) && /070-123 45 67/.test(r.telDone), r.telErr || r.telDone);
+    const gate = document.getElementById('gateBody').innerHTML, reg = document.getElementById('gateAccess');
+    const res = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST', headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
+      body:JSON.stringify({p_name:'Vera Ny', p_email:'vera@x.se', p_phone:'', p_date:'${D(6)}', p_start:'10:00', p_end:'13:00', p_studio:'', p_message:'', p_hp:''})});
+    return {noBook:!/UTAN KONTO/.test(gate), reg:reg && /access\\.html$/.test(reg.getAttribute('href')), status:res.status, msg:(await res.json()).message};`);
+  ok('inloggningen leder nya till registreringen (Bando HQ Access)', r.noBook && r.reg, r);
+  ok('servern tar inte emot förfrågningar utan konto längre', r.status===400 && /bandohq\.se\/access/.test(r.msg), r);
+  await fetch(EMU+'/__sql', {method:'POST', body:JSON.stringify({sql:`insert into leads(id,name,email,phone,date,start_t,end_t,message,created_at) values
+    ('l_vera','Vera Ny','vera@x.se',null,'${D(6)}','10:00','13:00','', now()), ('l_olle','Olle Tel',null,'+46701234567','${D(6)}','16:00','19:00','', now() + interval '1 second')`})});
   let box = await outbox();
   ok('admins och managern får mejl om den nya kunden', box.some(m=>m.kind==='lead' && m.member_id==='az' && m.email==='az@b.se' && /Vera Ny/.test(m.body)), box.map(m=>m.kind+':'+m.member_id));
   ok('och kunden får ett kvitto på mejlen', box.some(m=>m.kind==='received' && m.email==='vera@x.se'), box.filter(m=>m.kind==='received'));
@@ -378,11 +384,10 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   w = await boot();
   r = await ev(w,`
     const foot = document.getElementById('gateBody').innerHTML;
-    gateMode='public'; pubDraft=null; pubBusy=null; await renderGate(); ${wait(300)}
-    const page = document.getElementById('gateBody').innerHTML;
-    return {foot:/Integritet/.test(foot), booth:/THE BOOTH/.test(page), consent:!!document.getElementById('puC') || /tl-bar/.test(page)};`);
+    const info = await (await fetch(CLOUD.url + '/rest/v1/rpc/access_info', {method:'POST', headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:'{}'})).json();
+    return {foot:/Integritet/.test(foot), ints:info.interests.length, perks:info.perks.length, prices:'services' in info};`);
   ok('inloggningssidan länkar till integritetstexten', r.foot===true);
-  ok('bokningssidan hämtar studionamnen från servern', r.booth===true);
+  ok('registreringssidan hämtar inriktningar och förmåner utan inloggning — men inga priser', r.ints===12 && r.perks===6 && r.prices===false, r);
   w = await boot();
   r = await ev(w,`
     ${LOGIN('az@b.se','losen123')}
@@ -731,6 +736,119 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('admin löser in åt kunden — inlösen väntar', JSON.stringify(r.pend)==='["Merch"]', r.pend);
   ok('Artist Intelligence från servern', r.intel && r.intel.b===1 && r.intel.notes===1 && r.intel.av===20, r.intel);
   ok('Mer → Rewards visar inlösen', r.html===true);
+
+  /* ============ BANDO HQ ACCESS MOT SERVERN ============ */
+  log('\n── Bando HQ Access mot servern: registrering, kod, profil, admin, grupp, dubbletter ──');
+  const goPage = url => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = url; });
+  const sql = async q => (await fetch(EMU+'/__sql', {method:'POST', body:JSON.stringify({sql:q})})).json();
+  const P1 = PNR('19990315','123'), P2 = PNR('20010101','456');
+  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:true})});
+  w = await boot();
+  w = await goPage('../access.html?cb=' + Math.random());
+  const fill = (name, email, pnr) => `
+    const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); };
+    if(!document.querySelector('#chips .chip[data-id="production"][aria-pressed="true"]')) document.querySelector('#chips .chip[data-id="production"]').click();
+    set('name','${name}'); set('email','${email}'); set('phone','070-123 45 67'); set('pnr','${pnr}'); set('password','studio2026x');
+    if(!document.getElementById('f_consent').checked) document.getElementById('f_consent').click();
+    await submit();`;
+  r = await ev(w,`${wait(300)}
+    const chips = document.querySelectorAll('#chips .chip').length;
+    ${fill('Alva Strand', 'alva@acc.se', P1)}
+    return {chips, code:!!document.getElementById('f_code'), msg:(document.getElementById('msg')||{}).textContent||''};`);
+  ok('registreringssidan hämtar inriktningarna från servern och skapar kontot', r.chips===12 && r.code===true, r);
+  let mail = await (await fetch(EMU+'/__mail')).json();
+  const m1 = mail.filter(m=>m.to==='alva@acc.se' && m.type==='signup').pop();
+  ok('koden kommer på mejlen', m1 && /^\d{6}$/.test(m1.code), m1);
+  r = await ev(w,`
+    document.getElementById('f_code').value = '000000'; await verify(); const wrong = document.getElementById('e_code').textContent;
+    document.getElementById('f_code').value = '${m1 && m1.code}'; await verify();
+    const done = document.getElementById('stage').textContent, auth = JSON.parse(localStorage.getItem('bandosesh_auth')||'null');
+    return {wrong, done:/Välkommen in, Alva/.test(done), auth:!!(auth && auth.access_token), meta:JSON.stringify((auth && auth.meta) || {})};`);
+  ok('fel kod nekas', /stämmer inte/.test(r.wrong), r.wrong);
+  ok('rätt kod: e-posten bekräftas, profilen skapas och inloggningen sparas där appen läser den', r.done && r.auth, r);
+  ok('personnumret skickas aldrig med kontot', !r.meta.includes(P1.slice(-4)) && !r.meta.includes(P1.replace('-','')), r.meta);
+  const enc = await sql(`select encode(p.pnr_enc,'hex') e, p.birth from member_pnr p join members m on m.id = p.member_id where m.name = 'Alva Strand'`);
+  ok('i databasen ligger personnumret krypterat — bara födelsedatumet går att läsa', enc.length===1 && enc[0].birth==='990315'
+     && !enc[0].e.includes([...P1.replace('-','')].map(c=>c.charCodeAt(0).toString(16)).join('')), enc);
+  w = await goPage('../index.html?cb=' + Math.random() + '#welcome');
+  r = await ev(w,`${wait(700)}
+    const m = me(), html = document.getElementById('view').innerHTML;
+    return {who:m&&m.n, role:m&&m.r, view:roleView(), part:m&&m.part, ints:(m&&m.interests||[]).join(), prof:S.profile, gaps:profileGaps(),
+      group:/Vi placerar dig i en grupp/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html), hash:location.hash};`);
+  ok('appen: inloggad som kund och cirkeldeltagare, profilen komplett', r.who==='Alva Strand' && r.role==='customer' && r.view==='customer' && r.part===true
+     && r.ints==='production' && r.prof && r.prof.pnr===true && r.gaps===null && !r.hash, r);
+  ok('kundvyn: "Vi placerar dig i en grupp" och priserna', r.group && r.prices, r);
+  let abox = await outbox();
+  ok('välkomstmejl till Alva och "Ny registrering" till admins', abox.some(m=>m.kind==='welcome' && m.email==='alva@acc.se')
+     && abox.some(m=>m.kind==='access' && m.member_id==='az' && /Alva Strand/.test(m.body) && /Musikproduktion & beatmaking/.test(m.body)), abox.filter(m=>/welcome|access/.test(m.kind)));
+
+  /* redan inloggad på enheten: sidan säger det och länkar till Bando HQ */
+  w = await goPage('../access.html?cb=' + Math.random());
+  r = await ev(w,`${wait(300)} return {already:!!document.getElementById('already') && /Alva Strand/.test(document.getElementById('already').textContent), form:!!document.getElementById('form')};`);
+  ok('inloggad på enheten: sidan visar "Du är redan inloggad" i stället för formuläret', r.already && !r.form, r);
+  /* samma personnummer igen (annan e-post): inget nytt konto */
+  await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
+  w = await goPage('../access.html?cb=' + Math.random());
+  r = await ev(w,`${wait(200)}
+    ${fill('Alva Igen', 'alva2@acc.se', P1)}
+    return {code:!!document.getElementById('f_code')};`);
+  mail = await (await fetch(EMU+'/__mail')).json();
+  const m2 = mail.filter(m=>m.to==='alva2@acc.se' && m.type==='signup').pop();
+  r = await ev(w,`document.getElementById('f_code').value = '${m2 && m2.code}'; await verify(); ${wait(100)}
+    return {form:!!document.getElementById('form'), msg:(document.getElementById('msg')||{}).textContent||'', auth:localStorage.getItem('bandosesh_auth')};`);
+  const dupe = await sql(`select (select count(*)::int from members where name like 'Alva%') m, (select count(*)::int from auth.users where email = 'alva2@acc.se') u`);
+  ok('samma personnummer en gång till: "Du har redan ett konto", inget nytt konto och inloggningen tas bort', r.form && /redan ett konto/.test(r.msg) && !r.auth
+     && dupe[0].m===1 && dupe[0].u===0, {r, dupe});
+  await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
+  w = await goPage('../access.html?cb=' + Math.random());
+  r = await ev(w,`${wait(200)}
+    ${fill('Alva Strand', 'alva@acc.se', P2)}
+    return {code:!!document.getElementById('f_code'), msg:(document.getElementById('msg')||{}).textContent||''};`);
+  ok('en e-post som redan har ett konto: logga in i stället (ingen kod skickas)', !r.code && /redan ett konto/.test(r.msg), r);
+  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:false})});
+
+  /* admin: väntar på en grupp, maskerat personnummer, visa (loggas), placera */
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    const alva = accounts().find(a=>a.n==='Alva Strand');
+    S.circles.push(bump({id:'cAcc', n:'Produktion – Access', subject:'Musikproduktion', leader:'RKAY', members:[], active:true, del:false})); save(); await sync(true);
+    await loadPnr(true);
+    go('circles'); circTab='people'; render(); ${wait(200)}
+    const people = document.getElementById('view').innerHTML;
+    openArtistProfile(alva.id); ${wait(400)}
+    const prof = document.getElementById('sheetBody').innerHTML;
+    await revealPnr(alva.id); const shown = document.getElementById('pnrV').textContent;
+    closeSheet();
+    openDistribute(); const plan = distPlan.find(x=>x.id===alva.id); distPlan.forEach(x=>{ if(x.id!==alva.id) x.circle = ''; }); if(plan) plan.circle = 'cAcc';
+    await doDistribute(); ${wait(300)}
+    const srv = (await sb('/records?select=data&kind=eq.circle&id=eq.cAcc'))[0].data.members;
+    return {waiting:/VÄNTAR PÅ EN GRUPP/.test(people) && /Alva Strand/.test(people) && /ACCESS/.test(people) && /990315-••••/.test(people),
+      prof:/990315-••••/.test(prof) && /via Access/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof), shown, sug:plan && plan.circle, srv, id:alva.id};`);
+  ok('admin ser den nya under "Väntar på en grupp" med maskerat personnummer', r.waiting===true);
+  ok('profilen: registrerad via Access, inriktning, maskerat personnummer', r.prof===true);
+  ok('admin visar hela personnumret', r.shown===P1, r.shown);
+  const hist = await sql(`select op, by_id from record_history where kind = 'member' and op = 'personnummer visat'`);
+  ok('och visningen loggas', hist.length===1 && hist[0].by_id==='az', hist);
+  ok('Fördela placerar personen i gruppen — på servern', (r.srv||[]).includes(r.id), r.srv);
+  const alvaId = r.id;
+  w = await boot();
+  r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
+    await cloudView(); render();
+    const html = document.getElementById('view').innerHTML;
+    return {view:roleView(), circle:/DIN STUDIOCIRKEL/.test(html) && /Produktion – Access/.test(html) && /ANSVARIG PRODUCENT/.test(html) && /RKAY/.test(html),
+      contact:(S.contact||{}).name};`);
+  ok('kunden ser sin grupp och sin ansvariga producent', r.view==='customer' && r.circle===true, r);
+  ok('och gruppens ledare är kontakten vid sen avbokning', r.contact==='RKAY', r.contact);
+  /* rapportunderlaget med personnumret */
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    const csv = await (await reportCsv([{date:'2026-10-05', start:'10:00', end:'13:00', hours:3, circle:'Produktion – Access', subject:'Musikproduktion', lesson:'', leader:'RKAY',
+      present:[{id:'${alvaId}', name:'Alva Strand', phone:'+46701234567', email:'alva@acc.se'}]}])).text();
+    return {csv:new RegExp('Alva Strand;${P1};').test(csv)};`);
+  ok('rapportunderlaget får personnumret från servern (bara admin)', r.csv===true, r);
+  const hist2 = await sql(`select count(*)::int n from record_history where op = 'personnummer i rapport'`);
+  ok('och uttaget loggas', hist2[0].n===1, hist2);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

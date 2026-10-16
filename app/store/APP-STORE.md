@@ -26,17 +26,22 @@ python3 test/run.py shot '…' bild.png 440 956 3
 
 ## Reklamtext (max 170 tecken, kan ändras utan ny granskning)
 
-Boka studiotid hos Bando Collective. Ett pass är tre timmar — välj en tid, skicka en förfrågan
-och få bekräftelsen direkt i telefonen.
+Bando HQ Access: boka studiotid hos Bando Collective, se dina priser och förmåner och följ din
+studiocirkel. Ett pass är tre timmar och bekräftelsen kommer direkt i telefonen.
 
 ## Beskrivning
 
 BANDOHQ är Bando Collectives app för studion, crewet och studiecirklarna.
 
+BANDO HQ ACCESS
+Registrera dig i appen och få tillgång till studiobokningar, bättre priser på mix & master, foto,
+musikvideo och content, och Bandos studiocirklar. Välj vad du vill utvecklas inom, så placerar vi
+dig i en grupp med en ansvarig producent.
+
 BOKA STUDIOTID
 Se vilka tider som är lediga och vilka dagar som är fullbokade, välj en starttid och skicka en
 förfrågan. Ett pass är tre timmar. Du får en bekräftelse när tiden är bokad. Du kan avboka själv
-fram till en timme innan. Det går att boka utan konto.
+fram till en timme innan.
 
 FÖR CREWET
 Schemat för båda studiorna, dagens och veckans pass, veckans agenda, beats och artister, ett
@@ -50,8 +55,8 @@ sin cirkel.
 NOTISER
 Bokningsbekräftelser, svar på förfrågningar och påminnelser dagen innan, direkt i telefonen.
 
-Konton skapas med en inbjudan från Bando Collective. Studiotid bokas utan konto från
-startsidan.
+Registrera dig direkt i appen (Registrera dig). Crewet får sina konton med en inbjudan från
+Bando Collective.
 
 ## Nyckelord (max 100 tecken, komma utan mellanslag)
 
@@ -69,9 +74,15 @@ studio,boka,studiotid,inspelning,musik,producent,studiecirkel,crew,beats,schema,
 
 > BANDOHQ is the app of Bando Collective, a recording studio and music collective in Sweden.
 > The crew, study-circle members and studio customers use it to book the studio, run the
-> schedule and get booking confirmations as push notifications. Accounts are created by
-> invitation. Anyone can book studio time without an account: tap "BOKA STUDIOTID" on the
-> first screen.
+> schedule and get booking confirmations as push notifications. Anyone can create an account:
+> tap "REGISTRERA DIG" on the first screen (Bando HQ Access). Registration confirms the e-mail
+> address with a six-digit code. Crew accounts are created by invitation.
+>
+> Registration asks for the Swedish personal identity number (personnummer). It is required
+> because every customer is also a participant in Bando's study circles, and attendance must be
+> reported with the participants' personal identity numbers to the Swedish study association
+> that funds the circles. It is stored encrypted, is visible only to Bando's administrators,
+> and is deleted together with the account. It is never used for advertising or tracking.
 >
 > Demo account: sign in with username apple-review and password BandoDemo2026. This opens a
 > fully-featured demo mode with sample data (no real people), so you can review every role.
@@ -91,6 +102,8 @@ studio,boka,studiotid,inspelning,musik,producent,studiecirkel,crew,beats,schema,
 | Datatyp | Vad det är |
 |---|---|
 | Kontaktuppgifter: namn, e-postadress, telefonnummer | kontot och bokningsbekräftelser |
+| Andra data: personnummer (svenskt identitetsnummer) | rapportering av studiecirklarna till studieförbundet; krypterat, bara admin |
+| Andra data: inriktningar (vad man vill utvecklas inom) | placering i en studiocirkel |
 | Användarinnehåll: bilder och film | kamerateamets galleri (bara crewet) |
 | Användarinnehåll: annat | bokningar, agenda och mål |
 | Identifierare: användar-id | inloggningen |

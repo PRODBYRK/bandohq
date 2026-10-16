@@ -327,26 +327,24 @@ await q(`delete from outbox`);
 const pr = (o) => asAnon(db,()=>rpc('public_request',Object.assign({p_name:'Nova Lind',p_email:'nova@x.se',p_phone:'',
   p_date:'2026-12-15',p_start:'12:00',p_end:'15:00',p_studio:'',p_message:'EP',p_hp:''},o)));
 ok('anonym ser upptagen tid utan namn', (await asAnon(db,()=>rpc('free_slots',{p_from:'2026-11-01',p_to:'2026-12-31'}))).every(x=>!('who' in x) && !('title' in x)));
-ok('och kan skicka en förfrågan utan telefonnummer', (await pr({})).ok===true && (await q(`select * from leads`)).length===1);
+ok('bokningssidan utan konto är stängd — man registrerar sig på /access', /bandohq\.se\/access/.test(await boom(()=>pr({}))||''));
+await pr({p_hp:'robot'});
+ok('honeypot: robotar får "ok" och inget sparas', (await q(`select * from leads`)).length===0);
+/* förfrågningar som redan väntade när Access kom besvaras som förut */
+let lseq = 0;
+const L = (name, email, phone) => q(`insert into leads(id,name,email,phone,date,start_t,end_t,message,created_at)
+  values($1,$2,$3,$4,'2026-12-15','12:00','15:00','EP', now() + make_interval(secs => $5))`, ['l_' + (++lseq), name, email, phone, lseq]);
+await L('Nova Lind', 'nova@x.se', null);
 const ls = (await q(`select member_id from outbox where kind='lead'`)).map(r=>r.member_id).sort();
 ok('admins och managern får mejl om nya kunder', JSON.stringify(ls)==='["az","costa"]', ls);
 const lr = (await q(`select * from outbox where kind='received'`))[0];
 ok('och kunden får ett kvitto på mejlen', lr && lr.email==='nova@x.se' && !lr.member_id && /tagit emot din förfrågan om tis 15 dec 12:00-15:00/.test(lr.body), lr);
-await pr({p_hp:'robot'});
-ok('honeypot: robotar får "ok" men inget sparas', (await q(`select * from leads`)).length===1);
-ok('ett ifyllt men trasigt nummer nekas', /Telefonnumret ser fel ut/.test(await boom(()=>pr({p_phone:'123'}))||''));
-ok('trasig e-post nekas', /E-postadressen/.test(await boom(()=>pr({p_email:'nova'}))||''));
-ok('namn och telefon ELLER e-post krävs', /telefonnummer eller e-post/.test(await boom(()=>pr({p_email:'', p_phone:''}))||''));
-ok('ett pass från bokningssidan är tre timmar', /tre timmar/.test(await boom(()=>pr({p_end:'16:00'}))||''));
-ok('bara telefon räcker — och studion sparas inte', (await pr({p_name:'Ola Tel', p_email:'', p_phone:'0739998877', p_studio:'B'})).ok===true
-   && (await one(`select email, phone, studio from leads where name='Ola Tel'`)).phone==='+46739998877'
-   && (await one(`select email, studio from leads where name='Ola Tel'`)).email===null && (await one(`select studio from leads where name='Ola Tel'`)).studio===null);
+await L('Ola Tel', null, '+46739998877');
 ok('crewet får numret i mejlet om den nya kunden', /Ny kund vill boka: Ola Tel \(\+46739998877\), /.test((await one(`select o.body from outbox o join leads l on o.dedupe_key = 'lead:'||l.id||':az' where l.name='Ola Tel'`)).body));
 ok('och e-posten när den finns', /Ny kund vill boka: Nova Lind \(nova@x\.se\), tis 15 dec/.test((await one(`select body from outbox where kind='lead' and member_id='az' order by id limit 1`)).body));
 ok('utan e-post går inget kvitto (crewet ringer)', !(await one(`select 1 from outbox o join leads l on o.dedupe_key = 'lead-rcv:'||l.id where l.name='Ola Tel'`)));
 await q(`delete from leads where name='Ola Tel'`);
-await pr({}); await pr({});
-ok('max tre öppna förfrågningar per e-postadress', /redan tre/.test(await boom(()=>pr({}))||''));
+await L('Nova Lind', 'nova@x.se', null); await L('Nova Lind', 'nova@x.se', null);
 ok('anonyma kan inte läsa förfrågningarna', (await asAnon(db,()=>q(`select * from leads`))).length===0);
 ok('producenter kan inte heller', (await as(db,U.rkay,()=>q(`select * from leads`))).length===0);
 ok('admin kan', (await C(()=>q(`select * from leads`))).length===3);
@@ -816,6 +814,163 @@ await as(db,U.rkay,()=>rpc('save_artist_crm',{p_member:'ku1',p:JSON.stringify({p
 ok('och kan föra uppföljning', (await C(()=>rpc('artist_intel',{}))).find(x=>x.id==='ku1').crm.followup_note==='Ring om EP:n');
 ok('utan behörighet går det inte', /Inte behörig/.test(await boom(()=>as(db,U.pr2,()=>rpc('save_artist_crm',{p_member:'ku1',p:'{}'})))||''));
 
+}
+
+/* ============ BANDO HQ ACCESS ============ */
+{
+head('Access: registreringen');
+await q(`delete from outbox`);
+/* giltiga personnummer: kontrollsiffran räknas fram (Luhn på ÅÅMMDDNNN) */
+const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+const pnr = (ymd, nnn) => ymd + '-' + nnn + luhn(ymd.slice(2) + nnn);
+const P1 = pnr('19990315','123'), P2 = pnr('20050704','456'), P3 = pnr('19870101','789'), P4 = pnr('19920202','246'), P5 = pnr('20010911','135');
+const AD = fn => as(db, U.costa, fn);
+const AU = {};
+for (const k of ['a1','a2','a3','a4','a5','a6','a7','a8','old','oldp']) AU[k] = await user(k + '@acc.se');
+/* en kund och en deltagare från tiden före Access (med inloggning, utan personnummer) */
+await M('oldk', AU.old, 'customer', 'Studio Syd AB', 'old@acc.se', '070-000 00 20');
+await M('oldp', AU.oldp, 'participant', 'Petra Gammal', 'oldp@acc.se', '070-000 00 21');
+const reg = (u, o) => as(db, u, ()=>rpc('register_access', Object.assign({p_name:'Alva Strand', p_phone:'070-123 45 67', p_pnr:P1,
+  p_interests:JSON.stringify(['production','mixing']), p_consent:true, p_url:'https://www.bandohq.se/'}, o)));
+
+const info = await asAnon(db,()=>rpc('access_info',{}));
+ok('registreringssidan får tolv inriktningar och sex förmåner — utan priser', info.interests.length===12 && info.perks.length===6
+   && !('services' in info) && info.interests[0].label==='Låtskrivning & textförfattande' && !('subject' in info.interests[0]), info);
+ok('anonyma kan inte registrera någon', /permission denied|Skapa kontot/.test(await boom(()=>asAnon(db,()=>rpc('register_access',{p_name:'X Y',p_phone:'0701234567',p_pnr:P1,p_interests:'["rap"]',p_consent:true})))||''));
+ok('för- och efternamn krävs', /för- och efternamn/.test(await boom(()=>reg(AU.a1,{p_name:'Alva'}))||''));
+ok('namnet får inte innehålla siffror', /bokstäver/.test(await boom(()=>reg(AU.a1,{p_name:'Alva 2 Strand'}))||''));
+ok('telefonnumret kontrolleras', /mobilnummer/.test(await boom(()=>reg(AU.a1,{p_phone:'123'}))||''));
+ok('personnummer med fel kontrollsiffra nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:P1.slice(0,-1) + ((+P1.slice(-1)+1)%10)}))||''));
+ok('personnummer med omöjligt datum nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:pnr('19991332','123')}))||''));
+ok('personnummer i framtiden nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:pnr('20991201','123')}))||''));
+ok('minst en inriktning', /minst en inriktning/.test(await boom(()=>reg(AU.a1,{p_interests:'[]'}))||''));
+ok('bara inriktningar som finns', /Okänd inriktning: golf/.test(await boom(()=>reg(AU.a1,{p_interests:'["golf"]'}))||''));
+ok('samtycket krävs', /personuppgifter/.test(await boom(()=>reg(AU.a1,{p_consent:false}))||''));
+ok('inget sparades av de nekade försöken', !(await one(`select 1 from members where user_id=$1`,[AU.a1])) && (await one(`select count(*)::int n from member_pnr`)).n===0);
+
+const r1 = await reg(AU.a1, {});
+const m1 = await one(`select * from members where id=$1`, [r1.id]);
+ok('registrerad: en kund som också är cirkeldeltagare', r1.ok && !r1.linked && m1.role==='customer' && m1.participant===true && m1.user_id===AU.a1
+   && m1.email==='a1@acc.se' && m1.phone==='+46701234567' && m1.source==='access' && m1.registered_at && m1.consent_at
+   && JSON.stringify(m1.interests)==='["mixing","production"]', m1);
+const pr1 = await one(`select encode(pnr_enc,'hex') e, pnr_hash, birth from member_pnr where member_id=$1`, [r1.id]);
+const plain = Buffer.from(P1.replace('-','')).toString('hex');
+ok('personnumret är krypterat — inte i klartext, inte i kontot', pr1 && !pr1.e.includes(plain) && pr1.birth==='990315'
+   && !JSON.stringify(m1).includes(P1.slice(-4) + '"') && pr1.pnr_hash.length===64, pr1);
+ok('kunden når inte personnummertabellen', /permission denied/.test(await boom(()=>as(db,AU.a1,()=>q(`select * from member_pnr`)))||''));
+ok('inte producenter heller', /permission denied/.test(await boom(()=>as(db,U.rkay,()=>q(`select * from member_pnr`)))||''));
+ok('inte ens admin direkt — bara via funktionerna', /permission denied/.test(await boom(()=>AD(()=>q(`select * from member_pnr`)))||''));
+const wel = await one(`select * from outbox where kind='welcome'`);
+ok('välkomstmejl till personen', wel && wel.email==='a1@acc.se' && wel.subject==='Välkommen till Bando HQ' && /Hej Alva!/.test(wel.body)
+   && /Musikproduktion & beatmaking/.test(wel.body) && wel.link==='https://www.bandohq.se/', wel);
+const adm = (await q(`select member_id, body from outbox where kind='access' order by member_id`));
+const admIds = (await q(`select id from members where active and role::text in ('manager','admin') order by id`)).map(x=>x.id).join();
+ok('admins och managern får "Ny registrering" med inriktningarna', adm.map(x=>x.member_id).join()===admIds && admIds.includes('costa')
+   && /Alva Strand \(a1@acc\.se, \+46701234567\)/.test(adm[0].body) && /Mixning & mastering/.test(adm[0].body), adm);
+const st1 = await as(db,AU.a1,()=>rpc('access_status',{}));
+ok('access_status: kopplad och komplett', st1.member && st1.complete && JSON.stringify(st1.missing)==='{}', st1);
+const v1 = await as(db,AU.a1,()=>rpc('my_view',{}));
+ok('kundvyn har priserna och förmånerna, profilen och ingen grupp än', v1.access.services.length===5 && v1.access.perks.length===6
+   && v1.profile.pnr===true && v1.profile.consent===true && v1.circle===null && v1.group.length===0, {c:v1.circle, p:v1.profile});
+ok('och kontot i vyn innehåller inget personnummer', !JSON.stringify(v1).includes(P1.slice(-4) + '"') && !('pnr_enc' in v1.me));
+ok('samma inloggning kan inte registrera ett konto till', (await reg(AU.a1,{p_pnr:P2})).completed===true
+   && (await one(`select count(*)::int n from members where user_id=$1`,[AU.a1])).n===1);
+await reg(AU.a1, {});      // tillbaka till P1
+
+head('Access: dubbletter');
+const r2 = await reg(AU.a2, {p_name:'Annan Person', p_phone:'0739990001'});
+ok('samma personnummer → inget nytt konto, logga in i stället', r2.ok===false && r2.exists===true && /redan ett konto/.test(r2.why), r2);
+ok('och den nya inloggningen tas bort igen', !(await one(`select 1 from auth.users where id=$1`,[AU.a2])) && !(await one(`select 1 from members where name='Annan Person'`)));
+ok('personnumret i 10-siffrig form känns igen som samma', (await reg(AU.a3, {p_name:'Tredje Försök', p_pnr:P1.slice(2)})).exists===true);
+await M('lk1', null, 'customer', 'Leo Krona', 'a4@acc.se', null);
+await R('booking','lkb',{id:'lkb',studio:'A',date:'2026-09-01',start:'10:00',end:'13:00',who:'Leo Krona',title:'Studiotid',circleId:'',status:'',present:[],with:[]});
+const r4 = await reg(AU.a4, {p_name:'Leo Kronberg', p_phone:'0701112233', p_pnr:P2});
+const m4 = await one(`select * from members where id='lk1'`);
+ok('kund som crewet lagt in (samma e-post) → inloggningen kopplas till den raden', r4.ok && r4.linked && r4.id==='lk1' && m4.user_id===AU.a4
+   && m4.name==='Leo Krona' && m4.participant && m4.registered_at, {r4, m4});
+ok('namnet och passen följer med — ingen dubblett', (await one(`select count(*)::int n from members where lower(name) like 'leo kron%'`)).n===1
+   && (await as(db,AU.a4,()=>rpc('my_view',{}))).bookings.some(b=>b.id==='lkb'));
+await M('lb1', null, 'participant', 'Lina Berg', null, '0702223344');
+const r5 = await reg(AU.a5, {p_name:'lina  berg', p_phone:'+46702223344', p_pnr:P3});
+ok('deltagare från anmälningskön (samma telefon och namn) → kopplas och blir kund och deltagare', r5.linked && r5.id==='lb1'
+   && (await one(`select role from members where id='lb1'`)).role==='customer', r5);
+await M('ns1', null, 'customer', 'Nils Sten', null, '0705556677');
+const r6 = await reg(AU.a6, {p_name:'Annie Sten', p_phone:'0705556677', p_pnr:P4});
+ok('samma telefon men annat namn kopplas inte (familjer delar nummer)', r6.ok && !r6.linked && r6.id!=='ns1', r6);
+const r7 = await reg(AU.a7, {p_name:'Nora Lind', p_phone:'0708889900', p_pnr:P5});
+ok('samma namn som någon annan → eget konto med en siffra', r7.ok && !r7.linked && r7.name==='Nora Lind 2', r7);
+
+head('Access: befintliga kunder och deltagare');
+const stK = await as(db,AU.old,()=>rpc('access_status',{}));
+ok('en kund från tiden före Access saknar personnummer, inriktning och samtycke', stK.member && !stK.complete
+   && stK.missing.pnr && stK.missing.interests && stK.missing.consent && !stK.missing.phone, stK);
+ok('och kan inte använda någon annans personnummer', /annat konto/.test(await boom(()=>reg(AU.old,{p_pnr:P2}))||''));
+const rk = await reg(AU.old, {p_name:'Ignoreras', p_phone:'', p_pnr:pnr('19800505','111'), p_interests:'["industry"]'});
+const mk = await one(`select * from members where id='oldk'`);
+ok('kompletterar profilen: namnet och telefonen behålls', rk.completed && mk.name==='Studio Syd AB' && mk.phone==='070-000 00 20'
+   && mk.consent_at && mk.interests[0]==='industry' && mk.role==='customer', mk);
+await reg(AU.oldp, {p_name:'x', p_phone:'', p_pnr:pnr('20000101','222'), p_interests:'["rap"]'});
+ok('en deltagare som kompletterar behåller sin roll', (await one(`select role, consent_at from members where id='oldp'`)).role==='participant');
+ok('crewkonton registrerar sig inte', /crewkonto/.test(await boom(()=>reg(U.rkay,{p_pnr:pnr('19750101','333')}))||''));
+ok('access_status för crewet: komplett', (await as(db,U.rkay,()=>rpc('access_status',{}))).complete===true);
+
+head('Access: skyddet');
+await as(db,AU.a1,()=>q(`update members set interests='{golf}', consent_at=null, participant=false, registered_at=null where user_id=$1`,[AU.a1]));
+const g1 = await one(`select interests, consent_at, participant, registered_at from members where id=$1`,[r1.id]);
+ok('kunden kan inte ändra inriktning, samtycke eller deltagande direkt', g1.interests.join()==='mixing,production' && g1.consent_at && g1.participant && g1.registered_at, g1);
+ok('men byter inriktning via set_my_interests', JSON.stringify(await as(db,AU.a1,()=>rpc('set_my_interests',{p_interests:'["vocals","rap"]'})))==='["rap","vocals"]');
+ok('och bara till inriktningar som finns', /Okänd/.test(await boom(()=>as(db,AU.a1,()=>rpc('set_my_interests',{p_interests:'["golf"]'})))||''));
+await AD(()=>q(`update members set consent_at = null, registered_at = null where id=$1`,[r1.id]));
+ok('inte ens admin ändrar samtycket i efterhand', !!(await one(`select consent_at from members where id=$1`,[r1.id])).consent_at);
+ok('producenter kan inte lägga in en person med påhittat samtycke', /row-level security|violates/.test(await boom(()=>as(db,U.rkay,()=>q(
+  `insert into members(id,role,name,consent_at) values('fake1','customer','Fake Fejk',now())`)))||''));
+const masks = await AD(()=>rpc('pnr_masks',{}));
+ok('admin ser personnumren maskerade', masks[r1.id]==='990315-••••' && Object.keys(masks).length>=7, masks);
+ok('producenter ser inga', JSON.stringify(await as(db,U.rkay,()=>rpc('pnr_masks',{})))==='{}');
+ok('producenter kan inte visa ett personnummer', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('reveal_pnr',{p_member:r1.id})))||''));
+ok('kunden kan inte visa sitt eget heller', /Bara admin/.test(await boom(()=>as(db,AU.a1,()=>rpc('reveal_pnr',{p_member:r1.id})))||''));
+ok('admin visar det', (await AD(()=>rpc('reveal_pnr',{p_member:r1.id})))===P1);
+ok('och visningen loggas', !!(await one(`select 1 from record_history where kind='member' and rec_id=$1 and op='personnummer visat' and by_id='costa'`,[r1.id])));
+const rp = await AD(()=>rpc('report_pnrs',{p_members:JSON.stringify([r1.id,'lk1','okänd'])}));
+ok('rapportunderlaget får personnumren — och det loggas per person', rp[r1.id]===P1 && rp.lk1===P2 && !rp['okänd']
+   && (await one(`select count(*)::int n from record_history where op='personnummer i rapport'`)).n===2, rp);
+ok('producenter får inget rapportunderlag', /Bara admin/.test(await boom(()=>as(db,U.rkay,()=>rpc('report_pnrs',{p_members:JSON.stringify([r1.id])})))||''));
+const ap1 = await AD(()=>rpc('access_people',{}));
+ok('admin ser registreringsdatum, källa och maskerat personnummer', ap1.find(x=>x.id===r1.id).source==='access' && ap1.find(x=>x.id===r1.id).pnr==='990315-••••');
+
+head('Access: cirkeln');
+const cm = await AD(()=>rpc('add_circle_member',{p_circle:'c1',p_member:r1.id}));
+ok('admin placerar en kund som är deltagare i en cirkel', cm.members.includes(r1.id));
+await q(`update members set participant=false where id='ns1'`);
+ok('en kund som inte är deltagare kan inte placeras', /inte cirkeldeltagare/.test(await boom(()=>AD(()=>rpc('add_circle_member',{p_circle:'c1',p_member:'ns1'})))||''));
+const v2 = await as(db,AU.a1,()=>rpc('my_view',{}));
+ok('kunden ser sin grupp, ansvarig producent och gruppens kommande pass', v2.circle && v2.circle.id==='c1' && v2.circle.leader==='Sofia Marks'
+   && v2.leaderContact.phone==='070-000 00 04' && v2.group.length>0 && !v2.group.some(g=>g.id==='rqN')
+   && (await q(`select id from records where kind='booking' and not del and data->>'circleId'='c1' and coalesce(data->>'status','')=''
+        and (data->>'date')::date >= current_date`)).length===v2.group.length, {c:v2.circle, g:v2.group});
+ok('utan egen producent är gruppens ledare kontakten vid sen avbokning', v2.contact && v2.contact.name==='Sofia Marks', v2.contact);
+ok('närvaron är aldrig automatisk: inga timmar förrän ledaren markerat', +v2.circleHours===0);
+await q(`update records set data = jsonb_set(data, '{present}', data->'present' || to_jsonb($1::text)) where id='d1'`, [r1.id]);
+ok('när ledaren markerat närvaro räknas timmarna', +(await as(db,AU.a1,()=>rpc('my_view',{}))).circleHours===3);
+
+head('Access: inställningarna');
+const acc = {interests:[{id:'production',label:'Produktion & beats',subject:'Musikproduktion'},{id:'rap',label:'Rap',subject:'Artistutveckling',off:true}],
+  services:[{id:'mix',name:'Mix & master',price:2000,access:1500,unit:'per låt'}]};
+await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'access',data:acc,up:10}])}));
+ok('producenter ändrar inte Access-inställningarna', !(await one(`select 1 from records where kind='setting' and id='access'`)));
+await AD(()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'access',data:acc,up:10}])}));
+const info2 = await asAnon(db,()=>rpc('access_info',{}));
+ok('admin ändrar inriktningarna — sidan visar dem direkt, dolda syns inte', info2.interests.length===1 && info2.interests[0].label==='Produktion & beats'
+   && info2.perks.length===6, info2.interests);
+ok('och priserna syns för kunden', (await as(db,AU.a1,()=>rpc('my_view',{}))).access.services[0].access===1500);
+ok('en dold inriktning går inte att välja vid registrering', /Okänd inriktning: rap/.test(await boom(()=>reg(AU.a8,{p_name:'Åsa Öst',p_pnr:pnr('19950505','777'),p_interests:'["rap"]'}))||''));
+ok('men den som redan har den behåller den', JSON.stringify(await as(db,AU.a1,()=>rpc('set_my_interests',{p_interests:'["rap","production"]'})))==='["production","rap"]');
+ok('svenska tecken i namnet går bra', (await reg(AU.a8,{p_name:'Åsa Öst-Ärlig',p_phone:'0761234567',p_pnr:pnr('19950505','777'),p_interests:'["production"]'})).name==='Åsa Öst-Ärlig');
+
+head('Access: radering och #boka');
+await as(db,AU.a8,()=>rpc('delete_my_account',{}));
+ok('radera mitt konto tar bort personnumret också', (await one(`select count(*)::int n from member_pnr p left join members m on m.id=p.member_id where m.id is null`)).n===0
+   && !(await one(`select 1 from members where name='Åsa Öst-Ärlig'`)));
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

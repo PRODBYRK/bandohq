@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -6,7 +7,7 @@ const DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /* Riktig Postgres i WASM + det Supabase ger gratis: auth.users, auth.uid(), rollerna. */
 export async function boot(){
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { pgcrypto } });      /* Supabase har pgcrypto i schemat extensions */
   await db.exec(`
     create schema if not exists auth;
     create table auth.users (id uuid primary key default gen_random_uuid(), email text unique);

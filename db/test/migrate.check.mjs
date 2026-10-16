@@ -1,8 +1,9 @@
 /* Uppgraderingen: dagens driftschema (projektmappen) och sedan de nya filerna ovanpå. */
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync } from 'fs';
 const [oldDir, newDir] = process.argv.slice(2);
-const db = new PGlite();
+const db = new PGlite({ extensions: { pgcrypto } });
 await db.exec(`create schema if not exists auth;
   create table auth.users (id uuid primary key default gen_random_uuid(), email text unique);
   create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
@@ -31,5 +32,9 @@ const back = (await db.query(`select data->>'leaderId' l from records where id='
 const hist = (await db.query(`select count(*)::int n from circle_membership where circle_id='k1'`)).rows[0].n;
 console.log(JSON.stringify({circ, tabs, back, hist}));
 console.log(JSON.stringify({web, fns}));
-const ok = back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
+/* Access: befintliga kunder blir deltagare, och nyckeln till personnumren finns */
+const acc = (await db.query(`select participant, cardinality(interests) n from members where id='k1'`)).rows[0];
+const key = (await db.query(`select length(value) n from bs_secrets where name='pnr_key'`)).rows[0];
+console.log(JSON.stringify({acc, key}));
+const ok = acc && acc.participant===true && acc.n===0 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
 console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);

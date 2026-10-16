@@ -355,3 +355,32 @@ create table if not exists artist_crm (
   updated_at    timestamptz not null default now()
 );
 
+
+-- ---------------------------------------------------------------------
+--  BANDO HQ ACCESS (2026-10) — registreringen bakom QR-koden
+--  Den som registrerar sig blir kund OCH cirkeldeltagare. Personnumret ligger
+--  krypterat i en egen tabell som bara funktionerna når (03-funktioner.sql).
+-- ---------------------------------------------------------------------
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+
+/* participant: kunden är också cirkeldeltagare (alla kunder är det; admin kan stänga av).
+   interests: inriktningarna (id:n ur setting/access). registered_at/consent_at/source sätts
+   bara av register_access — ingen ändrar dem på sig själv (02: bs_guard_member). */
+alter table members add column if not exists participant   boolean not null default true;
+alter table members add column if not exists interests     text[]  not null default '{}';
+alter table members add column if not exists registered_at timestamptz;
+alter table members add column if not exists consent_at    timestamptz;
+alter table members add column if not exists source        text;
+
+/* Personnumret, krypterat med nyckeln i Supabase Vault (bs_pnr_key). pnr_hash (HMAC med
+   samma nyckel) är unik — så hittas dubbletter utan att något dekrypteras. birth (ÅÅMMDD)
+   är det som syns maskerat. Ingen policy: bara funktionerna läser och skriver. Raderas
+   med personen (on delete cascade). */
+create table if not exists member_pnr (
+  member_id  text primary key references members(id) on delete cascade,
+  pnr_enc    bytea not null,
+  pnr_hash   text not null unique,
+  birth      text not null,
+  created_at timestamptz not null default now()
+);

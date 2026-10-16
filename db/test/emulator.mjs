@@ -44,6 +44,11 @@ async function addUser(email, password, meta){
   users.set(email, u); return u;
 }
 const byId = id => [...users.values()].find(u=>u.id===id);
+/* Konton som databasen tagit bort (register_access vid dubblett, delete_my_account) */
+async function forgetDeleted(){
+  const ids = new Set((await q(`select id::text from auth.users`)).map(r=>r.id));
+  for(const [em, u] of users) if(!ids.has(String(u.id))) users.delete(em);
+}
 
 /* ---------- seed: AZ som manager, så det finns någon att logga in som ---------- */
 const az = await addUser('az@b.se', 'losen123', {name:'AZ'});
@@ -53,6 +58,7 @@ await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"
 
 /* ---------- PostgREST: filter → SQL ---------- */
 const IDENT = /^[a-z_][a-z0-9_]*$/;
+const ARRAYS = new Set(['interests', 'perms']);
 const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership']);
 function where(params, args){
   const parts = [];
@@ -107,7 +113,8 @@ async function rest(req, res, url, body, uid, service){
       const rows = Array.isArray(body) ? body : [body], conflict = url.searchParams.get('on_conflict');
       for(const row of rows){
         const ks = Object.keys(row).filter(k=>IDENT.test(k));
-        const vals = ks.map(k => row[k] !== null && typeof row[k] === 'object' ? JSON.stringify(row[k]) : row[k]);
+        /* text[]-kolumner (inriktningar, behörigheter) tar en lista; jsonb tar JSON */
+        const vals = ks.map(k => Array.isArray(row[k]) && ARRAYS.has(k) ? row[k] : row[k] !== null && typeof row[k] === 'object' ? JSON.stringify(row[k]) : row[k]);
         let sql = `insert into ${path} (${ks.join(',')}) values (${ks.map((_,i)=>'$'+(i+1)).join(',')})`;
         if(conflict && IDENT.test(conflict)) sql += ` on conflict (${conflict}) do update set ` +
           ks.filter(k=>k!==conflict).map(k=>`${k} = excluded.${k}`).join(',');
@@ -130,15 +137,24 @@ async function auth(req, res, url, body, bearer){
   const path = url.pathname.replace('/auth/v1', '');
   const grant = url.searchParams.get('grant_type');
   if(path === '/signup' && req.method === 'POST'){
+    await forgetDeleted();
     const email = String(body.email||'').toLowerCase();
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return send(res, 400, {msg:'Unable to validate email address: invalid format'});
     if((body.password||'').length < 6) return send(res, 422, {msg:'Password should be at least 6 characters'});
-    if(users.has(email)) return send(res, 422, {msg:'User already registered'});
-    const u = await addUser(email, body.password, body.data);
+    /* Som Supabase med e-postbekräftelse på: en adress som redan har ett bekräftat konto ger
+       inget fel (det skulle avslöja vilka adresser som finns) utan en låtsasanvändare utan
+       identities — och inget mejl. Ett obekräftat konto får en ny kod. */
+    const ex = users.get(email);
+    if(ex && (ex.confirmed || !cfg.confirm)){
+      if(!cfg.confirm) return send(res, 422, {msg:'User already registered'});
+      return send(res, 200, {id:'00000000-0000-4000-8000-' + String(Date.now()).slice(-12).padStart(12,'0'), email, identities:[], user_metadata:{}});
+    }
+    const u = ex || await addUser(email, body.password, body.data);
+    if(ex){ u.password = body.password; u.meta = body.data || u.meta; }
     if(!u.confirmed){
       u.code = newCode();
       mail.push({to:email, type:'signup', code:u.code, link:'#access_token=' + jwt(u) + '&refresh_token=' + session(u).refresh_token + '&expires_in=3600&type=signup'});
-      return send(res, 200, {id:u.id, email, user_metadata:u.meta});
+      return send(res, 200, {id:u.id, email, identities:[{provider:'email'}], user_metadata:u.meta});
     }
     return send(res, 200, session(u));
   }
@@ -156,6 +172,7 @@ async function auth(req, res, url, body, bearer){
     return send(res, 200, {});
   }
   if(path === '/token' && grant === 'password'){
+    await forgetDeleted();
     const u = users.get(String(body.email||'').toLowerCase());
     if(!u || u.password !== body.password) return send(res, 400, {code:400, error_code:'invalid_credentials', msg:'Invalid login credentials'});
     if(!u.confirmed) return send(res, 400, {error:'invalid_grant', error_description:'Email not confirmed'});
