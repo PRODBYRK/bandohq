@@ -1153,8 +1153,12 @@ begin
    where kind = 'circle' and data->'members' ? m.id;
   /* personligt: agenda, mål och plan tas bort; beats och galleri behåller filerna men inte namnet */
   update records set del = true, up = t, data = data || jsonb_build_object('del', true, 'up', t)
-   where (kind = 'agenda' and data->>'who' = m.name) or (kind = 'goal' and data->>'owner' = m.id) or (kind = 'plan' and id = m.id);
+   where (kind = 'agenda' and coalesce(data->>'kind','') <> 'general' and data->>'who' = m.name)
+      or (kind = 'goal' and data->>'owner' = m.id) or (kind = 'plan' and id = m.id);
   update records set data = data || jsonb_build_object('who', gone, 'up', t), up = t where kind = 'beat' and data->>'who' = m.name;
+  /* allmänna agendan är gemensam: punkterna personen skrev ligger kvar, utan namnet */
+  update records set data = data || jsonb_build_object('by', '', 'up', t), up = t
+   where kind = 'agenda' and data->>'kind' = 'general' and data->>'by' = m.id;
   update records set data = data || jsonb_build_object('by', '', 'up', t), up = t where kind = 'media' and data->>'by' = m.id;
   delete from outbox where member_id = m.id and sent_at is null;
   delete from members where id = m.id;                       -- push_subs följer med (on delete cascade)

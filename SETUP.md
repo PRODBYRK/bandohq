@@ -533,17 +533,38 @@ aldrig.
 
 | Roll | Ser och gör |
 |---|---|
-| **Manager** (du) | Allt — även statistiken och allas mål och planer |
-| **Admin** (Costa, Nabbe) | Konton, inbjudningar, nya kunder, cirklar, schemat, artister, priser, Dropbox. Inte statistiken eller andras mål. |
-| **Producent** | Hela schemat, agenda, beats, artister, galleriet, sina egna mål och siffror. Cirklar: **bara de hen leder** — andras grupper och deltagare syns inte |
-| **Kamerateam** (Moez, D2L) | Schemat, sin agenda och galleriet — laddar upp bilder och film |
+| **Manager** (du) | Allt — även statistiken och allas målsättningar |
+| **Admin** (Costa, Nabbe) | Konton, inbjudningar, nya kunder, cirklar, schemat, artister, priser, Dropbox. Inte statistiken eller andras målsättningar. |
+| **Producent** | Hela schemat, agenda och allmän agenda, beats, artister, galleriet, sin egen målsättning och sina siffror. Cirklar: **bara de hen leder** — andras grupper och deltagare syns inte |
+| **Kamerateam** (Moez, D2L) | Schemat, agendan och allmänna agendan, galleriet (laddar upp bilder och film) och sin egen målsättning |
 | **Cirkelledare** | Två saker: **boka pass** för sina cirklar (godkänna förfrågningar, markera genomförda) och **medlemmarna** med e-post (och telefon om den finns) |
 | **Deltagare** | Bara bokning: föreslå pass i sin cirkel och avboka sina egna, senast en timme innan |
 | **Kund** | Bara bokning: skicka förfrågningar och avboka sina bokningar, senast en timme innan |
 
 Behörigheterna ligger **i databasen**, inte bara i appen. En deltagare kan inte läsa andras
 pass ens med webbläsarens utvecklarverktyg, en ledare ser bara sina egna medlemmars
-kontaktuppgifter, och mål och planer syns bara för ägaren och managern.
+kontaktuppgifter, och målsättningen syns bara för ägaren och managern.
+
+## Allmän agenda och målsättning
+
+Två helt separata delar.
+
+**Allmän agenda** (Agenda → *Allmän agenda*) är det vi tillsammans vill uppnå som organisation.
+Den är gemensam för hela Bando-teamet och har fyra delar: **långsiktiga projekt**, **gemensamma
+ambitioner**, **utvecklingsområden** och **möjligheter** som alla ska hålla utkik efter.
+- Punkterna har ingen ägare.
+- Alla i teamet ser dem och kan lägga till. Den som skrev en punkt (och admin) ändrar den.
+- Nya punkter aviserar hela teamet.
+
+**Målsättning** (Mer → *Målsättning*, för kamerateamet en egen flik) är det varje person
+personligen vill uppnå och utveckla: **mål**, **ambitioner**, **utvecklingsområden** och en
+**plan**. Den syns bara för personen själv och managern, och skickar inga notiser.
+
+*Veckan* (Agenda → *Veckan*) är som förut: veckans studiotider och uppgifter per person.
+
+När du skriver in veckan som text hamnar raderna under **Projekt:**, **Ambitioner:**,
+**Utvecklingsområden:** eller **Möjligheter:** i den allmänna agendan. Raderna under **Mål:** blir
+personliga mål (*RKAY: …* för RKAY, annars för dig).
 
 ---
 

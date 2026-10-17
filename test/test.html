@@ -466,8 +466,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const over = document.getElementById('view').innerHTML;
     goalsWho='adrey'; render();
     const drill = document.getElementById('view').innerHTML;
-    return {canOther, canOwn, seesOwn:/Dina mål/.test(h),
-      leaks:/ADREYS HEMLIGA/.test(h)||/ADREYS PLAN/.test(h)||/Allas mål/.test(h),
+    return {canOther, canOwn, seesOwn:/Din målsättning/.test(h),
+      leaks:/ADREYS HEMLIGA/.test(h)||/ADREYS PLAN/.test(h)||/Allas målsättningar/.test(h),
       untouched, overShowsBoth:/RKAY/.test(over)&&/ADREY/.test(over),
       drillShows:/ADREYS HEMLIGA/.test(drill)&&/ADREYS PLAN/.test(drill)};`);
   ok('producenten får inte se andras mål', r.canOther===false);
@@ -986,7 +986,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     go('dash'); res.redirect = view;
     S.session.member='AZ'; showApp();
     return res;`);
-  ok('kamerateamet har Schema, Agenda och Galleri', r.tabs==='week,agenda,gallery' && r.more===0, r.tabs);
+  ok('kamerateamet har Schema, Agenda, Galleri och sin egen Målsättning', r.tabs==='week,agenda,gallery,goals' && r.more===0, r.tabs);
   ok('och startar i schemat', r.view==='week', r.view);
   ok('kan inte boka och har ingen plusknapp', r.book===false && r.fab==='none', r);
   ok('bockar av sin egen och gemensam agenda, inte andras', r.ownTask && r.shared && !r.other, r);
@@ -1641,6 +1641,74 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('Intelligence-listan filtreras', r.il===true);
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
+  /* ============ ALLMÄN AGENDA OCH MÅLSÄTTNING — två separata delar ============ */
+  log('\n── Allmän agenda (gemensamt) och Målsättning (personligt) ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    S.goals.push({id:'gR',owner:'rkay',text:'RKAYS EGET MÅL',due:'',status:'aktiv',cat:'mal',del:false,up:1});
+    S.agenda.push({id:'gA',kind:'general',cat:'projekt',week:'',who:'',by:'az',text:'AZ GEMENSAMT PROJEKT',note:'',due:'',done:false,del:false,up:1});
+    save();
+    S.session.member='RKAY'; agendaTab='week'; go('agenda'); const week = document.getElementById('view').innerHTML;
+    agendaTab='general'; render(); const gen = document.getElementById('view').innerHTML;
+    openGeneral(null,'mojlighet'); document.getElementById('gaT').value='Sync i reklam'; document.getElementById('gaN').value='Håll utkik';
+    saveGeneral(''); const mine = S.agenda.find(a=>a.text==='Sync i reklam');
+    const canOwn = can('editGeneral', mine), canAz = can('editGeneral', S.agenda.find(a=>a.id==='gA'));
+    toggleGeneral('gA'); const azUntouched = !S.agenda.find(a=>a.id==='gA').done;
+    go('week'); const myAg = (document.querySelector('.myag')||{}).innerHTML || '';
+    go('goals'); const goals = document.getElementById('view').innerHTML;
+    openGoal(null,'rkay','ambition'); document.getElementById('glT').value='Topplistan'; saveGoal('','rkay');
+    const amb = S.goals.find(g=>g.text==='Topplistan');
+    go('goals'); const goals2 = document.getElementById('view').innerHTML;
+    go('more'); const more = document.getElementById('view').innerHTML;
+    S.session.member='AZ'; const azEdit = can('editGeneral', mine);
+    return {
+      weekOk:/Veckan/.test(week) && /VECKANS PLAN/.test(week) && !/LÅNGSIKTIGA PROJEKT/.test(week) && !/AZ GEMENSAMT PROJEKT/.test(week),
+      genOk:['LÅNGSIKTIGA PROJEKT','GEMENSAMMA AMBITIONER','UTVECKLINGSOMRÅDEN','MÖJLIGHETER'].every(x=>gen.includes(x)) && /AZ GEMENSAMT PROJEKT/.test(gen)
+        && !/VECKANS AGENDA/.test(gen) && !/RKAYS EGET MÅL/.test(gen) && /lagt till av AZ/.test(gen),
+      mine:mine && {cat:mine.cat, who:mine.who, by:mine.by, note:mine.note}, canOwn, canAz, azUntouched, azEdit,
+      myAg:!/AZ GEMENSAMT PROJEKT/.test(myAg) && !/Sync i reklam/.test(myAg),
+      goalsOk:/Din målsättning/.test(goals) && /RKAYS EGET MÅL/.test(goals) && !/AZ GEMENSAMT PROJEKT/.test(goals) && !/Sync i reklam/.test(goals)
+        && ['MÅL','AMBITIONER','UTVECKLINGSOMRÅDEN','PLAN'].every(x=>goals.includes('>'+x+'<')),
+      amb:amb && amb.cat, ambShown:/id="gs-ambition"[\\s\\S]*Topplistan[\\s\\S]*id="gs-utveckling"/.test(goals2),
+      more:/MÅLSÄTTNING/.test(more) && /ALLMÄN AGENDA/.test(more)};`);
+  ok('Agenda → Veckan: veckans plan och uppgifter, inget av det allmänna', r.weekOk===true);
+  ok('Agenda → Allmän agenda: projekt, ambitioner, utvecklingsområden och möjligheter — inga personliga mål', r.genOk===true);
+  ok('alla i teamet lägger till i allmänna agendan — utan ägare, med vem som skrev', r.mine && r.mine.cat==='mojlighet' && r.mine.who==='' && r.mine.by==='rkay' && r.mine.note==='Håll utkik', r.mine);
+  ok('den som skrev punkten (och admin) ändrar den — inte någon annan', r.canOwn===true && r.canAz===false && r.azUntouched===true && r.azEdit===true, r);
+  ok('det gemensamma syns inte i "Min agenda"', r.myAg===true);
+  ok('Målsättning: mål, ambitioner, utvecklingsområden och plan — inget från allmänna agendan', r.goalsOk===true);
+  ok('en ambition hamnar under Ambitioner', r.amb==='ambition' && r.ambShown===true, r);
+  ok('Mer har både Målsättning och Allmän agenda', r.more===true);
+  r = await ev(w,`
+    const wm = monday(new Date(2026,10,4));
+    const P = parseAgendaText(['RKAY: mixa','','Projekt:','Eget releasebolag','Möjligheter:','RKAY: festivaler i sommar','','Mål:','RKAY: lära mig mixa vocals','Bli bättre på content','Veckan:','ADREY: comp'].join('\\n'), wm);
+    S.session.member='AZ'; agendaWeek = wm; openParse(); document.getElementById('psT').value = ['Projekt:','Eget releasebolag','Mål:','RKAY: lära mig mixa vocals','Bli bättre på content'].join('\\n');
+    previewParse(); const prev = document.getElementById('psOut').innerHTML; commitParse();
+    const gR = S.goals.find(g=>g.text==='Lära mig mixa vocals'), gA = S.goals.find(g=>g.text==='Bli bättre på content');
+    const gen = S.agenda.find(a=>a.text==='Eget releasebolag');
+    S.session.member='RKAY'; openParse(); document.getElementById('psT').value = ['Mål:','ADREY: hemligt mål'].join('\\n'); previewParse(); commitParse();
+    const leak = S.goals.some(g=>g.text==='Hemligt mål');
+    return {gen:P.general.map(t=>t.cat+':'+t.text+':'+(t.who||'')), goals:P.goals.map(t=>(t.who||'JAG')+':'+t.text), tasks:P.tasks.map(t=>t.who+':'+t.text),
+      prev:/ALLMÄN AGENDA · GEMENSAMT/.test(prev) && /MÅLSÄTTNING · PERSONLIGT/.test(prev),
+      gR:gR && gR.owner, gA:gA && gA.owner, genItem:gen && {by:gen.by, who:gen.who, cat:gen.cat}, leak};`);
+  ok('texttolken: "Projekt:" och "Möjligheter:" blir allmän agenda utan ägare', JSON.stringify(r.gen)==='["projekt:Eget releasebolag:","mojlighet:RKAY: festivaler i sommar:"]', r.gen);
+  ok('"Mål:" blir personliga mål — med namn för den personen, annars för den som skriver', JSON.stringify(r.goals)==='["RKAY:Lära mig mixa vocals","JAG:Bli bättre på content"]', r.goals);
+  ok('veckans uppgifter tolkas som förut', JSON.stringify(r.tasks)==='["RKAY:Mixa","ADREY:Comp"]', r.tasks);
+  ok('förhandsgranskningen skiljer på gemensamt och personligt', r.prev===true);
+  ok('managern lägger in: målet blir RKAYs, det andra AZ:s, projektet gemensamt', r.gR==='rkay' && r.gA==='az' && r.genItem && r.genItem.who==='' && r.genItem.by==='az' && r.genItem.cat==='projekt', r);
+  ok('en producent kan inte lägga mål åt någon annan', r.leak===false);
+  r = await ev(w,`
+    if(!byName('Moez')) S.accounts.push({id:'moez', n:'Moez', r:'camera', team:'Moez', c:'#d97706', g:'#fbbf24', email:'', phone:'', active:true, del:false, up:1});
+    S.session.member='Moez'; showApp(); go('goals'); const g = document.getElementById('view').innerHTML;
+    openGoal(null, byName('Moez').id, 'utveckling'); document.getElementById('glT').value='Bättre ljussättning'; saveGoal('', byName('Moez').id);
+    const own = S.goals.find(g=>g.text==='Bättre ljussättning');
+    agendaTab='general'; go('agenda'); const gen = document.getElementById('view').innerHTML;
+    const add = can('addGeneral'), editAz = can('editGeneral', S.agenda.find(a=>a.id==='gA'));
+    S.session.member='AZ'; showApp();
+    return {view:/Din målsättning/.test(g) && !/RKAYS EGET MÅL/.test(g), own:own && own.cat, gen:/LÅNGSIKTIGA PROJEKT/.test(gen) && /\\+ MÖJLIGHET/.test(gen), add, editAz};`);
+  ok('kamerateamet har sin egen målsättning — och ser ingen annans', r.view===true && r.own==='utveckling', r);
+  ok('och kan lägga till i allmänna agendan men inte ändra andras punkter', r.gen===true && r.add===true && r.editAz===false, r);
+
   /* ============ BANDO HQ ACCESS ============ */
   log('\n── Bando HQ Access: registreringssidan, appen, Fördela, profilen, inställningarna ──');
   const goPage = (url) => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 500); fr.src=url; });

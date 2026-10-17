@@ -202,7 +202,15 @@ begin
       return new;
     end if;
     win := floor(extract(epoch from now()) / 1800);
-    if coalesce(d->>'who','') <> '' then
+    /* allmänna agendan är gemensam: hela teamet får veta, aldrig en enskild */
+    if coalesce(d->>'kind','') = 'general' then
+      for m in select id from members where active and role::text in ('manager','admin','producer','camera')
+                 and id is distinct from actor loop
+        perform bs_notify_digest(m.id, 'Allmänna agendan har uppdaterats',
+          'Allmänna agendan har uppdaterats: %s nya eller ändrade punkter. Se BANDOHQ.',
+          'agenda', 'agenda-gen:' || m.id || ':' || floor(extract(epoch from now()) / 7200), interval '10 minutes');
+      end loop;
+    elsif coalesce(d->>'who','') <> '' then
       who := bs_member_by_name(d->>'who');
       if who is not null and who is distinct from actor then
         perform bs_notify_digest(who, 'Agendan har uppdaterats',

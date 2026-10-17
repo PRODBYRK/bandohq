@@ -976,6 +976,51 @@ await as(db,AU.a8,()=>rpc('delete_my_account',{}));
 ok('radera mitt konto tar bort personnumret också', (await one(`select count(*)::int n from member_pnr p left join members m on m.id=p.member_id where m.id is null`)).n===0
    && !(await one(`select 1 from members where name='Åsa Öst-Ärlig'`)));
 }
+
+/* ============ ALLMÄN AGENDA OCH MÅLSÄTTNING ============ */
+{
+head('Allmän agenda (gemensamt) och målsättning (personligt)');
+await q(`delete from outbox`);
+const J = rows => JSON.stringify(rows), MK = fn => as(db,U.moez,fn), CA = fn => as(db,U.costa,fn);
+const box = async k => q(`select * from outbox where dedupe_key like $1 order by id`,[k]);
+const kg = await MK(()=>rpc('push_records',{rows:J([
+  {kind:'goal',id:'mg1',data:{id:'mg1',owner:'moez',text:'Bättre ljussättning',cat:'utveckling',status:'aktiv'},up:9e12},
+  {kind:'goal',id:'mg2',data:{id:'mg2',owner:'rkay',text:'Kapa RKAYs mål',status:'aktiv'},up:9e12},
+  {kind:'plan',id:'moez',data:{id:'moez',text:'Min plan'},up:9e12},
+  {kind:'plan',id:'rkay',data:{id:'rkay',text:'Fejk'},up:9e12}])}));
+ok('kamerateamet skriver sin egen målsättning — mål och plan, inget åt andra', kg===2 && !(await one(`select 1 from records where id='mg2'`))
+   && (await one(`select data->>'text' t from records where kind='plan' and id='rkay'`)||{t:''}).t!=='Fejk', kg);
+const kr = (await MK(()=>q(`select id from records where kind in ('goal','plan') order by id`))).map(r=>r.id);
+ok('och ser bara sin egen', JSON.stringify(kr)==='["mg1","moez"]', kr);
+ok('ingen annan i teamet ser den — inte producenter, inte admin, bara managern', !(await as(db,U.rkay,()=>q(`select 1 from records where id='mg1'`))).length
+   && !(await CA(()=>q(`select 1 from records where id='mg1'`))).length && (await as(db,U.az,()=>q(`select 1 from records where id='mg1'`))).length===1);
+ok('målsättningen skickar inga notiser', (await q(`select 1 from outbox`)).length===0);
+
+await q(`insert into records(kind,id,data,up) values('agenda','gen1','{"id":"gen1","kind":"general","cat":"projekt","who":"","by":"az","text":"Eget releasebolag"}',1)`);
+await q(`delete from outbox`);
+const kgen = await MK(()=>rpc('push_records',{rows:J([
+  {kind:'agenda',id:'gen2',data:{id:'gen2',kind:'general',cat:'mojlighet',who:'',by:'moez',text:'Festivaler i sommar'},up:9e12},
+  {kind:'agenda',id:'gen1',data:{id:'gen1',kind:'general',cat:'projekt',who:'',by:'az',text:'Kapat',done:true},up:9e12},
+  {kind:'agenda',id:'gen3',data:{id:'gen3',kind:'general',cat:'projekt',who:'',by:'rkay',text:'I RKAYs namn'},up:9e12}])}));
+ok('kamerateamet lägger till i allmänna agendan — men ändrar inte andras punkter och skriver inte i andras namn', kgen===1
+   && !!(await one(`select 1 from records where id='gen2'`)) && (await one(`select data->>'text' t from records where id='gen1'`)).t==='Eget releasebolag'
+   && !(await one(`select 1 from records where id='gen3'`)), kgen);
+ok('alla i teamet läser den — kamerateamet också', (await MK(()=>q(`select id from records where kind='agenda' and data->>'kind'='general'`))).length===2);
+const gb = (await box('agenda-gen:%')).map(r=>r.member_id).sort();
+ok('en ny punkt i allmänna agendan → hela teamet utom den som skrev, aldrig deltagare eller kunder', gb.includes('az') && gb.includes('costa') && gb.includes('rkay')
+   && !gb.includes('moez') && !gb.includes('oldk') && !gb.some(x=>x==='nora'), gb);
+await as(db,U.rkay,()=>rpc('push_records',{rows:J([{kind:'agenda',id:'gen4',data:{id:'gen4',kind:'general',cat:'ambition',who:'ADREY',by:'rkay',text:'Gammal punkt med namn'},up:9e12}])}));
+ok('även en äldre punkt med namn går till hela teamet — aldrig som personlig uppgift', (await box('agenda:adrey:%')).length===0
+   && (await box('agenda-gen:adrey:%')).length===1);
+await q(`insert into members(id,role,name) values('tmpc','camera','Tillfällig Kamera')`);
+await q(`insert into records(kind,id,data,up) values
+  ('agenda','gen5','{"id":"gen5","kind":"general","cat":"utveckling","who":"","by":"tmpc","text":"Bättre bilder"}',1),
+  ('agenda','wk5','{"id":"wk5","kind":"week","who":"Tillfällig Kamera","text":"Egen uppgift"}',1),
+  ('goal','tg5','{"id":"tg5","owner":"tmpc","text":"Eget mål"}',1)`);
+await as(db,U.az,()=>rpc('delete_member',{p_id:'tmpc'}));
+const g5 = await one(`select del, data->>'by' b from records where id='gen5'`), w5 = await one(`select del from records where id='wk5'`), t5 = await one(`select del from records where id='tg5'`);
+ok('radera en person: punkterna i allmänna agendan ligger kvar (utan namnet), det personliga försvinner', g5 && !g5.del && g5.b==='' && w5.del && t5.del, {g5, w5, t5});
+}
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
 process.exit(fail?1:0);

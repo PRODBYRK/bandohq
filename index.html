@@ -670,6 +670,10 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .task-t{font-size:14px;line-height:1.45}
 .task.done .task-t{color:var(--mut2);text-decoration:line-through}
 .task-w{font-size:11.5px;color:var(--mut2);margin-left:6px;white-space:nowrap}
+.task.ga{padding:11px 0}
+.ga-note{display:block;font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.5}
+.ga-meta{display:block;font-size:11.5px;color:var(--mut2);margin-top:4px}
+.task.done .ga-note,.task.done .ga-meta{text-decoration:none}
 .task-x{flex:none;background:none;border:0;color:var(--mut2);font-size:14px;cursor:pointer;padding:2px 4px}
 .agcard{padding:var(--s2) var(--s4) var(--s3)}
 .agp{padding:var(--s3) 0;border-bottom:1px solid var(--line3)}
@@ -2403,8 +2407,8 @@ function can(action, t){
     case 'uploadMedia':     return team;
     case 'editMedia':       return crewRole || (!!t && t.by===m.id);
     /* --- v5: arbetsytan --- */
-    /* Mål och planer är personliga: ägaren och managern, ingen annan.
-       t är ägarens konto-id. */
+    /* Målsättningen (mål, ambitioner, utvecklingsområden och planen) är personlig: ägaren och
+       managern, ingen annan. t är ägarens konto-id. */
     case 'viewGoals':
     case 'editGoals':       return mgr || (!!t && t===m.id);
     case 'manageArtists':   return adm;
@@ -2413,6 +2417,9 @@ function can(action, t){
     case 'parseAgenda':     return crewRole;
     case 'parseForOthers':  return adm;
     case 'editAgenda':      return adm || (!!t && (t.who===m.n || (!t.who && team)));
+    /* Allmän agenda: gemensam för hela teamet — alla lägger till, den som skrev punkten (och admin) ändrar den */
+    case 'addGeneral':      return team;
+    case 'editGeneral':     return adm || (!!t && !!t.by && t.by===m.id);
     case 'markRan':         return adm || (!!t && (t.who===m.n || (t.with||[]).includes(m.n)));
     case 'seeRevenue':      return mgr;
     default:            return false;
@@ -3493,12 +3500,12 @@ const ICONS = {
   rewards:'<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>'
 };
 const LABELS = {today:'IDAG', week:'SCHEMA', agenda:'AGENDA', beats:'BEATS', more:'MER',
-  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅL', gallery:'GALLERI', rewards:'REWARDS'};
+  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅLSÄTTNING', gallery:'GALLERI', rewards:'REWARDS'};
 /* Sex flikar hade blivit tio. Fem i botten, resten bakom MER. */
 function tabs(){
   const m = me();
-  /* kamerateamet: schemat, sin agenda och galleriet — inget mer */
-  if(m && m.r==='camera') return ['week','agenda','gallery'];
+  /* kamerateamet: schemat, agendan, galleriet och sin egen målsättning */
+  if(m && m.r==='camera') return ['week','agenda','gallery','goals'];
   return ['today','week','agenda','beats','more'];
 }
 /* STATISTIK visar timmar och samarbeten per person — "individuella saker", som
@@ -3512,7 +3519,7 @@ function canView(v){ return roleView()==='full' && (tabs().includes(v) || moreVi
 
 /* Mobilen: fem flikar i botten. Datorn: allt i sidopanelen, utan MER. */
 const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', more:'Mer',
-  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Mål', gallery:'Galleri', rewards:'Rewards'};
+  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards'};
 function buildNav(){
   const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="go('${k}')">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg><span class="nl-m">${LABELS[k]}</span></button>`;
@@ -3589,7 +3596,12 @@ function vMore(){
     <div class="stagger">
       ${card('artists','ARTISTER', `${lartists().length} artister${p1?' · '+p1+' i prio 1':''}${top&&prioOf(top)===1?' · '+esc(top.n)+' överst':''}`)}
       ${mgr ? card('dash','STATISTIK', 'Samarbeten, släpp, streams och studiotid') : ''}
-      ${card('goals','MÅL', mgr ? `Allas mål och planer · ${nt(allGoals,'aktivt','aktiva')}` : `Dina mål och din plan · ${nt(myGoals,'aktivt','aktiva')}`)}
+      ${card('goals','MÅLSÄTTNING', mgr ? `Allas personliga mål och planer · ${nt(allGoals,'aktivt','aktiva')}` : `Dina personliga mål, ambitioner och utvecklingsområden · ${nt(myGoals,'aktiv','aktiva')}`)}
+      <button class="member" onclick="agendaTab='general';go('agenda')">
+        <div class="av" style="background:linear-gradient(150deg,rgba(168,85,247,.32),rgba(124,58,237,.14));box-shadow:0 0 0 1px var(--line2) inset">
+          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--pur3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round">${ICONS.agenda}</svg></div>
+        <div class="grow"><div class="mname">ALLMÄN AGENDA</div><div class="mrole">Det vi tillsammans vill uppnå · ${nt(lagenda().filter(a=>a.kind==='general' && !a.done).length,'punkt','punkter')}</div></div>
+        <span style="color:var(--mut2);font-size:18px">›</span></button>
       ${card('gallery','GALLERI', `${nt(lmedia().length,'bild eller film','bilder och filmer')} från kamerateamet`)}
       ${canIntel() ? card('rewards','REWARDS', 'Poäng, belöningar, nivåer och Artist Intelligence') : ''}
       ${card('team','CREW', `${teamAcc().length} personer · profiler och konton`)}
@@ -4053,14 +4065,20 @@ function lastWeekPlanText(){
   }).join('\n');
 }
 
+/* Agendan har två delar som inte blandas: VECKAN (veckans uppgifter och studiotider) och
+   ALLMÄN AGENDA (det hela teamet tillsammans arbetar mot). Personliga mål ligger i Målsättning. */
+let agendaTab = 'week';
 function vAgenda(){
+  const seg = `<div class="seg" role="tablist" style="margin:2px 0 var(--s4)">${[['week','Veckan'],['general','Allmän agenda']].map(([k,n])=>
+    `<button role="tab" aria-selected="${agendaTab===k}" class="${agendaTab===k?'on':''}" onclick="agendaTab='${k}';render()">${n}</button>`).join('')}</div>`;
+  return `<div class="h1">Agenda</div>${seg}` + (agendaTab==='general' ? vGeneralAgenda() : vWeekAgenda());
+}
+function vWeekAgenda(){
   const m = me(), mgr = can('dashboard');
   const wk = iso(aWeek());
   const items = lagenda().filter(a=>a.kind==='week' && a.week===wk);
   const people = teamAcc().filter(c=>items.some(a=>a.who===c.n) || c.r==='producer' || c.id===m.id);
   const shared = items.filter(a=>!a.who);
-  const gen = lagenda().filter(a=>a.kind==='general')
-    .sort((a,b)=>(a.done-b.done) || (a.due||'9999').localeCompare(b.due||'9999'));
   const isNow = wk===iso(monday(new Date()));
 
   const taskRow = a => agTask(a, {del:1});
@@ -4077,8 +4095,7 @@ function vAgenda(){
   };
 
   return `
-    <div class="h1">Agenda</div>
-    <div class="sub">Veckans uppgifter och det långsiktiga — så alla vet vad som gäller.</div>
+    <div class="sub">Veckans uppgifter och studiotider — så alla vet vad som gäller.</div>
     ${can('parseAgenda')?`<div class="row" style="gap:9px">
       <button class="btn" style="flex:1" onclick="openParse()">✎ SKRIV IN VECKAN</button>
       <button class="btn ghost" style="flex:1" onclick="openParse(lastWeekPlanText())">KOPIERA FÖRRA VECKAN</button></div>`:''}
@@ -4094,15 +4111,91 @@ function vAgenda(){
     <div class="eyebrow">VECKANS AGENDA<span class="ln"></span>
       <span style="color:var(--mut2)">${items.filter(a=>a.done).length}/${items.length} klara</span></div>
     ${shared.length || mgr ? block('ALLA', 'var(--txt)', shared, '') : ''}
-    ${people.map(c=>block(c.n, c.g, items.filter(a=>a.who===c.n), c.n)).join('')}
+    ${people.map(c=>block(c.n, c.g, items.filter(a=>a.who===c.n), c.n)).join('')}`;
+}
 
-
-    <div class="eyebrow">ALLMÄN AGENDA<span class="ln"></span>
-      <span style="color:var(--mut2)">långsiktigt</span></div>
-    <div class="card">
-      ${gen.length ? gen.map(a=>agTask(a, {who:1, del:1})).join('') : `<div class="tiny muted">Inget långsiktigt inlagt än.</div>`}
-      ${mgr?`<button class="chip" style="margin-top:12px" onclick="openTask('general','')">+ PUNKT</button>`:''}
-    </div>`;
+/* ---------- ALLMÄN AGENDA ----------
+   Gemensam för hela Bando-teamet: långsiktiga projekt, gemensamma ambitioner, utvecklingsområden
+   och möjligheter. Ingen punkt har en ägare — det här är vad vi tillsammans vill uppnå som
+   organisation. (Det personliga ligger i Målsättning, view 'goals'.) Lagras som agenda-poster
+   med kind 'general', cat och by (vem som skrev punkten). */
+const AG_CATS = [['projekt','Långsiktiga projekt','Det vi bygger och driver tillsammans.','projekt'],
+  ['ambition','Gemensamma ambitioner','Det vi som organisation siktar mot.','ambition'],
+  ['utveckling','Utvecklingsområden','Där vi tillsammans vill bli bättre.','område'],
+  ['mojlighet','Möjligheter','Det alla ska hålla utkik efter och ta vara på.','möjlighet']];
+const genCat = a => AG_CATS.some(c=>c[0]===a.cat) ? a.cat : 'projekt';
+const lgeneral = () => lagenda().filter(a=>a.kind==='general');
+function genRow(a){
+  const ed = can('editGeneral', a), by = byId(a.by);
+  const meta = [a.due ? 'mål ' + longDate(a.due).toLowerCase() : '', by ? 'lagt till av ' + by.n : ''].filter(Boolean);
+  return `<div class="task ga ${a.done?'done':''}" data-id="${a.id}">
+    <button class="tick" role="checkbox" aria-checked="${!!a.done}" aria-label="Uppnått: ${esc(a.text)}"
+      ${ed?`onclick="toggleGeneral('${a.id}')"`:'disabled'}>${a.done?'✓':''}</button>
+    <div class="grow task-t" ${ed?`onclick="openGeneral('${a.id}')" style="cursor:pointer"`:''}>${esc(a.text)}
+      ${a.note ? `<span class="ga-note">${esc(a.note)}</span>` : ''}
+      ${meta.length ? `<span class="ga-meta">${meta.map(esc).join(' · ')}</span>` : ''}</div>
+  </div>`;
+}
+function vGeneralAgenda(){
+  const open = lgeneral().filter(a=>!a.done), done = lgeneral().filter(a=>a.done);
+  const sec = ([k, name, hint, word]) => {
+    const list = open.filter(a=>genCat(a)===k).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999') || (a.up||0)-(b.up||0));
+    return `<div class="eyebrow">${name.toUpperCase()}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
+      <div class="card" id="ga-${k}">
+        <div class="tiny muted">${hint}</div>
+        ${list.length ? list.map(genRow).join('') : `<div class="tiny muted" style="padding:10px 0 2px;opacity:.75">Inget här än.</div>`}
+        ${can('addGeneral') ? `<button class="chip" style="margin-top:12px" onclick="openGeneral(null,'${k}')">+ ${word.toUpperCase()}</button>` : ''}
+      </div>`;
+  };
+  return `<div class="sub">Vad vi tillsammans vill uppnå som organisation — det alla i Bando-teamet arbetar mot och håller utkik efter.</div>
+    ${AG_CATS.map(sec).join('')}
+    ${done.length ? `<div class="eyebrow">UPPNÅTT<span class="ln"></span><span style="color:var(--mut2)">${done.length}</span></div>
+      <div class="card">${done.map(genRow).join('')}</div>` : ''}
+    <div class="note">Gemensamt för hela teamet — alla ser det och kan lägga till. Det du personligen vill uppnå och utveckla
+      hör hemma i <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();go('goals')">din målsättning</a>.</div>`;
+}
+function openGeneral(id, cat){
+  const a = id ? S.agenda.find(x=>x.id===id) : null;
+  if(a ? !can('editGeneral', a) : !can('addGeneral')) return;
+  const c = a ? genCat(a) : (cat || 'projekt');
+  openSheet(`${X}<h2>${a ? 'Allmän agenda' : 'Ny punkt i allmänna agendan'}</h2>
+    <div class="sub">Gemensamt för hela Bando-teamet</div>
+    <label class="lbl">SORT</label>
+    <div class="chips" style="flex-wrap:wrap;overflow:visible">${AG_CATS.map(([k,n])=>`<button class="chip gac ${k===c?'on':''}" data-k="${k}"
+      onclick="document.querySelectorAll('.chip.gac').forEach(e=>e.classList.toggle('on',e===this))">${n}</button>`).join('')}</div>
+    <label class="lbl" for="gaT">VAD</label>
+    <textarea id="gaT" maxlength="200" placeholder="t.ex. Bygga ett eget releasebolag inom Bando">${a ? esc(a.text) : ''}</textarea>
+    <label class="lbl" for="gaN">MER OM DET <span class="muted">(valfritt)</span></label>
+    <textarea id="gaN" maxlength="500" style="min-height:64px" placeholder="Varför, hur, vad alla ska hålla utkik efter …">${a ? esc(a.note||'') : ''}</textarea>
+    <label class="lbl" for="gaD">MÅLDATUM <span class="muted">(valfritt)</span></label>
+    <input id="gaD" type="date" value="${a ? esc(a.due||'') : ''}">
+    <button class="btn" style="margin-top:20px" onclick="saveGeneral('${a ? a.id : ''}')">${a ? 'SPARA' : 'LÄGG TILL'}</button>
+    ${a ? `<button class="btn danger" style="margin-top:9px" onclick="delGeneral('${a.id}')">TA BORT</button>` : ''}`);
+  if(!a) setTimeout(()=>{ const t = document.getElementById('gaT'); if(t) t.focus(); }, 80);
+}
+function saveGeneral(id){
+  const text = document.getElementById('gaT').value.trim();
+  if(!text) return toast('Skriv vad det gäller');
+  const on = document.querySelector('.chip.gac.on'), cat = on ? on.dataset.k : 'projekt';
+  const note = document.getElementById('gaN').value.trim(), due = document.getElementById('gaD').value;
+  if(id){
+    const a = S.agenda.find(x=>x.id===id); if(!a || !can('editGeneral', a)) return;
+    bump(Object.assign(a, {text, note, due, cat, who:''}));
+  } else {
+    if(!can('addGeneral')) return;
+    S.agenda.push(bump({id:uid(), kind:'general', cat, week:'', who:'', by:me().id, text, note, due, done:false, del:false}));
+  }
+  save(); closeSheet(); render(); toast(id ? 'Sparat' : 'Tillagd i allmänna agendan'); sync(true);
+}
+function toggleGeneral(id){
+  const a = S.agenda.find(x=>x.id===id); if(!a || !can('editGeneral', a)) return;
+  bump(Object.assign(a, {done:!a.done})); save(); render(); sync(true);
+  if(a.done) toast('Uppnått ✓');
+}
+function delGeneral(id){
+  const a = S.agenda.find(x=>x.id===id); if(!a || !can('editGeneral', a)) return;
+  if(!confirm('Ta bort punkten från allmänna agendan?')) return;
+  bump(Object.assign(a, {del:true})); save(); closeSheet(); render(); sync(true);
 }
 
 function openTask(kind, who){
@@ -4110,15 +4203,14 @@ function openTask(kind, who){
   const pick = mgr ? [{n:''}].concat(crew()) : [{n:m.n}];
   const sel = who!=null ? who : (mgr?'':m.n);
   openSheet(`${X}
-    <h2>${kind==='general'?'Långsiktig punkt':'Ny uppgift'}</h2>
-    <div class="sub">${kind==='general'?'Hamnar i den allmänna agendan':'Vecka '+weekNo(aWeek())}</div>
+    <h2>Ny uppgift</h2>
+    <div class="sub">Vecka ${weekNo(aWeek())}</div>
     <label class="lbl">VAD</label>
-    <textarea id="tkT" placeholder="${kind==='general'?'t.ex. Släppa EP:n med Moez innan jul':'t.ex. Mixa klart Nova-låten'}" maxlength="200"></textarea>
+    <textarea id="tkT" placeholder="t.ex. Mixa klart Nova-låten" maxlength="200"></textarea>
     <label class="lbl">VEM</label>
     <div class="chips" style="flex-wrap:wrap;overflow:visible">${pick.map(c=>`<button class="chip tkw ${c.n===sel?'on':''}"
       data-n="${esc(c.n)}" onclick="document.querySelectorAll('.chip.tkw').forEach(e=>e.classList.toggle('on',e===this))">${
       c.n?`<i class="sw" style="background:${c.c}"></i>${esc(c.n)}`:'ALLA'}</button>`).join('')}</div>
-    ${kind==='general'?`<label class="lbl">KLART SENAST (VALFRITT)</label><input id="tkD" type="date">`:''}
     <button class="btn" style="margin-top:20px" onclick="saveTask('${kind}')">LÄGG TILL</button>`);
   setTimeout(()=>{ const t=document.getElementById('tkT'); if(t) t.focus(); }, 80);
 }
@@ -4127,8 +4219,7 @@ function saveTask(kind){
   if(!text) return toast('Skriv vad det gäller');
   const on = document.querySelector('.chip.tkw.on');
   const who = on ? on.dataset.n : me().n;
-  S.agenda.push(bump({id:uid(), kind, week: kind==='week'?iso(aWeek()):'', who, text,
-    due: kind==='general' ? ((document.getElementById('tkD')||{}).value||'') : '', done:false, del:false}));
+  S.agenda.push(bump({id:uid(), kind:'week', week:iso(aWeek()), who, text, due:'', done:false, del:false}));
   save(); closeSheet(); render(); toast('Tillagd'); sync(true);
 }
 function toggleTask(id){
@@ -4152,8 +4243,10 @@ function delTask(id){
      tors kl 14–18 ADREY vocals Nabbe             → pass
      12/10 22-02 PKL nattpass                     → pass (datum, över midnatt)
      RKAY: mixa EP:n, skicka stems till Costa     → två uppgifter för RKAY
-     Allmänt:                                     → det som följer blir långsiktigt
-     Släppa EP:n innan jul
+     Projekt: / Ambitioner: / Utvecklingsområden: / Möjligheter:
+     Släppa EP:n innan jul                        → allmänna agendan (gemensamt, ingen ägare)
+     Mål:
+     RKAY: lära mig mixa vocals                   → personligt mål i RKAYs målsättning
    ===================================================================== */
 const DAYMAP = [[/^m[åa]n(dag)?$/,0],[/^tis(dag)?$/,1],[/^ons(dag)?$/,2],[/^tor(s|sdag)?$/,3],
   [/^fre(dag)?$/,4],[/^l[öo]r(dag)?$/,5],[/^s[öo]n(dag)?$/,6]];
@@ -4162,17 +4255,38 @@ const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 /* Ordgräns som klarar namn med siffror och svenska tecken (D2L, Nabbe, Ö…). */
 const nameRe = n => new RegExp('(?<![\\p{L}\\p{N}])'+reEsc(n)+'(?![\\p{L}\\p{N}])','iu');
 
+/* Rubriker i texten. Det gemensamma (allmänna agendan) och det personliga (målsättningen) hålls isär:
+   "Projekt:", "Möjligheter:" … blir punkter utan ägare i allmänna agendan, "Mål:" blir personliga mål. */
+const GEN_HEADS = [[/^(allm[äa]nt|allm[äa]n agenda|gemensamt|gemensamma agendan|l[åa]ngsiktigt|l[åa]ng sikt|projekt|l[åa]ngsiktiga projekt)$/i,'projekt'],
+  [/^(ambitioner|ambition|gemensamma ambitioner)$/i,'ambition'], [/^(utvecklingsomr[åa]den|utvecklingsomr[åa]de)$/i,'utveckling'],
+  [/^(m[öo]jligheter|m[öo]jlighet)$/i,'mojlighet']];
+const GOAL_HEAD = /^(m[åa]l|m[åa]ls[äa]ttning|m[åa]ls[äa]ttningar|mina m[åa]l|personliga m[åa]l|personligt)$/i;
 function parseAgendaText(text, weekMonday){
-  const out = {sessions:[], tasks:[], general:[], skipped:[]};
+  const out = {sessions:[], tasks:[], general:[], goals:[], skipped:[]};
   const people  = teamAcc().slice().sort((a,b)=>b.n.length-a.n.length);   /* längsta först */
   const artists = lartists().slice().sort((a,b)=>b.n.length-a.n.length);
-  let mode = 'week';
+  let mode = 'week', cat = 'projekt';
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
 
   text.split(/\r?\n/).forEach(raw=>{
     let line = raw.replace(/^\s*(?:[-•*·]|\d+[.)])\s*/,'').trim();
     if(!line) return;
-    if(/^(allm[äa]nt|allm[äa]n agenda|l[åa]ngsiktigt|l[åa]ng sikt|m[åa]l)\s*:?$/i.test(line)){ mode='general'; return; }
+    const hd = line.replace(/\s*:\s*$/,'');
+    const gh = GEN_HEADS.find(([re])=>re.test(hd));
+    if(gh){ mode='general'; cat = gh[1]; return; }
+    if(GOAL_HEAD.test(hd)){ mode='goal'; return; }
     if(/^(veckan|veckans agenda|uppgifter|denna vecka|veckans sessions|sessions|pass|schema)\s*:?$/i.test(line)){ mode='week'; return; }
+    /* allmänna agendan: hela raden, ingen ägare */
+    if(mode==='general'){ out.general.push({cat, text:cap(line), src:line}); return; }
+    /* målsättning: "RKAY: …" eller "RKAY …" gäller RKAY, annars den som skriver */
+    if(mode==='goal'){
+      const h = line.match(/^([^:\-–]{1,24})\s*[:\-–]\s*(.+)$/);
+      const o = (h && people.find(c=>nameRe(c.n).test(h[1]) && h[1].trim().length <= c.n.length+2))
+        || people.find(c=>line.search(nameRe(c.n))===0);
+      const txt = o ? (h && nameRe(o.n).test(h[1]) ? h[2] : line.replace(nameRe(o.n),'')).replace(/^[\s:\-–]+/,'').trim() : line;
+      if(txt) out.goals.push({who:o ? o.n : '', text:cap(txt), src:line});
+      return;
+    }
 
     /* --- dag eller datum --- */
     let date = null, rest = line;
@@ -4244,7 +4358,7 @@ function parseAgendaText(text, weekMonday){
       let txt = t.trim();
       if(!owner && who) txt = txt.replace(nameRe(who),'').replace(/^[\s:\-–]+/,'').trim();
       if(!txt) return;
-      (mode==='general' ? out.general : out.tasks).push({who, text: txt.charAt(0).toUpperCase()+txt.slice(1), src: line});
+      out.tasks.push({who, text: txt.charAt(0).toUpperCase()+txt.slice(1), src: line});
     });
   });
 
@@ -4270,19 +4384,23 @@ RKAY: mixa EP:n, skicka stems
 V2K: 3 nya beats
 Alla: städa studio B
 
-Allmänt:
-Släppa EP:n innan jul">${typeof prefill === 'string' ? esc(prefill) : ''}</textarea>
+Projekt:
+Släppa Novas EP innan jul
+
+Mål:
+Lära mig mixa vocals själv">${typeof prefill === 'string' ? esc(prefill) : ''}</textarea>
     ${can('parseForOthers') ? '' : `<div class="note">Du skriver in <b>din egen</b> plan: pass där du bokar eller är med, och dina uppgifter.</div>`}
     <button class="btn" style="margin-top:14px" onclick="previewParse()">TOLKA</button>
     <div class="note">Rader med dag och tid blir <b>pass</b>. <b>NAMN: a, b</b> blir uppgifter för
-      den personen. Allt under <b>Allmänt:</b> hamnar i den långsiktiga agendan.
-      Du får se allt innan något sparas.</div>
+      den personen. Under <b>Projekt:</b>, <b>Ambitioner:</b>, <b>Utvecklingsområden:</b> eller <b>Möjligheter:</b> hamnar
+      raderna i den <b>allmänna agendan</b> — gemensamt för hela teamet. Under <b>Mål:</b> blir de <b>personliga mål</b>
+      i din målsättning. Du får se allt innan något sparas.</div>
     <div id="psOut"></div>`);
 }
 function previewParse(){
   const txt = document.getElementById('psT').value;
   parsed = parseAgendaText(txt, aWeek());
-  const n = parsed.sessions.length + parsed.tasks.length + parsed.general.length;
+  const n = parsed.sessions.length + parsed.tasks.length + parsed.general.length + parsed.goals.length;
   const row = (kind, i, html, warn) => `<label class="member" style="cursor:pointer;align-items:flex-start;${
     warn?'border-color:rgba(208,59,59,.45)':''}">
     <input type="checkbox" class="pck" data-k="${kind}" data-i="${i}" checked
@@ -4301,9 +4419,12 @@ function previewParse(){
     ${parsed.tasks.length?`<div class="eyebrow">VECKANS UPPGIFTER<span class="ln"></span><span>${parsed.tasks.length}</span></div>
       ${parsed.tasks.map((t,i)=>row('t',i,`<div style="font-size:14px">${esc(t.text)}</div>
         <div class="mrole">${t.who?`<span style="color:${glow(t.who)}">${esc(t.who)}</span>`:'Alla'}</div>`)).join('')}`:''}
-    ${parsed.general.length?`<div class="eyebrow">ALLMÄN AGENDA<span class="ln"></span><span>${parsed.general.length}</span></div>
+    ${parsed.general.length?`<div class="eyebrow">ALLMÄN AGENDA · GEMENSAMT<span class="ln"></span><span>${parsed.general.length}</span></div>
       ${parsed.general.map((t,i)=>row('g',i,`<div style="font-size:14px">${esc(t.text)}</div>
-        <div class="mrole">${t.who?esc(t.who):'Alla'}</div>`)).join('')}`:''}
+        <div class="mrole">${esc((AG_CATS.find(c=>c[0]===t.cat)||AG_CATS[0])[1])} · hela teamet</div>`)).join('')}`:''}
+    ${parsed.goals.length?`<div class="eyebrow">MÅLSÄTTNING · PERSONLIGT<span class="ln"></span><span>${parsed.goals.length}</span></div>
+      ${parsed.goals.map((t,i)=>row('m',i,`<div style="font-size:14px">${esc(t.text)}</div>
+        <div class="mrole">Mål för ${esc(t.who || (me()||{}).n || '')} · syns bara för personen och managern</div>`)).join('')}`:''}
     <button class="btn" style="margin-top:16px" onclick="commitParse()">LÄGG IN DET IKRYSSADE</button>`;
 }
 function commitParse(){
@@ -4324,8 +4445,11 @@ function commitParse(){
     if(!all && t.who && t.who!==m.n){ notMine++; return; }
     S.agenda.push(bump({id:uid(), kind:'week', week:wk, who:t.who, text:t.text, due:'', done:false, del:false})); made++; });
   on('g').forEach(i=>{ const t=parsed.general[i];
-    if(!all && t.who!==m.n){ notMine++; return; }
-    S.agenda.push(bump({id:uid(), kind:'general', week:'', who:t.who, text:t.text, due:'', done:false, del:false})); made++; });
+    if(!can('addGeneral')){ notMine++; return; }
+    S.agenda.push(bump({id:uid(), kind:'general', cat:t.cat, week:'', who:'', by:m.id, text:t.text, note:'', due:'', done:false, del:false})); made++; });
+  on('m').forEach(i=>{ const t=parsed.goals[i], o = t.who ? byName(t.who) : m;
+    if(!o || !can('editGoals', o.id)){ notMine++; return; }
+    S.goals.push(bump({id:uid(), owner:o.id, text:t.text, due:'', cat:'mal', status:'aktiv', del:false})); made++; });
   parsed = null;
   save(); closeSheet(); render(); sync(true);
   toast(`${made} inlagda${clashed?' · '+clashed+' pass krockade och hoppades över':''}${notMine?' · '+notMine+' rader gällde andra':''}`);
@@ -4393,6 +4517,12 @@ const goalsOf = id => lgoals().filter(g=>g.owner===id)
   .sort((a,b)=>(a.status==='klar')-(b.status==='klar') || (a.due||'9999').localeCompare(b.due||'9999'));
 const planOf  = id => (S.plans.find(p=>p.id===id && !p.del) || {text:''}).text;
 
+/* ---------- MÅLSÄTTNING ----------
+   Individuell för varje teammedlem: egna mål, ambitioner och utvecklingsområden, och en plan för
+   hur de nås. Bara ägaren och managern ser den. (Det gemensamma ligger i Allmän agenda.) */
+const GOAL_CATS = [['mal','Mål','Det du vill uppnå.','mål'], ['ambition','Ambitioner','Det du siktar mot på längre sikt.','ambition'],
+  ['utveckling','Utvecklingsområden','Det du vill bli bättre på.','område']];
+const goalCat = g => GOAL_CATS.some(c=>c[0]===g.cat) ? g.cat : 'mal';
 function vGoals(){
   const m = me(), mgr = can('dashboard');
   /* Översikten finns BARA för managern. Alla andra ser alltid sina egna —
@@ -4413,19 +4543,20 @@ function vGoals(){
       ${g.due?`<div class="tiny" style="color:${g.status!=='klar'&&g.due<iso(new Date())?'var(--bad2)':'var(--mut2)'};margin-top:3px">
         ${g.status!=='klar'&&g.due<iso(new Date())?'Försenat · ':''}klart ${esc(longDate(g.due))}</div>`:''}
     </div></div>`;
+  const sec = ([k, name, hint, word]) => { const list = active.filter(g=>goalCat(g)===k);
+    return `<div class="eyebrow">${name.toUpperCase()}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
+      <div class="card" id="gs-${k}"><div class="tiny muted">${hint}</div>
+        ${list.length ? list.map(goalRow).join('') : `<div class="tiny muted" style="padding:10px 0 2px;opacity:.75">Inget här än.</div>`}
+        <button class="chip" style="margin-top:12px" onclick="openGoal(null,'${who.id}','${k}')">+ ${word.toUpperCase()}</button></div>`; };
   return `
-    ${mgr?`<button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="goalsWho=null;render()">‹ ALLAS MÅL</button>`:''}
+    ${mgr?`<button class="btn ghost slim" style="width:auto;padding:8px 14px" onclick="goalsWho=null;render()">‹ ALLAS MÅLSÄTTNINGAR</button>`:''}
     <div class="row" style="gap:12px;margin-top:${mgr?'14px':'0'}">
       ${avatar(who, 44)}
-      <div class="grow"><div class="h1" style="margin:0">${own?'Dina mål':esc(who.n)}</div>
-        <div class="sub" style="margin:2px 0 0">${nt(active.length,'aktivt','aktiva')} · ${nt(done.length,'klart','klara')}</div></div>
+      <div class="grow"><div class="h1" style="margin:0">${own?'Din målsättning':esc(who.n)}</div>
+        <div class="sub" style="margin:2px 0 0">${own ? 'Det du personligen vill uppnå och utveckla' : 'Personlig målsättning'} · ${nt(active.length,'aktiv','aktiva')} · ${nt(done.length,'klar','klara')}</div></div>
     </div>
 
-    <div class="eyebrow">MÅLSÄTTNINGAR<span class="ln"></span></div>
-    <div class="card">
-      ${active.length ? active.map(goalRow).join('') : `<div class="tiny muted">Inga aktiva mål.</div>`}
-      <button class="chip" style="margin-top:12px" onclick="openGoal(null,'${who.id}')">+ MÅL</button>
-    </div>
+    ${GOAL_CATS.map(sec).join('')}
 
     <div class="eyebrow">PLAN<span class="ln"></span></div>
     <div class="card" onclick="openPlan('${who.id}')" style="cursor:pointer">
@@ -4436,7 +4567,9 @@ function vGoals(){
     ${done.length?`<div class="eyebrow">KLARA<span class="ln"></span></div>
       <div class="card">${done.map(goalRow).join('')}</div>`:''}
 
-    <div class="note">Synligt för ${own?'dig':esc(who.n)} och managern — ingen annan i crewet ser det här.</div>`;
+    <div class="note">Personligt: synligt för ${own?'dig':esc(who.n)} och managern — ingen annan i teamet ser det här.
+      Det ni vill uppnå tillsammans som organisation ligger i
+      <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();agendaTab='general';go('agenda')">allmänna agendan</a>.</div>`;
 }
 
 /* Från en profil rakt in i personens mål. Producenten hamnar alltid i sina
@@ -4448,10 +4581,10 @@ function showGoalsOf(id){
 
 function vGoalsOverview(){
   if(!can('dashboard')) return '<div class="empty">Inte tillgängligt.</div>';
-  const people = crew();
+  const people = teamAcc();
   return `
-    <div class="h1">Allas mål</div>
-    <div class="sub">Bara du ser den här vyn. Var och en ser sina egna.</div>
+    <div class="h1">Allas målsättningar</div>
+    <div class="sub">Var och ens personliga mål, ambitioner och utvecklingsområden. Bara du ser den här vyn — var och en ser sin egen.</div>
     <div class="stagger">${people.map((c,i)=>{
       const gs = goalsOf(c.id), act = gs.filter(g=>g.status!=='klar');
       const late = act.filter(g=>g.due && g.due<iso(new Date())).length;
@@ -4459,21 +4592,24 @@ function vGoalsOverview(){
       return `<button class="member" style="animation-delay:${i*40}ms;flex-wrap:wrap;row-gap:9px" onclick="goalsWho='${c.id}';render();scrollTo(0,0)">
         ${avatar(c)}
         <div class="grow"><div class="mname">${esc(c.n)}</div>
-          <div class="mrole">${nt(act.length,'aktivt','aktiva')} · ${nt(gs.length-act.length,'klart','klara')}${late?` · <span style="color:var(--bad2)">${nt(late,'försenat','försenade')}</span>`:''}${
+          <div class="mrole">${GOAL_CATS.map(([k,n])=>{ const x = act.filter(g=>goalCat(g)===k).length; return x ? x + ' ' + n.toLowerCase() : ''; }).filter(Boolean).join(' · ') || 'inget aktivt'} · ${nt(gs.length-act.length,'klar','klara')}${late?` · <span style="color:var(--bad2)">${nt(late,'försenat','försenade')}</span>`:''}${
             planOf(c.id)?'':' · ingen plan'}</div></div>
         <span style="color:var(--mut2);font-size:18px">›</span>
         ${gs.length?`<div class="bar" style="flex:1 1 100%;margin:0;height:3px"><i style="width:${pct}%"></i></div>`:''}
       </button>`;}).join('')}</div>`;
 }
 
-function openGoal(id, owner){
+function openGoal(id, owner, cat){
   const g = id ? S.goals.find(x=>x.id===id) : null;
-  const oid = g ? g.owner : owner;
+  const oid = g ? g.owner : owner, c = g ? goalCat(g) : (cat || 'mal');
   if(!can('editGoals', oid)) return;
   openSheet(`${X}
-    <h2>${g?'Ändra mål':'Nytt mål'}</h2>
-    <div class="sub">${esc((byId(oid)||{}).n||'')}</div>
-    <label class="lbl">MÅLET</label>
+    <h2>${g?'Ändra':'Ny i målsättningen'}</h2>
+    <div class="sub">${esc((byId(oid)||{}).n||'')} · personligt</div>
+    <label class="lbl">SORT</label>
+    <div class="chips" style="flex-wrap:wrap;overflow:visible">${GOAL_CATS.map(([k,n])=>`<button class="chip glc ${k===c?'on':''}" data-k="${k}"
+      onclick="document.querySelectorAll('.chip.glc').forEach(e=>e.classList.toggle('on',e===this))">${n}</button>`).join('')}</div>
+    <label class="lbl">VAD</label>
     <textarea id="glT" placeholder="t.ex. Placera 3 beats hos Moez innan december" maxlength="200">${g?esc(g.text):''}</textarea>
     <label class="lbl">KLART SENAST (VALFRITT)</label>
     <input id="glD" type="date" value="${g?esc(g.due||''):''}">
@@ -4484,9 +4620,9 @@ function saveGoal(id, owner){
   if(!can('editGoals', owner)) return;
   const text = document.getElementById('glT').value.trim();
   if(!text) return toast('Skriv målet');
-  const due = document.getElementById('glD').value;
-  if(id) bump(Object.assign(S.goals.find(x=>x.id===id), {text, due}));
-  else S.goals.push(bump({id:uid(), owner, text, due, status:'aktiv', del:false}));
+  const due = document.getElementById('glD').value, on = document.querySelector('.chip.glc.on'), cat = on ? on.dataset.k : 'mal';
+  if(id) bump(Object.assign(S.goals.find(x=>x.id===id), {text, due, cat}));
+  else S.goals.push(bump({id:uid(), owner, text, due, cat, status:'aktiv', del:false}));
   save(); closeSheet(); render(); sync(true);
 }
 function toggleGoal(id){
@@ -4504,7 +4640,7 @@ function openPlan(owner){
   if(!can('editGoals', owner)) return;
   openSheet(`${X}
     <h2>Plan</h2>
-    <div class="sub">${esc((byId(owner)||{}).n||'')} · hur målen ska nås</div>
+    <div class="sub">${esc((byId(owner)||{}).n||'')} · hur målen, ambitionerna och utvecklingen ska nås</div>
     <textarea id="plT" style="min-height:240px;line-height:1.7"
       placeholder="Vad ska hända den närmaste tiden, och hur?">${esc(planOf(owner))}</textarea>
     <button class="btn" style="margin-top:16px" onclick="savePlan('${owner}')">SPARA</button>`);
@@ -5153,7 +5289,6 @@ function toggleMyAg(){
 }
 function myAgendaPanel(){
   const m = me(), list = weekTasks(weekStart, m.n), shared = weekTasks(weekStart, '');
-  const gen = lagenda().filter(a=>a.kind==='general' && a.who===m.n && !a.done);
   const d = list.filter(a=>a.done).length;
   const mineB = booked().filter(b=>(b.who===m.n || (b.with||[]).includes(m.n))
     && startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
@@ -5168,7 +5303,6 @@ function myAgendaPanel(){
       ${list.length ? list.map(a=>agTask(a,{del:1})).join('') : `<div class="tiny muted" style="padding:8px 0">Inget inlagt den här veckan.</div>`}
       <button class="chip" style="margin-top:10px" onclick="agendaWeek=weekStart;openTask('week','${esc(m.n)}')">+ UPPGIFT</button>
       ${shared.length?`<div class="myag-s">FÖR ALLA</div>${shared.map(a=>agTask(a)).join('')}`:''}
-      ${gen.length?`<div class="myag-s">LÅNGSIKTIGT</div>${gen.map(a=>agTask(a)).join('')}`:''}
       <div class="myag-s">DINA PASS</div>
       <div class="tiny muted">${mineB.length ? nt(mineB.length,'pass','pass') + ' · ' + hh(mineB.reduce((x,b)=>x+dur(b),0)) + ' h den här veckan' : 'Inga pass den här veckan'}</div>
     </div>

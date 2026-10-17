@@ -737,6 +737,32 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('Artist Intelligence från servern', r.intel && r.intel.b===1 && r.intel.notes===1 && r.intel.av===20, r.intel);
   ok('Mer → Rewards visar inlösen', r.html===true);
 
+  /* ============ ALLMÄN AGENDA OCH MÅLSÄTTNING MOT SERVERN ============ */
+  log('\n── Allmän agenda och målsättning mot servern ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('rkay','rkay12345')} ${wait(400)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    agendaTab='general'; go('agenda'); openGeneral(null,'ambition'); document.getElementById('gaT').value='Fem placeringar under Q4'; saveGeneral('');
+    go('goals'); openGoal(null,'rkay','utveckling'); document.getElementById('glT').value='Mixa vocals själv'; saveGoal('','rkay');
+    ${wait(300)} await sync(true);
+    const gen = (await sb('/records?select=data&kind=eq.agenda')).map(x=>x.data).find(d=>d.text==='Fem placeringar under Q4');
+    const goal = (await sb('/records?select=data&kind=eq.goal')).map(x=>x.data).find(d=>d.text==='Mixa vocals själv');
+    return {gen:gen && {kind:gen.kind, cat:gen.cat, by:gen.by, who:gen.who}, goal:goal && {owner:goal.owner, cat:goal.cat}};`);
+  ok('punkten i allmänna agendan ligger på servern — gemensam, utan ägare, med vem som skrev', r.gen && r.gen.kind==='general' && r.gen.cat==='ambition' && r.gen.by==='rkay' && r.gen.who==='', r.gen);
+  ok('målet ligger i RKAYs personliga målsättning', r.goal && r.goal.owner==='rkay' && r.goal.cat==='utveckling', r.goal);
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(400)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    agendaTab='general'; go('agenda'); const gen = document.getElementById('view').innerHTML;
+    goalsWho=null; go('goals'); const over = document.getElementById('view').innerHTML;
+    goalsWho='rkay'; render(); const rk = document.getElementById('view').innerHTML;
+    return {gen:/Fem placeringar under Q4/.test(gen) && /lagt till av RKAY/.test(gen) && !/Mixa vocals själv/.test(gen),
+      over:/Allas målsättningar/.test(over) && /RKAY/.test(over), rk:/Mixa vocals själv/.test(rk) && !/Fem placeringar/.test(rk)};`);
+  ok('hela teamet ser punkten i allmänna agendan — men inte RKAYs mål där', r.gen===true);
+  ok('managern ser RKAYs målsättning — och bara den personliga', r.over && r.rk, r);
+  let gbox = await outbox();
+  ok('allmänna agendan aviserar teamet, målsättningen ingen', gbox.some(m=>m.dedupe_key && /^agenda-gen:az:/.test(m.dedupe_key)) && !gbox.some(m=>/Mixa vocals/.test(m.body||'')), gbox.filter(m=>/agenda/.test(m.kind)).map(m=>m.dedupe_key));
+
   /* ============ BANDO HQ ACCESS MOT SERVERN ============ */
   log('\n── Bando HQ Access mot servern: registrering, kod, profil, admin, grupp, dubbletter ──');
   const goPage = url => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = url; });

@@ -124,12 +124,20 @@ window.bandohqDemo = function(o){
       ['week','RKAY','Mixa Nova-EP:n',true],['week','RKAY','Skicka stems till Kairo',false],
       ['week','ADREY','Vocalsession med Nova',true],['week','ADREY','Comp och tune',false],
       ['week','V2K','3 nya drillbeats',false],['week','PKL','Bounce till Kairo',true],
-      ['week','GIOVANNI','Rensa beatmappen',false],['week','','Städa studio B',false],
-      ['general','AZ','Släppa Novas EP innan jul',false],['general','','Fem placeringar under Q4',false],
-      ['general','V2K','Beatpack på 20 beats',false]
+      ['week','GIOVANNI','Rensa beatmappen',false],['week','','Städa studio B',false]
     ].map((x,i)=>({id:'ag'+i,kind:x[0],week:x[0]==='week'?(()=>{const d=new Date();const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);
       return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})():'',
-      who:x[1],text:x[2],done:x[3],due:'',del:false,up:1})),
+      who:x[1],text:x[2],done:x[3],due:'',del:false,up:1})).concat([
+      /* allmänna agendan: gemensam för hela teamet, utan ägare (by = vem som skrev punkten) */
+      ['projekt','Släppa Novas EP innan jul','Release, video och content i samma veckor.',D(60),'az'],
+      ['projekt','Bygga ett eget releasebolag inom Bando','',D(300),'az'],
+      ['ambition','Fem placeringar hos större artister under Q4','',D(75),'rkay'],
+      ['ambition','Bli Stockholms självklara studio för nya artister','','','az'],
+      ['utveckling','Starkare content och visuals runt varje släpp','Kamerateamet med från första sessionen.','','moez'],
+      ['utveckling','Tydligare uppföljning av artisterna efter passen','','','costa'],
+      ['mojlighet','Sync i reklam och tv — håll utkik efter briefar','Tipsa här så fort något dyker upp.','','adrey'],
+      ['mojlighet','Samarbeten med festivaler i sommar','','','v2k']
+    ].map((x,i)=>({id:'ga'+i,kind:'general',cat:x[0],week:'',who:'',text:x[1],note:x[2],due:x[3],by:x[4],done:false,del:false,up:1}))),
     media: MEDIA.map((x,i)=>({id:'md'+i, by:x[2], team:x[1], name:x[0].replace(/\.[^.]+$/,''), file:x[0], fileId:'id:mock'+(300+i),
       path:'/BANDOHQ/Media/'+x[1]+'/'+x[0], type:/\.(mov|mp4)$/.test(x[0])?'video':'image', size:3e6,
       added:new Date(Date.now()-i*864e5).toISOString(), caption:'', artistId:x[3], posted:i===1?{rkay:1}:{}, del:false, up:1})),
@@ -138,9 +146,10 @@ window.bandohqDemo = function(o){
     seed8:1,
     goals:[
       {id:'go1',owner:'rkay',text:'Placera 3 beats hos Nova innan december',due:D(60),status:'aktiv',del:false,up:1},
-      {id:'go2',owner:'rkay',text:'Lära mig mixa vocals själv',due:'',status:'aktiv',del:false,up:1},
+      {id:'go2',owner:'rkay',text:'Lära mig mixa vocals själv',due:'',status:'aktiv',cat:'utveckling',del:false,up:1},
+      {id:'go6',owner:'rkay',text:'Producera för en artist på topplistan',due:'',status:'aktiv',cat:'ambition',del:false,up:1},
       {id:'go3',owner:'rkay',text:'Första släppet med Kairo',due:D(-10),status:'klar',del:false,up:1},
-      {id:'go4',owner:'adrey',text:'Bli bäst på vocalproduktion i crewet',due:'',status:'aktiv',del:false,up:1},
+      {id:'go4',owner:'adrey',text:'Bli bäst på vocalproduktion i crewet',due:'',status:'aktiv',cat:'ambition',del:false,up:1},
       {id:'go5',owner:'v2k',text:'Beatpack på 20 beats',due:D(-3),status:'aktiv',del:false,up:1}],
     plans:[{id:'rkay',text:'Två beats i veckan till Nova.\nEn mixsession med ADREY varje torsdag.\nFråga Kairo om en sommarsingel.',del:false,up:1}],
     /* dbx=1 → Dropbox kopplat och uppsatt (mock-läget svarar i stället för Dropbox) */

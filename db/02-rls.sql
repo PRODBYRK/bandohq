@@ -92,12 +92,16 @@ language sql stable security definer set search_path = public as $$
         when p_kind = 'circle' then bs_is_admin() or bs_leads_circle(p_data)
         else true end
     when bs_is_camera() then p_kind in ('booking','artist','agenda','media','setting')
+      /* målsättningen: kamerateamet har sin egen, som alla i teamet */
+      or (p_kind = 'goal' and p_data->>'owner' = bs_my_id())
+      or (p_kind = 'plan' and p_id = bs_my_id())
     else false end
 $$;
 /* Får jag SKRIVA posten?
    Cirklar, läroplaner och kurser: bara admin. Cirkelpass: bara admin direkt — ledarna
    bokar, flyttar och markerar via funktionerna (03), som kontrollerar tre timmar,
-   krockar och timbanken. Kameran: sin egen agenda och sina egna galleriposter. */
+   krockar och timbanken. Kameran: sin egen agenda, sina egna punkter i allmänna agendan,
+   sina egna galleriposter och sin egen målsättning (mål och plan). */
 create or replace function bs_can_write(p_kind text, p_id text, p_data jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
   select case
@@ -107,8 +111,12 @@ language sql stable security definer set search_path = public as $$
          and not (p_kind = 'booking' and coalesce(p_data->>'circleId','') <> '')
          and not (p_kind = 'setting' and p_id in ('circles','access'))
     when bs_is_camera() then
-         (p_kind = 'agenda' and coalesce(p_data->>'who','') in ('', (bs_me()).name))
+         (p_kind = 'agenda' and coalesce(p_data->>'kind','') <> 'general' and coalesce(p_data->>'who','') in ('', (bs_me()).name))
+      /* allmänna agendan: alla lägger till, men ändrar bara det de själva skrivit */
+      or (p_kind = 'agenda' and p_data->>'kind' = 'general' and p_data->>'by' = bs_my_id())
       or (p_kind = 'media'  and p_data->>'by' = bs_my_id())
+      or (p_kind = 'goal'   and p_data->>'owner' = bs_my_id())
+      or (p_kind = 'plan'   and p_id = bs_my_id())
     else false end
 $$;
 /* Kvar för bakåtkompatibilitet — samma som att skriva. */
