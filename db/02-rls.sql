@@ -176,7 +176,7 @@ begin
   new.id := old.id; new.role := old.role; new.name := old.name;
   new.active := old.active; new.user_id := old.user_id; new.email := old.email;
   new.team := old.team; new.producer := old.producer; new.username := old.username;
-  new.perms := old.perms;
+  new.perms := old.perms; new.producers := old.producers;     /* artistens producenter väljer admin */
   /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
   new.participant := old.participant; new.interests := old.interests;
   new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;

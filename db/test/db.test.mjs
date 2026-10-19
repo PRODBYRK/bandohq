@@ -381,7 +381,7 @@ const krc = await one(`select * from outbox where dedupe_key=$1`,['rcv:'+kr.id])
 ok('kunden får ett kvitto', krc && krc.member_id==='kund' && krc.email==='kund@b.se' && /Vi har tagit emot/.test(krc.subject), krc);
 ok('kundens vy visar producenten', (await as(db,U.kund,()=>rpc('my_view',{}))).producer==='RKAY');
 ok('och förfrågan', (await as(db,U.kund,()=>rpc('my_view',{}))).bookings.some(b=>b.id===kr.id && b.status==='request'));
-ok('kunden kan inte svara själv', /Bara admin och kundens producent/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
+ok('kunden kan inte svara själv', /Bara admin och artistens producenter/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
 await as(db,U.rkay,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'}));
 const kbk = await q(`select * from outbox where kind='booked' and member_id='kund'`);
 ok('producenten godkänner → kunden får orderbekräftelsen', kbk.length===1 && /tor 10 dec 12:00-15:00 · THE BOOTH/.test(kbk[0].body), kbk);
@@ -1020,6 +1020,60 @@ await q(`insert into records(kind,id,data,up) values
 await as(db,U.az,()=>rpc('delete_member',{p_id:'tmpc'}));
 const g5 = await one(`select del, data->>'by' b from records where id='gen5'`), w5 = await one(`select del from records where id='wk5'`), t5 = await one(`select del from records where id='tg5'`);
 ok('radera en person: punkterna i allmänna agendan ligger kvar (utan namnet), det personliga försvinner', g5 && !g5.del && g5.b==='' && w5.del && t5.del, {g5, w5, t5});
+}
+
+/* ============ PRODUCENTER PER ARTIST ============ */
+{
+head('Producenter per artist (och RKAY som admin och producent)');
+await q(`delete from outbox`);
+const J = rows => JSON.stringify(rows), CA = fn => as(db,U.costa,fn);
+const box = async k => q(`select * from outbox where dedupe_key like $1 order by id`,[k]);
+/* en admin som också producerar, och en artist med två producenter */
+const pu = await user('prodadmin@b.se'), ar = await user('artist7@b.se'), pz = await user('prod9@b.se');
+await q(`insert into members(id,user_id,role,name,email,perms) values('pa1',$1,'admin','Prod Admin','prodadmin@b.se','{producer}')`,[pu]);
+await q(`insert into members(id,user_id,role,name,email) values('pz9',$1,'producer','PZ','prod9@b.se')`,[pz]);
+await q(`insert into members(id,user_id,role,name,email,producers,producer) values('ar7',$1,'customer','Artist Sju','artist7@b.se','{pa1,pz9}','pa1')`,[ar]);
+await q(`insert into member_pnr(member_id,pnr_enc,pnr_hash,birth) values('ar7','\\x00','h-ar7','990101')`);
+const prodOk = (await one(`select bs_is_producer('pa1') a, bs_is_producer('pz9') b, bs_is_producer('costa') c, bs_is_producer('rkay') d`));
+ok('producent är en egenskap: admin med behörigheten producer räknas, admin utan gör det inte', prodOk.a && prodOk.b && !prodOk.c && prodOk.d, prodOk);
+const AR = fn => as(db, ar, fn);
+const v7 = await AR(()=>rpc('my_view',{}));
+ok('artisten ser sina producenter — och bara dem', JSON.stringify(v7.producers.map(p=>p.name))==='["PZ","Prod Admin"]', v7.producers);
+const req = (o) => AR(()=>rpc('request_customer_slot', Object.assign({p_date:'2026-12-14',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'[]'}, o)));
+ok('artist med producenter måste välja en', /Välj vilken producent/.test(await boom(()=>req({}))||''));
+ok('och kan inte boka med någon annans', /Du kan inte boka med RKAY/.test(await boom(()=>req({p_with:'["RKAY"]'}))||''));
+ok('okänd producent nekas', /Okänd producent/.test(await boom(()=>req({p_with:'["Ingen Alls"]'}))||''));
+await q(`insert into records(kind,id,data,up) values('booking','pzbusy','{"id":"pzbusy","studio":"A","date":"2026-12-14","start":"13:00","end":"16:00","who":"RKAY","with":["PZ"],"status":""}',1)`);
+ok('en upptagen producent går inte att boka den tiden', /PZ är upptagen/.test(await boom(()=>req({p_with:'["PZ"]'}))||''));
+ok('upptagen tid syns för artisten utan namn eller titel', v7.producerBusy.length===0
+   && (await AR(()=>rpc('my_view',{}))).producerBusy.some(x=>x.name==='PZ' && x.date==='2026-12-14' && x.start==='13:00' && !('who' in x) && !('title' in x)));
+const r1 = await req({p_with:'["Prod Admin"]'});
+ok('artisten bokar med sin producent: producenten står på passet', JSON.stringify(r1.with)==='["Prod Admin"]' && r1.status==='request', r1);
+const toR = (await q(`select member_id from outbox where dedupe_key like $1`, ['req:'+r1.id+'%'])).map(x=>x.member_id).sort();
+ok('förfrågan går till admins och den valda producenten — inte till den andra', toR.includes('pa1') && toR.includes('az') && !toR.includes('pz9'), toR);
+ok('en producent artisten inte valt kan inte svara', /artistens producenter/.test(await boom(()=>as(db,pz,()=>rpc('answer_request',{p_booking:r1.id,p_approve:true,p_studio:'B'})))||''));
+const ans = await as(db,pu,()=>rpc('answer_request',{p_booking:r1.id,p_approve:true,p_studio:'B'}));
+ok('den valda producenten godkänner', ans.status==='' && ans.studio==='B', ans);
+const bk = (await q(`select member_id from outbox where kind='booked'`)).map(x=>x.member_id);
+ok('bekräftelsen går till artisten och producenten', bk.includes('ar7') && bk.includes('pa1'), bk);
+await q(`update records set data = data || '{"date":"2026-10-01","start":"10:00","end":"13:00"}'::jsonb where id=$1`, [r1.id]);
+ok('producenten artisten bokat med får avsluta passet', (await as(db,pu,()=>rpc('close_session',{p_booking:r1.id,p_paid:true,p_note:null}))).points===100);
+ok('kontakten vid sen avbokning är huvudproducenten', (await AR(()=>rpc('my_view',{}))).contact.name==='Prod Admin');
+const ai = (await CA(()=>rpc('artist_intel',{}))).find(x=>x.id==='ar7');
+ok('Artist Intelligence listar artistens producenter', ai.producers.includes('PZ') && ai.producers.includes('Prod Admin'), ai.producers);
+/* bara admin väljer producenterna */
+await AR(()=>q(`update members set producers='{rkay}' where id='ar7'`));
+await as(db,pz,()=>q(`update members set producers='{rkay}' where id='ar7'`).catch(()=>null));
+ok('artisten och en producent kan inte ändra listan', JSON.stringify((await one(`select producers from members where id='ar7'`)).producers)==='["pa1","pz9"]');
+await CA(()=>q(`update members set producers='{pz9}', producer='pz9' where id='ar7'`));
+ok('admin ändrar den', JSON.stringify((await one(`select producers from members where id='ar7'`)).producers)==='["pz9"]');
+/* en artist utan producenter väljer ingen — förfrågan går till admins */
+const nu = await user('artist8@b.se');
+await q(`insert into members(id,user_id,role,name,email) values('ar8',$1,'customer','Artist Åtta','artist8@b.se')`,[nu]);
+await q(`insert into member_pnr(member_id,pnr_enc,pnr_hash,birth) values('ar8','\\x00','h-ar8','990101')`);
+ok('en artist utan producenter kan inte välja någon', /crewet väljer/.test(await boom(()=>as(db,nu,()=>rpc('request_customer_slot',{p_date:'2026-12-15',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'["PZ"]'})))||''));
+const r8 = await as(db,nu,()=>rpc('request_customer_slot',{p_date:'2026-12-15',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'[]'}));
+ok('men bokar utan — som förut', r8.status==='request' && r8.with.length===0, r8);
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

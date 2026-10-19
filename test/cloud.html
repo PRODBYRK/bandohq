@@ -876,6 +876,38 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   const hist2 = await sql(`select count(*)::int n from record_history where op = 'personnummer i rapport'`);
   ok('och uttaget loggas', hist2[0].n===1, hist2);
 
+  /* ============ PRODUCENTER PER ARTIST MOT SERVERN ============ */
+  log('\n── Producenter per artist mot servern ──');
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    const alva = accounts().find(a=>a.n==='Alva Strand');
+    openArtistProfile(alva.id); ${wait(300)} pickProd.pf = new Set(['rkay']); saveArtistProds(alva.id); ${wait(200)} await sync(true);
+    return (await sb('/members?select=producers,producer&name=eq.Alva%20Strand'))[0];`);
+  ok('admin väljer artistens producent — sparat på servern', r && JSON.stringify(r.producers)==='["rkay"]' && r.producer==='rkay', r);
+  w = await boot();
+  r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
+    await cloudView(); render();
+    const html = document.getElementById('view').innerHTML, pre = [...(bookWith||[])];
+    let wrong = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(9)}',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:['AZ']}); }catch(e){ wrong = e.message; }
+    openSlot('${D(9)}','12:00'); await sendSlot('${D(9)}'); ${wait(200)}
+    const srv = (await sbRpc('my_view',{})).bookings.find(b=>b.date==='${D(9)}' && b.status==='request');
+    return {chips:/BOKA MED/.test(html) && /RKAY/.test(html), pre, wrong, srv:srv && {with:srv.with, id:srv.id}};`);
+  ok('artisten ser sin producent förvald', r.chips && JSON.stringify(r.pre)==='["RKAY"]', r);
+  ok('servern nekar någon som inte är artistens producent', /Du kan inte boka med AZ/.test(r.wrong), r.wrong);
+  ok('förfrågan med RKAY ligger på servern', r.srv && JSON.stringify(r.srv.with)==='["RKAY"]', r.srv);
+  const reqId = r.srv && r.srv.id;
+  let pbox = await outbox();
+  ok('RKAY får förfrågan — inte ADREY', pbox.some(m=>m.kind==='request' && m.member_id==='rkay' && /Alva Strand/.test(m.subject||'')) && !pbox.some(m=>m.kind==='request' && m.member_id==='adrey' && /Alva/.test(m.subject||'')), pbox.filter(m=>m.kind==='request').map(m=>m.member_id));
+  w = await boot();
+  r = await ev(w,`${LOGIN('rkay','rkay12345')} ${wait(400)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true); go('today'); const inbox = document.getElementById('view').innerHTML;
+    openApprove('${reqId}'); await doApprove('${reqId}', 'A'); ${wait(200)} await sync(true);
+    const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.${reqId}'))[0].data;
+    return {inbox:/Alva Strand/.test(inbox) && /med RKAY/.test(inbox), srv:{status:srv.status, studio:srv.studio, with:srv.with}};`);
+  ok('RKAY ser förfrågan i sin inkorg och godkänner', r.inbox && r.srv.status==='' && r.srv.studio==='A' && JSON.stringify(r.srv.with)==='["RKAY"]', r);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

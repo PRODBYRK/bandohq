@@ -384,3 +384,14 @@ create table if not exists member_pnr (
   birth      text not null,
   created_at timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------
+--  PRODUCENTER PER ARTIST (2026-10)
+--  producers: de producenter (members.id) artisten kan boka med — admin väljer. producer
+--  (en) finns kvar som huvudproducent och hålls lika med den första i listan. Admins och
+--  managers som också producerar har behörigheten 'producer' i perms (03: bs_is_producer).
+-- ---------------------------------------------------------------------
+alter table members add column if not exists producers text[] not null default '{}';
+update members set producers = array[producer]
+ where coalesce(producer,'') <> '' and cardinality(producers) = 0;
+

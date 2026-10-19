@@ -18,6 +18,7 @@ await db.exec(`insert into members(id,role,name,email) values('az','manager','AZ
   insert into records(kind,id,data,up) values('circle','k1','{"id":"k1","n":"Prod 1","leader":"Lea Ström","members":["pa"]}',1),
     ('booking','cb1','{"id":"cb1","studio":"A","date":"2030-02-01","start":"10:00","end":"13:00","who":"Lea Ström","circleId":"k1","status":""}',1);
   insert into push_subs(member_id,endpoint,p256dh,auth) values('rkay','https://push.example/x','${'k'.repeat(87)}','${'a'.repeat(22)}');`);
+await db.exec(`update members set producer='rkay' where id='k1'`);
 for (const f of files) await db.exec(readFileSync(newDir + '/' + f, 'utf8'));
 const r = (await db.query(`select pg_get_function_arguments(p.oid) a from pg_proc p where proname='request_customer_slot'`)).rows;
 const pol = (await db.query(`select policyname from pg_policies where tablename='members' order by 1`)).rows.map(x=>x.policyname);
@@ -36,5 +37,8 @@ console.log(JSON.stringify({web, fns}));
 const acc = (await db.query(`select participant, cardinality(interests) n from members where id='k1'`)).rows[0];
 const key = (await db.query(`select length(value) n from bs_secrets where name='pnr_key'`)).rows[0];
 console.log(JSON.stringify({acc, key}));
-const ok = acc && acc.participant===true && acc.n===0 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
+/* producenter per artist: kundens producent blev första i listan */
+const prods = (await db.query(`select producers from members where id='k1'`)).rows[0].producers;
+console.log(JSON.stringify({prods}));
+const ok = JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===0 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
 console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);

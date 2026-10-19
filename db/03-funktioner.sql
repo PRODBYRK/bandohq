@@ -641,7 +641,7 @@ begin
       'producer', (select name from members where id = me.producer and active),
       /* den kunden hör av sig till om det är mindre än en timme kvar: sin producent, annars gruppens ledare */
       'contact', coalesce((select jsonb_build_object('name', name, 'email', email, 'phone', phone)
-                    from members where id = me.producer and active),
+                    from members where id = coalesce(nullif(me.producer,''), me.producers[1]) and active),
                   case when lead.id is not null then jsonb_build_object('name', lead.name, 'email', lead.email, 'phone', lead.phone) end),
       'circle', case when circ is null then null else jsonb_build_object('id', circ->>'id', 'n', circ->>'n',
                   'subject', circ->>'subject', 'leader', circ->>'leader', 'size', jsonb_array_length(coalesce(circ->'members','[]'::jsonb))) end,
@@ -656,6 +656,16 @@ begin
                   where r.kind = 'booking' and not r.del and r.data->>'status' = 'done'
                     and coalesce(r.data->'present','[]'::jsonb) ? me.id), 0),
       'access', bs_acfg(),
+      /* producenterna artisten kan boka med, och när de är upptagna (utan namn eller titel på passet) */
+      'producers', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'name', p.name, 'color', p.color, 'glow', p.glow,
+                    'email', p.email, 'phone', p.phone) order by p.name)
+                    from members p where p.id = any(me.producers) and bs_is_producer(p.id)), '[]'::jsonb),
+      'producerBusy', coalesce((select jsonb_agg(jsonb_build_object('name', p.name, 'date', r.data->>'date', 'start', r.data->>'start', 'end', r.data->>'end'))
+                    from members p join records r on r.kind = 'booking' and not r.del
+                      and coalesce(r.data->>'status','') not in ('request','declined')
+                      and (r.data->>'who' = p.name or coalesce(r.data->'with','[]'::jsonb) ? p.name)
+                      and (r.data->>'date')::date between current_date - 1 and current_date + 120
+                   where p.id = any(me.producers) and bs_is_producer(p.id)), '[]'::jsonb),
       'profile', jsonb_build_object('pnr', exists (select 1 from member_pnr where member_id = me.id),
                   'registered', me.registered_at, 'consent', me.consent_at is not null),
       'bookings', coalesce((select jsonb_agg(data) from records
@@ -778,11 +788,15 @@ declare d jsonb;
 begin
   select data into d from records where kind='booking' and id = p_booking and not del;
   if d is null or d->>'status' <> 'request' then raise exception 'Förfrågan finns inte längre'; end if;
-  /* cirkelförfrågan: ledaren (eller admin). Kundförfrågan: admin eller kundens producent. */
+  /* cirkelförfrågan: ledaren (eller admin). Kundförfrågan: admin, de producenter artisten valt —
+     eller, om hen inte valt någon, artistens producenter. */
   if coalesce(d->>'circleId','') <> '' then
     if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan svara'; end if;
-  elsif not (bs_is_admin() or exists (select 1 from members where id = d->>'reqBy' and producer = bs_my_id())) then
-    raise exception 'Bara admin och kundens producent kan svara';
+  elsif not (bs_is_admin()
+       or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) > 0 and coalesce(d->'with','[]'::jsonb) ? (bs_me()).name)
+       or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) = 0 and exists (select 1 from members where id = d->>'reqBy'
+             and (producer = bs_my_id() or bs_my_id() = any(producers))))) then
+    raise exception 'Bara admin och artistens producenter kan svara';
   end if;
   if not p_approve then return bs_put_booking(d || '{"status":"declined"}'); end if;
   if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
@@ -989,11 +1003,32 @@ begin
   return bs_put_booking(d);
 end $$;
 
+/* Producent är en egenskap, inte bara en roll: rollen producent, eller admin/manager med
+   behörigheten 'producer' (t.ex. RKAY). Bara de kan bokas av artister. */
+create or replace function bs_is_producer(p_member text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from members where id = p_member and active
+                    and (role::text = 'producer' or (role::text in ('manager','admin') and 'producer' = any(perms))))
+$$;
+/* Är personen (namnet på passen) upptagen? Pass där hen bokat eller är med; förfrågningar och
+   avböjda tar ingen tid. */
+create or replace function bs_person_busy(p_name text, p_span tsrange, p_ignore text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from records r where r.kind = 'booking' and not r.del
+                    and coalesce(r.data->>'status','') not in ('request','declined')
+                    and r.id <> coalesce(p_ignore,'')
+                    and (r.data->>'who' = p_name or coalesce(r.data->'with','[]'::jsonb) ? p_name)
+                    and bs_span(r.data) && p_span)
+$$;
+
 /* Kunden ser lediga tider och skickar en förfrågan. Studion är ett önskemål;
-   ingen tid reserveras förrän crewet godkänt (answer_request). */
-create or replace function request_customer_slot(p_date date, p_start text, p_end text, p_studio text default '', p_note text default '')
-returns jsonb language plpgsql security definer set search_path = public as $$
-declare me members := bs_me(); d jsonb;
+   ingen tid reserveras förrän crewet godkänt (answer_request). Producenterna (p_with, namn)
+   väljs bland artistens egna (members.producers) och måste vara lediga. */
+drop function if exists request_customer_slot(date, text, text, text, text);
+create or replace function request_customer_slot(p_date date, p_start text, p_end text, p_studio text default '',
+  p_note text default '', p_with jsonb default '[]') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me members := bs_me(); d jsonb; allowed text[]; asked text[]; chosen text[]; bad text; nm text;
 begin
   if me.role is distinct from 'customer' then raise exception 'Bara kunder skickar förfrågningar här'; end if;
   if p_date < current_date then raise exception 'Välj en dag framåt i tiden'; end if;
@@ -1001,14 +1036,29 @@ begin
         and data->>'reqBy' = me.id) >= 5 then
     raise exception 'Du har redan fem obesvarade förfrågningar';
   end if;
+  /* producenterna: bara artistens egna, minst en när artisten har några */
+  allowed := array(select x from unnest(me.producers) x where bs_is_producer(x));
+  asked := array(select distinct x from jsonb_array_elements_text(case when jsonb_typeof(p_with) = 'array' then p_with else '[]'::jsonb end) x);
+  chosen := array(select m.id from members m where m.active and m.name = any(asked));
+  if cardinality(chosen) <> cardinality(asked) then raise exception 'Okänd producent'; end if;
+  if cardinality(allowed) > 0 then
+    if cardinality(chosen) = 0 then raise exception 'Välj vilken producent du vill boka med'; end if;
+    select x into bad from unnest(chosen) x where x <> all(allowed) limit 1;
+    if bad is not null then raise exception 'Du kan inte boka med %', (select name from members where id = bad); end if;
+  elsif cardinality(chosen) > 0 then
+    raise exception 'Du kan inte välja producent själv — crewet väljer';
+  end if;
   /* Kunden väljer ingen studio — crewet väljer när förfrågan godkänns. */
   d := jsonb_build_object('id', bs_uid('b'), 'studio', '', 'date', p_date::text, 'start', p_start,
     'end', p_end, 'who', me.name, 'title','Studiotid', 'note', left(coalesce(p_note,''),200), 'circleId','',
     'status','request', 'reqBy', me.id, 'hours', null, 'present','[]'::jsonb, 'paid', true,
-    'with','[]'::jsonb, 'artistId','');
+    'with', coalesce((select jsonb_agg(name order by name) from members where id = any(chosen)), '[]'::jsonb), 'artistId','');
   if not bs_three_hours(d) then raise exception 'Ett pass är tre timmar'; end if;
   if bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
   if not bs_any_free(bs_span(d), null) then raise exception 'Den tiden är fullbokad'; end if;
+  for nm in select name from members where id = any(chosen) order by name loop
+    if bs_person_busy(nm, bs_span(d), null) then raise exception '% är upptagen den tiden — välj en annan tid', nm; end if;
+  end loop;
   return bs_put_booking(d);
 end $$;
 
@@ -1118,7 +1168,7 @@ begin
   end if;
   if coalesce(d->>'status','') = 'done' then raise exception 'Passet är redan genomfört'; end if;
   if coalesce(d->>'status','') = '' and bs_starts(d) < now() + interval '1 hour' then
-    who := case when me.role = 'customer' then (select name from members where id = me.producer and active)
+    who := case when me.role = 'customer' then coalesce(d->'with'->>0, (select name from members where id = me.producer and active))
                 else d->>'who' end;
     raise exception 'Det är mindre än en timme kvar — hör av dig till %', coalesce(who, 'din producent');
   end if;
@@ -1328,7 +1378,8 @@ $$;
 /* Får jag avsluta passet och skriva omdöme? Admin, kundens producent eller en producent som var med. */
 create or replace function bs_may_close(d jsonb, cu members) returns boolean
 language sql stable security definer set search_path = public as $$
-  select bs_is_admin() or (bs_is_crew() and (cu.producer = bs_my_id() or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
+  select bs_is_admin() or (bs_is_crew() and (cu.producer = bs_my_id() or bs_my_id() = any(cu.producers)
+                                            or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
                                             or d->>'closedBy' = (bs_me()).name))
 $$;
 
@@ -1563,7 +1614,8 @@ language sql stable security definer set search_path = public as $$
       'producers', (select coalesce(jsonb_agg(distinct p), '[]'::jsonb) from (
           select jsonb_array_elements_text(coalesce(bk.d->'with','[]'::jsonb)) p from bk where bk.mid = m.id
           union select bk.d->>'closedBy' from bk where bk.mid = m.id and bk.d->>'closedBy' is not null
-          union select name from members where id = m.producer) x where p is not null),
+          union select name from members where id = m.producer
+          union select name from members where id = any(m.producers)) x where p is not null),
       'available', (select available from bs_balance(m.id)), 'earned', (select earned from bs_balance(m.id)),
       'level', (select name from bs_member_level(m.id)),
       'notes', (select count(*) from artist_notes n where n.member_id = m.id),
@@ -1926,6 +1978,8 @@ language sql stable security definer set search_path = public as $$
     from members m where m.role::text in ('customer','participant')
 $$;
 
+revoke all on function bs_person_busy(text, tsrange, text) from public, anon, authenticated;
+revoke all on function bs_is_producer(text) from public, anon, authenticated;
 revoke all on function bs_access_default() from public, anon, authenticated;
 revoke all on function bs_acfg() from public, anon, authenticated;
 revoke all on function bs_interest_ids() from public, anon, authenticated;

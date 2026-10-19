@@ -1950,7 +1950,8 @@ function intelPanelList(){
 /* Kunderna i Crew: admin och artist_intel alla, producenter sina egna. */
 function customersSection(){
   const m = me(); if(!m || !isCrewRole(m.r)) return '';
-  const list = accounts().filter(a=>a.r==='customer' && a.active!==false && !a.del && (canIntel() || a.producer===m.id)).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
+  const list = accounts().filter(a=>a.r==='customer' && a.active!==false && !a.del
+    && (canIntel() || a.producer===m.id || (a.producers||[]).includes(m.id))).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
   if(!list.length) return '';
   return `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
     ${list.slice(0, 30).map(a=>{ const bs = live().filter(b=>!b.circleId && b.who===a.n && !['request','declined'].includes(b.status));
@@ -2165,6 +2166,39 @@ function profileBanner(){
         .filter(Boolean).join(', ').replace(/^./, c=>c.toUpperCase())} saknas — behövs för Bando HQ Access.</div></div><span class="chev">›</span></button>`;
 }
 
+/* ---------- producenter per artist ----------
+   Chips för att välja producenter (de som isProducer). Ordningen är den man valde i: den första
+   är huvudproducent (kontakten vid sen avbokning). Bara admin ändrar en artists producenter. */
+const pickProd = {};
+function prodPicker(key, sel, keep){
+  if(!keep || !pickProd[key]) pickProd[key] = new Set(sel || []);
+  const ps = producers();
+  if(!ps.length) return '<div class="tiny muted">Inga producenter än.</div>';
+  return `<div class="chips" id="pp-${key}" style="flex-wrap:wrap;overflow:visible">${ps.map(p=>`<button type="button" class="chip ${pickProd[key].has(p.id)?'on':''}"
+      aria-pressed="${pickProd[key].has(p.id)}" data-id="${p.id}" onclick="togglePick('${key}','${p.id}',this)"><i class="sw" style="background:${p.c}"></i>${esc(p.n)}</button>`).join('')}</div>`;
+}
+function togglePick(key, id, el){
+  const s1 = pickProd[key] = pickProd[key] || new Set();
+  s1.has(id) ? s1.delete(id) : s1.add(id);
+  el.classList.toggle('on', s1.has(id)); el.setAttribute('aria-pressed', s1.has(id));
+}
+function artistProdSection(a){
+  const list = (a.producers||[]).map(byId).filter(Boolean);
+  if(!can('manageCrew')) return list.length
+    ? `<div class="chips" ${CHIPWRAP}>${list.map(p=>`<span class="chip on" style="cursor:default"><i class="sw" style="background:${p.c}"></i>${esc(p.n)}</span>`).join('')}</div>`
+    : '<div class="empty">Inga producenter valda — crewet väljer när förfrågan godkänns.</div>';
+  return `${prodPicker('pf', a.producers||[])}
+    <div class="tiny muted" style="margin-top:6px;line-height:1.5">Artisten väljer bland dessa när hen bokar, och förfrågan går till dem.
+      Den första är huvudproducent. Ingen vald: crewet väljer när förfrågan godkänns.</div>
+    <button class="btn ghost slim" style="margin-top:10px" onclick="saveArtistProds('${a.id}')">SPARA PRODUCENTERNA</button>`;
+}
+function saveArtistProds(id){
+  const a = byId(id); if(!a || !can('manageCrew')) return;
+  const list = [...(pickProd.pf||[])];
+  bump(Object.assign(a, {producers:list, producer:list[0]||''})); save(); sync(true); paintArtist();
+  toast(list.length ? 'Sparat — ' + a.n + ' kan boka med ' + list.map(x=>(byId(x)||{}).n).join(', ') : 'Sparat — crewet väljer producent');
+}
+
 /* ---------- personens profil (crewet): fliken Profil i artistprofilen ---------- */
 function profilePanel(a, bs){
   const today = new Date(), adm = can('manageCrew'), inC = lcircle().filter(c=>(c.members||[]).includes(a.id));
@@ -2186,6 +2220,8 @@ function profilePanel(a, bs){
     ${a.part===false && a.r==='customer' ? '<div class="empty">Inte deltagare i studiocirklarna.</div>'
       : inC.length ? inC.map(c=>`<div class="kv"><span>${esc(c.n)}</span><b>${esc(c.leader ? 'ansvarig ' + c.leader : 'ingen ledare än')}</b></div>`).join('')
       : `<div class="note">Inte placerad i en grupp än.${can('manageCircles') ? ` <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();closeSheet();openDistribute()">Fördela</a>` : ''}</div>`}
+    <div class="eyebrow">KAN BOKA MED<span class="ln"></span></div>
+    ${artistProdSection(a)}
     <div class="eyebrow">BOKNINGAR<span class="ln"></span></div>
     <div class="kv"><span>GENOMFÖRDA</span><b>${nt(done.length,'pass','pass')}</b></div>
     <div class="kv" style="border:0"><span>SENASTE / NÄSTA</span><b>${done[0] ? esc(dayShort(done[0].date)) : '—'} / ${next[0] ? esc(dayShort(next[0].date)) : '—'}</b></div>
@@ -2348,7 +2384,10 @@ const accounts = () => S.accounts.filter(a => !a.del);
 const activeAcc = () => accounts().filter(a => a.active !== false);
 /* "Crewet" är numera ett filter på rollen, inte en egen lista. */
 const crew      = () => activeAcc().filter(a => isCrewRole(a.r));
-const producers = () => activeAcc().filter(a => a.r === 'producer');
+/* Producent är en egenskap: rollen producent, eller admin/manager med behörigheten 'producer'
+   (t.ex. RKAY). Bara de kan bokas av artister. Samma regel som bs_is_producer i databasen. */
+const isProducer = a => !!a && a.active!==false && !a.del && (a.r==='producer' || (['manager','admin'].includes(a.r) && (a.perms||[]).includes('producer')));
+const producers = () => activeAcc().filter(isProducer);
 const lpeople   = () => activeAcc().filter(isPart);     /* deltagare + kunder (Access: alla kunder är cirkeldeltagare) */
 const customers = () => activeAcc().filter(a => a.r === 'customer');
 const cameras   = () => activeAcc().filter(a => a.r === 'camera');
@@ -2402,7 +2441,10 @@ function can(action, t){
     case 'requestSession':  return m.r==='participant' && !!t && (t.members||[]).includes(m.id);
     case 'answerRequest':   return adm || (t && t.leader===m.n);
     /* kundförfrågan: admins och kundens egen producent. t är bokningen. */
-    case 'answerCustomer':  { const c = t && byId(t.reqBy); return adm || (!!c && c.producer===m.id); }
+    /* kundförfrågan: admins och de producenter artisten valt — eller, om hen inte valt någon,
+       artistens producenter. t är bokningen. */
+    case 'answerCustomer':  { const c = t && byId(t.reqBy), w = (t && t.with) || [];
+                              return adm || (w.length ? w.includes(m.n) : (!!c && (c.producer===m.id || (c.producers||[]).includes(m.id)))); }
     case 'answerLeads':     return adm;
     case 'uploadMedia':     return team;
     case 'editMedia':       return crewRole || (!!t && t.by===m.id);
@@ -2936,6 +2978,8 @@ function memberToAcc(m){
     perms: Array.isArray(m.perms) ? m.perms : [],           /* t.ex. artist_intel (Rewards, omdömen, CRM) */
     /* Access: kunden är också cirkeldeltagare, med inriktningar; registreringen sätts bara av servern */
     part: m.participant!==false, interests: Array.isArray(m.interests) ? m.interests : [],
+    /* artistens producenter (admin väljer); producer är den första */
+    producers: Array.isArray(m.producers) && m.producers.length ? m.producers : (m.producer ? [m.producer] : []),
     reg: m.registered_at||'', consent: !!m.consent_at, source: m.source||'',
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
@@ -3016,7 +3060,7 @@ async function cloudPush(){
 /* Kontot i appen → raden i databasen. user_id och användarnamnet skickas aldrig härifrån. */
 const memberRow = a => ({id:a.id, role:a.r, name:a.n, email:a.email||null, phone:a.phone||null, color:a.c||null,
   glow:a.g||null, team:a.team||null, ig:a.ig||null, producer:a.producer||null, active:a.active!==false && !a.del, up:a.up||0,
-  participant:a.part!==false, interests:a.interests||[]});
+  participant:a.part!==false, interests:a.interests||[], producers:a.producers||[]});
 /* En person sparas direkt — en inbjudan kopplas till raden och den måste finnas först. */
 async function pushMember(a){
   await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
@@ -3078,6 +3122,8 @@ async function cloudView(){
   if(v.rates) S.rates = Object.assign({}, S.rates, v.rates);
   S.hoursOverride = v.hours || {};
   S.myProducer = v.producer || '';
+  S.myProducers = v.producers || [];           /* kunden: producenterna hen kan boka med */
+  S.producerBusy = v.producerBusy || [];       /* … och när de är upptagna (utan namn eller titel) */
   if(v.circleCfg) S.circleCfg = Object.assign({up:0}, v.circleCfg);
   S.leaderHours = v.leaderHours || null;    /* ledarens timbank (i år och nästa år), räknad på servern */
   S.reports = Object.fromEntries(Object.entries(v.reports || {}).map(([k,st])=>[k, {status:st}]));
@@ -3546,6 +3592,7 @@ function go(v){
 }
 function render(){
   const m = me(); if(!m) return;
+  slotProd = null;                    /* sätts bara av kundvyn (producenternas upptagna tid) */
   document.getElementById('meBtn').innerHTML = avatar(m, 26) + `<b>${esc(m.n)}</b>`;
   const rv = roleView();
   if(rv !== 'full'){
@@ -5808,7 +5855,8 @@ function openAddPerson(role, existingId){
     circle: (ex && ex.r==='participant' && inviteCircleFor(ex)) || (lcircle().find(c=>adm || c.leader===me().n)||{}).id || '',
     team: ex ? ex.team||'' : '',
     /* en producent som lägger till en kund blir kundens producent */
-    producer: ex ? ex.producer||'' : me().r==='producer' ? me().id : ''};
+    producer: ex ? ex.producer||'' : isProducer(me()) ? me().id : ''};
+  pickProd.ap = new Set(ex ? (ex.producers||[]) : isProducer(me()) ? [me().id] : []);
   paintAddPerson();
 }
 function pickAddRole(r){
@@ -5859,9 +5907,7 @@ function paintAddPerson(){
     ${role==='camera' ? `<label class="lbl" for="apT">TEAM</label>
       <input id="apT" list="teamList2" value="${esc(d.team||'')}" placeholder="t.ex. D2L — lämna tomt om personen är ett eget team" oninput="addDraft.team=this.value.trim()">
       <datalist id="teamList2">${[...new Set(cameras().map(a=>a.team).filter(Boolean))].map(t=>`<option value="${esc(t)}">`).join('')}</datalist>` : ''}
-    ${role==='customer' ? `<label class="lbl" for="apK">KUNDENS PRODUCENT</label>
-      <select id="apK" onchange="addDraft.producer=this.value"><option value="">Ingen särskild</option>
-        ${producers().map(c=>`<option value="${c.id}" ${d.producer===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>` : ''}
+    ${role==='customer' ? `<label class="lbl">ARTISTEN KAN BOKA MED</label>${prodPicker('ap', [...(pickProd.ap||[])], true)}` : ''}
     <button class="btn" style="margin-top:22px" onclick="saveAddPerson()">${ex ? 'SKICKA INBJUDAN' : PREVIEW_LOGIN ? 'LÄGG TILL' : 'LÄGG TILL OCH SKICKA INBJUDAN'}</button>
     <div id="apOut"></div>`);
 }
@@ -5891,18 +5937,18 @@ async function saveAddPerson(){
   if(role==='participant' && !partCircle) return toast(can('manageCircles') ? 'Skapa en cirkel först' : 'Du kan bara lägga till deltagare i grupper du leder');
   const leads = d.lead ? d.leads.filter(id=>circleById(id)) : [];
   if(d.lead && !leads.length) return toast(lcircle().length ? 'Välj vilken cirkel hen ska leda' : 'Skapa en cirkel först');
-  const team = role==='camera' ? (d.team||'') : '', producer = role==='customer' ? (d.producer||'') : '';
+  const team = role==='camera' ? (d.team||'') : '', prodList = role==='customer' ? [...(pickProd.ap||[])] : [], producer = prodList[0] || '';
   /* personen läggs in (eller uppdateras) först — inbjudan kopplas sedan till raden */
   let acc = ex;
   if(!acc){
     const pal = PALETTE[S.accounts.length % PALETTE.length], tm = isTeamRole(role);
-    acc = bump({id:'m_'+uid(), n:name, r:role, email:em, phone:'', team, producer,
+    acc = bump({id:'m_'+uid(), n:name, r:role, email:em, phone:'', team, producer, producers:prodList,
       c: tm?pal[0]:'#6633b8', g: tm?pal[1]:'#9d5cf5', active:true, del:false, login:false});
     S.accounts.push(acc);
     const c = partCircle ? circleById(partCircle) : null;
     if(c){ c.members = (c.members||[]).concat(acc.id); bump(c); }
   } else {
-    bump(Object.assign(acc, {email:em || acc.email}, role==='camera' ? {team} : {}, role==='customer' ? {producer} : {}));
+    bump(Object.assign(acc, {email:em || acc.email}, role==='camera' ? {team} : {}, role==='customer' && can('manageCrew') ? {producer, producers:prodList} : {}));
   }
   /* cirkelledare: sätts direkt på cirklarna (och tas bort från dem man avmarkerat) */
   const changed = [];
@@ -6960,19 +7006,37 @@ function busySpans(date, studio, list){
   }
   return out.sort((x,y)=>x[0]-y[0]);
 }
+/* Kundens valda producenter: {names, busy:[{name,date,start,end}]} — sätts av kundvyn, annars null.
+   Deras upptagna tid stänger starttider på samma sätt som fullbokade studior. */
+let slotProd = null, slotBusyName = '';
+function prodSpans(date){
+  if(!slotProd || !slotProd.names.length) return [];
+  const prev = iso(addDays(fromIso(date), -1)), out = [];
+  for(const b of slotProd.busy){
+    if(!slotProd.names.includes(b.name) || (b.date !== date && b.date !== prev)) continue;
+    const s = toMin(b.start), e = toMin(b.end), night = e <= s;
+    if(b.date === date) out.push([s, night ? e + 1440 : e, b.name]);
+    else if(night && e > 0) out.push([0, e, b.name]);
+  }
+  return out.sort((x,y)=>x[0]-y[0]);
+}
 /* En starttid är 'ok' när minst en studio är ledig hela passet, annars 'taken'.
-   'past' = redan passerad (eller mindre än en halvtimme bort), 'closed' = utanför öppettiden. */
-function slotState(date, list, hm, spans){
+   'producer' = en vald producent är upptagen. 'past' = redan passerad (eller mindre än
+   en halvtimme bort), 'closed' = utanför öppettiden. */
+function slotState(date, list, hm, spans, pspans){
   if(!/^\d\d:\d\d$/.test(hm||'')) return 'closed';
   const t = toMin(hm), now = new Date();
   if(t < toMin(openFrom()) || t + SLOT > dayEnd()) return 'closed';
   if(date < iso(now) || (date === iso(now) && t < now.getHours()*60 + now.getMinutes() + 30)) return 'past';
   spans = spans || ['A','B'].map(st=>busySpans(date, st, list));
-  return spans.some(sp => !sp.some(([s,e]) => s < t + SLOT && t < e)) ? 'ok' : 'taken';
+  if(!spans.some(sp => !sp.some(([s,e]) => s < t + SLOT && t < e))) return 'taken';
+  const hit = (pspans || prodSpans(date)).find(([s,e]) => s < t + SLOT && t < e);
+  if(hit){ slotBusyName = hit[2]; return 'producer'; }
+  return 'ok';
 }
 function slotStarts(date, list){
-  const spans = ['A','B'].map(st=>busySpans(date, st, list)), out = [];
-  for(let t = toMin(openFrom()); t + SLOT <= dayEnd(); t += 30) out.push({t, hm:toHm(t), st:slotState(date, list, toHm(t), spans)});
+  const spans = ['A','B'].map(st=>busySpans(date, st, list)), ps = prodSpans(date), out = [];
+  for(let t = toMin(openFrom()); t + SLOT <= dayEnd(); t += 30) out.push({t, hm:toHm(t), st:slotState(date, list, toHm(t), spans, ps)});
   return out;
 }
 /* Det som visas som knappar: hela timmar, och en halvtimme bara när den är enda vägen in. */
@@ -6980,9 +7044,10 @@ const shownStarts = ss => ss.filter((s,i) => s.st!=='past' && (s.t % 60 === 0
   || (s.st==='ok' && (ss[i-1]||{}).st!=='ok' && (ss[i+1]||{}).st!=='ok')));
 function dayState(date, list){
   const ss = slotStarts(date, list);
-  return ss.some(s=>s.st==='ok') ? 'free' : ss.some(s=>s.st==='taken') ? 'full' : 'past';
+  return ss.some(s=>s.st==='ok') ? 'free' : ss.some(s=>s.st==='taken' || s.st==='producer') ? 'full' : 'past';
 }
 const slotWhy = st => st==='taken' ? 'Båda studiorna är bokade då. Välj en annan starttid.'
+  : st==='producer' ? `${slotBusyName || 'Producenten'} är upptagen då. Välj en annan tid${slotProd && slotProd.names.length > 1 ? '' : ' eller en annan producent'}.`
   : st==='past' ? 'Den tiden har redan varit eller är för nära — välj en senare.'
   : `Studion har öppet ${openFrom()}–${openTo()}. Ett pass är tre timmar, så sista starttid är ${toHm(dayEnd()-SLOT)}.`;
 /* Starttidsfältet: visar sluttiden och varför tiden inte går. p = prefix för fältens id. */
@@ -7020,7 +7085,10 @@ function slotPicker(c){
         <span>${d===today ? 'IDAG' : DAY[x.getDay()]}</span><b>${x.getDate()}</b>
         <i>${s==='free' ? MON[x.getMonth()] : s==='full' ? 'fullbokat' : 'stängt'}</i></button>`; }).join('')}</div>
     <div class="tl" aria-label="Bokat ${esc(longDate(ds).toLowerCase())}">
-      ${bar('A')}${bar('B')}
+      ${bar('A')}${bar('B')}${slotProd && slotProd.names.length ? slotProd.names.map(nm=>`<div class="tl-n">${esc(nm)}</div>
+        <div class="tl-bar">${nowMin > from ? `<i class="tl-past" style="width:${pct(nowMin).toFixed(2)}%"></i>` : ''}
+          ${prodSpans(ds).filter(([s,e,n])=>n===nm && e > from && s < to).map(([s,e])=>`<i class="tl-b" style="left:${pct(s).toFixed(2)}%;width:${(pct(e)-pct(s)).toFixed(2)}%"
+            title="${esc(nm)} upptagen ${toHm(s%1440)}–${toHm(e%1440)}"><span>Upptagen</span></i>`).join('')}</div>`).join('') : ''}
       <div class="tl-ax">${ticks.map(t=>`<span style="left:${pct(t).toFixed(2)}%;${t===from?'transform:none':t>=to?'transform:translateX(-100%)':''}">${toHm(t%1440)}</span>`).join('')}</div>
       <div class="tl-key"><span><i class="k-free"></i>Ledigt</span><span><i class="k-b"></i>Bokat</span>${
         c.mine ? `<span><i class="k-own"></i>${esc(c.mineLabel)}</span>` : ''}</div>
@@ -7028,7 +7096,7 @@ function slotPicker(c){
     <div class="lbl" style="margin-top:16px">STARTTID <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— passet är 3 timmar</span></div>
     ${shown.length ? `<div class="chips wrap slots">${shown.map(s => s.st==='ok'
         ? `<button class="chip slot ${c.sel===s.hm?'on':''}" onclick="${c.startJs(ds, s.hm)}">${s.hm}–${plusSlot(s.hm)}</button>`
-        : `<button class="chip slot taken" disabled title="Bokat">${s.hm}–${plusSlot(s.hm)}</button>`).join('')}</div>` : ''}
+        : `<button class="chip slot taken" disabled title="${s.st==='producer' ? 'Producenten är upptagen' : 'Bokat'}">${s.hm}–${plusSlot(s.hm)}</button>`).join('')}</div>` : ''}
     ${st==='full' ? `<div class="note" style="margin-top:6px"><b>Fullbokat</b> ${ds===today?'resten av dagen':'den här dagen'}. Välj en annan dag.</div>`
       : st==='past' ? `<div class="note" style="margin-top:6px">Inga fler tider ${ds===today?'idag':'den här dagen'}. Välj en annan dag.</div>` : ''}`;
 }
@@ -7069,6 +7137,9 @@ async function cancelMine(id){
 function myContact(b){
   const m = me(); if(!m) return null;
   if(m.r==='customer'){
+    /* passets producent i första hand, sedan huvudproducenten */
+    const w = b && (b.with||[])[0], wp = w && (myProducers().find(x=>x.name===w) || (byName(w) ? {name:w, email:byName(w).email, phone:byName(w).phone} : null));
+    if(wp) return {name:wp.name, email:wp.email||'', phone:wp.phone||''};
     const p = S.contact || byId(m.producer);
     return p ? {name:p.name||p.n, email:p.email||'', phone:p.phone||''} : null;
   }
@@ -7100,20 +7171,49 @@ function openLate(id){
 }
 
 /* ---------- KUND ---------- */
+/* Producenterna kunden kan boka med (admin väljer dem per artist) och när de är upptagna. */
+function myProducers(){
+  const m = me(); if(!m || m.r!=='customer') return [];
+  if(remoteRole()) return (S.myProducers||[]).map(p=>({id:p.id, name:p.name, c:p.color||'#7c3aed', g:p.glow||'#a855f7', email:p.email||'', phone:p.phone||''}));
+  return (m.producers||[]).map(byId).filter(isProducer).map(a=>({id:a.id, name:a.n, c:a.c, g:a.g, email:a.email||'', phone:a.phone||''}));
+}
+function producerBusyList(){
+  if(remoteRole()) return S.producerBusy || [];
+  const names = myProducers().map(p=>p.name);
+  return live().filter(b=>!['request','declined'].includes(b.status||'') && !b.busy)
+    .flatMap(b=>names.filter(n=>b.who===n || (b.with||[]).includes(n)).map(n=>({name:n, date:b.date, start:b.start, end:b.end})));
+}
+let bookWith = null;                              /* namnen kunden valt att boka med */
+function toggleBookWith(nm){
+  bookWith = bookWith || new Set();
+  bookWith.has(nm) ? bookWith.delete(nm) : bookWith.add(nm);
+  render();
+}
 function vCustomer(){
   const m = me(), now = new Date(), list = booked();
+  const prods = myProducers(), names = prods.map(p=>p.name);
+  /* en producent: förvald. Flera: kunden väljer. Inga: crewet väljer när förfrågan godkänns. */
+  if(!bookWith || [...bookWith].some(n=>!names.includes(n))) bookWith = new Set(prods.length===1 ? names : [...(bookWith||[])].filter(n=>names.includes(n)));
+  slotProd = prods.length ? {names:[...bookWith], busy:producerBusyList()} : null;
   const mine = live().filter(b=>b.who===m.n && !b.busy).sort((a,b)=>startAt(a)-startAt(b));
   const waiting = mine.filter(b=>b.status==='request' && endAt(b)>now);
   const upcoming = mine.filter(b=>b.status!=='request' && b.status!=='declined' && endAt(b)>now);
   const past = mine.filter(b=>b.status!=='request' && b.status!=='declined' && endAt(b)<=now).reverse();
   const rate = rateFor(m.n), days = bookDays(14), day = pickBookDay(list, days), p = myContact();
-  const sub = b => b.status==='request' ? 'Väntar på svar · studion väljs när den godkänns'
-    : esc(S.studios[b.studio]||'') + (rate ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
+  const withTxt = b => (b.with||[]).length ? ' · med ' + b.with.map(esc).join(', ') : '';
+  const sub = b => b.status==='request' ? 'Väntar på svar' + withTxt(b) + ' · studion väljs när den godkänns'
+    : esc(S.studios[b.studio]||'') + withTxt(b) + (rate ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
   const ci = myCircleInfo(), leadIsContact = p && ci && ci.circle && p.name===ci.circle.leader;
   return `
     ${profileBanner()}
     <div class="h1">Boka studiotid</div>
     <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':pkgs().length?'från '+kr(pkgs()[0].price)+' per session':'pris enligt överenskommelse'}</div>
+
+    ${prods.length ? `<div class="eyebrow" style="margin-top:0">BOKA MED<span class="ln"></span></div>
+      <div class="chips" id="bookWith" style="flex-wrap:wrap;overflow:visible">${prods.map(p=>`<button class="chip ${bookWith.has(p.name)?'on':''}"
+        aria-pressed="${bookWith.has(p.name)}" onclick="toggleBookWith('${esc(p.name)}')"><i class="sw" style="background:${p.c}"></i>${esc(p.name)}</button>`).join('')}</div>
+      <div class="tiny muted" style="margin:6px 0 4px">${bookWith.size ? 'Tiderna nedan visar när ' + (bookWith.size > 1 ? 'alla du valt är lediga' : [...bookWith][0] + ' är ledig') + '.'
+        : 'Välj vem du vill boka med — sedan visar tiderna när de är lediga.'}</div>` : ''}
 
     ${slotPicker({list, days, day, dayJs:d=>`bookDay='${d}';render()`, startJs:(d,hm)=>`openSlot('${d}','${hm}')`,
       mine:b=>b.who===m.n && !b.busy, mineLabel:'Din tid'})}
@@ -7139,9 +7239,11 @@ function vCustomer(){
 function openSlot(date, hm){
   const m = me(), cust = m.r==='customer', c = cust ? null : circleById(simpleCircle);
   if(cust && profileGaps(m)) return openProfileSheet(true);
+  if(cust && myProducers().length && !(bookWith && bookWith.size)) return toast('Välj vem du vill boka med först');
   if(!cust && (!c || !can('requestSession', c))) return toast('Du är inte med i den cirkeln');
   openSheet(`${X}<h2>${cust ? 'Skicka förfrågan' : 'Föreslå en tid'}</h2>
-    <div class="sub">${esc(longDate(date))}${cust ? '' : ' · ' + esc(c.n) + ' · går till <b>' + esc(c.leader) + '</b>'}</div>
+    <div class="sub">${esc(longDate(date))}${cust ? (bookWith && bookWith.size ? ' · med <b>' + [...bookWith].map(esc).join(', ') + '</b>' : '')
+      : ' · ' + esc(c.n) + ' · går till <b>' + esc(c.leader) + '</b>'}</div>
     <label class="lbl" for="slS">STARTTID</label>
     <div class="two"><input type="time" id="slS" value="${hm}" step="1800" oninput="paintSlot('${date}', booked(), 'sl')">
       <div class="slot-end" id="slE"></div></div>
@@ -7158,13 +7260,13 @@ async function sendSlot(date){
   if(paintSlot(date, booked(), 'sl')!=='ok') return;
   const b = plusSlot(a);
   if(m.r==='customer'){
-    const note = document.getElementById('slN').value.trim();
-    const ok = await act('request_customer_slot', {p_date:date, p_start:a, p_end:b, p_studio:'', p_note:note}, ()=>{
+    const note = document.getElementById('slN').value.trim(), withNames = [...(bookWith||[])].sort((x,y)=>x.localeCompare(y,'sv'));
+    const ok = await act('request_customer_slot', {p_date:date, p_start:a, p_end:b, p_studio:'', p_note:note, p_with:withNames}, ()=>{
       S.bookings.push(bump({id:uid(), studio:'', date, start:a, end:b, who:m.n, title:'Studiotid', note, circleId:'',
-        status:'request', reqBy:m.id, hours:null, present:[], with:[], artistId:'', paid:true, del:false}));
+        status:'request', reqBy:m.id, hours:null, present:[], with:withNames, artistId:'', paid:true, del:false}));
       save(); });
     if(!ok) return;
-    closeSheet(); render(); toast('Förfrågan skickad — du får svar på mejlen'); sync(true);
+    closeSheet(); render(); toast('Förfrågan skickad' + (withNames.length ? ' till ' + withNames.join(', ') : '') + ' — du får svar på mejlen'); sync(true);
   } else {
     const c = circleById(simpleCircle);
     const ok = await act('request_session', {p_circle:c.id, p_date:date, p_start:a, p_end:b}, ()=>{
@@ -7193,7 +7295,7 @@ function inboxCard(){
     ${reqs.map(b=>`<div class="srow req">
       <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
       <div class="grow" style="min-width:0"><div class="srow-t">${esc(b.who)}</div>
-        <div class="srow-m">${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end}${b.studio?' · önskar '+esc(S.studios[b.studio]):''}${b.note?' · '+esc(b.note):''}</div></div>
+        <div class="srow-m">${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end}${(b.with||[]).length?' · med '+b.with.map(esc).join(', '):''}${b.studio?' · önskar '+esc(S.studios[b.studio]):''}${b.note?' · '+esc(b.note):''}</div></div>
       <div class="srow-a">${sm('Godkänn',`openApprove('${b.id}')`)}${sm('Avböj',`declineRequest('${b.id}')`,1)}</div></div>`).join('')}`;
 }
 function openLead(id){
@@ -7265,10 +7367,14 @@ function openApprove(id){
   if(!mayAnswer(b)) return toast('Bara cirkelns ledare kan svara');
   const who = byId(b.reqBy);
   const free = ['A','B'].filter(st=>freeAt(st, b.date, b.start, b.end, b.id));
+  /* kundförfrågan: producenterna artisten valde är förvalda — admin kan ändra */
+  const cust = !b.circleId, ids = (b.with||[]).map(n=>(byName(n)||{}).id).filter(Boolean);
   openSheet(`${X}
     <h2>Godkänn förfrågan</h2>
     <div class="sub">${esc(longDate(b.date))} · ${b.start}–${b.end} · från
       <b>${esc(who?who.n:'okänd')}</b></div>
+    ${cust ? `<label class="lbl">PRODUCENT${can('manageCrew') ? '' : ' <span class="muted">— artistens val</span>'}</label>
+      ${can('manageCrew') ? prodPicker('appr', ids) : `<div class="tiny">${(b.with||[]).map(esc).join(', ') || 'Ingen vald'}</div>`}` : ''}
     <label class="lbl">VÄLJ STUDIO</label>
     <div class="studiopick">${['A','B'].map(st=>{
       const ok = free.includes(st);
@@ -7288,7 +7394,8 @@ async function doApprove(id, studio){
   const doit = b.circleId ? circleAct : act;
   if(!await doit('answer_request', {p_booking:id, p_approve:true, p_studio:studio}, ()=>{
     if(b.circleId){ const err = circleSessionError(Object.assign({}, b, {studio}), b.id); if(err) return err; }
-    Object.assign(b, {studio, status:'', up:Date.now()}); save(); })) return;
+    const w = !b.circleId && can('manageCrew') && pickProd.appr ? [...pickProd.appr].map(id=>(byId(id)||{}).n).filter(Boolean) : null;
+    Object.assign(b, {studio, status:'', up:Date.now()}, w ? {with:w} : {}); save(); })) return;
   closeSheet(); render();
   toast('Godkänd · ' + S.studios[studio] + ' bokad'); sync(true);
 }
@@ -7630,8 +7737,8 @@ function openAccount(id){
       <div><label class="lbl" for="acI">INSTAGRAM</label>
         <input id="acI" value="${a?esc(a.ig||''):''}" placeholder="namn utan @" maxlength="30"></div>
     </div>
-    <label class="lbl" for="acK">KUNDENS PRODUCENT <span class="muted">(kund)</span></label>
-    <select id="acK"><option value="">Ingen särskild</option>${producers().map(c=>`<option value="${c.id}" ${a&&a.producer===c.id?'selected':''}>${esc(c.n)}</option>`).join('')}</select>
+    <label class="lbl">ARTISTEN KAN BOKA MED <span class="muted">(kund)</span></label>
+    ${prodPicker('ac', a ? (a.producers||[]) : [])}
     <label class="consent" style="margin-top:14px"><input type="checkbox" id="acPart" ${!a || a.part!==false ? 'checked' : ''}>
       <span><b>Cirkeldeltagare</b> <span class="muted">(kund)</span> — alla som bokar är med i studiocirklarna (Bando HQ Access). Stäng bara av i undantagsfall.</span></label>
 
@@ -7640,6 +7747,8 @@ function openAccount(id){
 
     ${a && can('manageCrew') && isCrewRole(a.r) && !isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acX" ${(a.perms||[]).includes('artist_intel')?'checked':''}>
       <span><b>Artist Intelligence</b> — ser Rewards, alla omdömen och CRM för alla artister</span></label>` : ''}
+    ${a && can('manageCrew') && isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acPr" ${(a.perms||[]).includes('producer')?'checked':''}>
+      <span><b>Producent också</b> — tar sessions och kan väljas som producent för artister</span></label>` : ''}
     <button class="btn" style="margin-top:22px" onclick="saveAccount('${a?a.id:''}')">SPARA</button>
     ${a && a.id!==(me()||{}).id ? `
       ${can('grantManager') ? `<button class="btn danger" style="margin-top:9px" onclick="deletePerson('${a.id}')">RADERA PERSON</button>` : ''}
@@ -7665,7 +7774,7 @@ function saveAccount(id){
   const np = document.getElementById('acP').value.trim();
   const nr = document.getElementById('acR').value;
   const nt_ = document.getElementById('acT').value.trim(), ni = document.getElementById('acI').value.trim().replace(/^@/,'');
-  const nk = document.getElementById('acK').value;
+  const nps = [...(pickProd.ac||[])], nk = nps[0] || '';
   if(!nn) return toast('Fyll i namn');
   if(nr==='manager' && !can('grantManager')) return toast('Bara managern kan göra någon till manager');
   if(ne && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ne)) return toast('E-postadressen ser fel ut');
@@ -7689,14 +7798,15 @@ function saveAccount(id){
       if(S.session && S.session.member===m.n) S.session.member = nn;
       m.n = nn;
     }
-    Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, part:document.getElementById('acPart').checked, up:Date.now()});
-    const px = document.getElementById('acX');
-    if(px && px.checked !== (m.perms||[]).includes('artist_intel')){
-      const perms = px.checked ? (m.perms||[]).concat('artist_intel') : (m.perms||[]).filter(x=>x!=='artist_intel');
-      rw('set_member_perms', {p_member:m.id, p_perms:perms}).then(()=>{ m.perms = perms; save(); }).catch(e=>toast(e.message));
-    }
+    Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, producers:nps, part:document.getElementById('acPart').checked, up:Date.now()});
+    /* behörigheterna: Artist Intelligence (producenter) och Producent också (admin, manager) */
+    let perms = (m.perms||[]).slice();
+    const flag = (id, p) => { const x = document.getElementById(id); if(x) perms = x.checked ? [...new Set(perms.concat(p))] : perms.filter(y=>y!==p); };
+    flag('acX', 'artist_intel'); flag('acPr', 'producer');
+    if(JSON.stringify([...perms].sort()) !== JSON.stringify([...(m.perms||[])].sort()))
+      rw('set_member_perms', {p_member:m.id, p_perms:perms}).then(()=>{ m.perms = perms; save(); render(); }).catch(e=>toast(e.message));
   } else {
-    S.accounts.push({id:uid(), n:nn, r:nr, email:ne, phone:np, team:nt_, ig:ni, producer:nk,
+    S.accounts.push({id:uid(), n:nn, r:nr, email:ne, phone:np, team:nt_, ig:ni, producer:nk, producers:nps,
       part:document.getElementById('acPart').checked, interests:[], c:'#6633b8', g:'#9d5cf5',
       active:true, del:false, up:Date.now()});
   }

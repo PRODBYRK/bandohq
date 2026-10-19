@@ -1189,7 +1189,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const asWho = n => { S.session.member = n; };
     asWho('RKAY'); go('team'); const team = document.getElementById('view').innerHTML;
     openAddPerson('customer'); const roles = [...document.querySelectorAll('#apRoles .chip')].map(b=>b.dataset.r).join(','),
-      prod = document.getElementById('apK').value;
+      prod = [...(pickProd.ap||[])].join(','), prodChip = !!document.querySelector('#pp-ap .chip.on[data-id="rkay"]');
     addDraft.name='Kalle Kund'; addDraft.email='kalle@x.se'; await saveAddPerson();
     const kalle = byName('Kalle Kund'), inv = S.invites.find(i=>i.member_id===(kalle||{}).id);
     openAddPerson('participant'); addDraft.name='Dina Deltagare'; addDraft.email='dina@x.se'; addDraft.circle='c1'; await saveAddPerson();
@@ -1200,12 +1200,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     asWho('Moez'); const cam = can('addClients'); closeSheet(); openAddPerson('customer'); const camSheet = document.getElementById('sheet').classList.contains('on');
     asWho('AZ'); go('team');
     return {team:/\\+ KUND/.test(team) && /\\+ DELTAGARE/.test(team) && !/LÄGG TILL PERSON/.test(team), roles, prod,
-      kalle:kalle && {r:kalle.r, producer:kalle.producer, email:kalle.email}, inv:inv && {role:inv.role, email:inv.email},
+      kalle:kalle && {r:kalle.r, producer:kalle.producer, producers:kalle.producers, email:kalle.email}, inv:inv && {role:inv.role, email:inv.email},
       dina:dina && {r:dina.r, inCircle:(circleById('c1').members||[]).includes(dina.id)},
       waiting:/HAR INTE LOGGAT IN ÄN/.test(team2) && /Kalle Kund/.test(team2), crewBlocked, cam, camSheet};`);
   ok('producenten har knappar för kund och cirkeldeltagare — inte för crewet', r.team===true, r);
   ok('och kan bara välja de två rollerna', r.roles==='participant,customer', r.roles);
-  ok('en kund producenten lägger till blir producentens kund', r.prod==='rkay' && r.kalle && r.kalle.r==='customer' && r.kalle.producer==='rkay' && r.kalle.email==='kalle@x.se', r);
+  ok('en kund producenten lägger till blir producentens kund — och kan boka med hen', r.prod==='rkay' && r.kalle && r.kalle.r==='customer' && r.kalle.producer==='rkay' && JSON.stringify(r.kalle.producers)==='["rkay"]' && r.kalle.email==='kalle@x.se', r);
   ok('och får en inbjudan som kund', r.inv && r.inv.role==='customer' && r.inv.email==='kalle@x.se', r.inv);
   ok('en deltagare läggs i sin cirkel', r.dina && r.dina.r==='participant' && r.dina.inCircle===true, r.dina);
   ok('producenten ser vilka som inte loggat in än', r.waiting===true);
@@ -1641,6 +1641,58 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('Intelligence-listan filtreras', r.il===true);
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
+  /* ============ PRODUCENTER PER ARTIST ============ */
+  log('\n── Producenter per artist (och admin som också är producent) ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const d = new Date(); d.setDate(d.getDate()+4); const day = iso(d);
+    const nora = byId('p2'); Object.assign(nora, {r:'customer', interests:['rap'], consent:true, pnr:'990101-••••', phone:'070-222 22 22', producers:[], producer:''});
+    /* AZ är manager — gör AZ till "producent också" via kontot */
+    S.session.member='AZ'; openAccount('az'); const hasBox = !!document.getElementById('acPr');
+    document.getElementById('acPr').checked = true; saveAccount('az'); await new Promise(r=>setTimeout(r,50));
+    const azProd = isProducer(byId('az')), list = producers().map(p=>p.n).sort().join(',');
+    /* admin väljer Noras producenter i profilen */
+    openArtistProfile('p2'); await new Promise(r=>setTimeout(r,40));
+    const prof = document.getElementById('sheetBody').innerHTML;
+    pickProd.pf = new Set(['rkay','adrey']); saveArtistProds('p2'); closeSheet();
+    const saved = {producers:byId('p2').producers, producer:byId('p2').producer};
+    /* RKAY är upptagen 12–15 den dagen (ett eget pass) */
+    S.bookings.push({id:'rkb', studio:'A', date:day, start:'12:00', end:'15:00', who:'RKAY', title:'Mix', note:'', circleId:'', status:'',
+      hours:null, present:[], with:[], artistId:'', paid:false, up:1, del:false});
+    save();
+    S.session.member='Nora Lind'; bookWith = null; bookDay = day; render();
+    const v0 = document.getElementById('view').innerHTML, chips = [...document.querySelectorAll('#bookWith .chip')].map(b=>b.textContent.trim());
+    openSlot(day, '13:00'); const blocked = !document.getElementById('sheet').classList.contains('on');
+    toggleBookWith('RKAY'); bookDay = day; render();
+    const st12 = slotState(day, booked(), '12:00'), st16 = slotState(day, booked(), '16:00'), v1 = document.getElementById('view').innerHTML;
+    const why = (()=>{ slotState(day, booked(), '13:00'); return slotWhy('producer'); })();
+    openSlot(day, '16:00'); const sheet = document.getElementById('sheetBody').innerHTML; await sendSlot(day);
+    const rq = S.bookings.find(b=>b.who==='Nora Lind' && b.status==='request');
+    const rqv = rq && {with:[...rq.with], studio:rq.studio};
+    S.session.member='RKAY'; go('today'); const rkInbox = document.getElementById('view').innerHTML;
+    const rkCan = can('answerCustomer', rq); S.session.member='ADREY'; const adCan = can('answerCustomer', rq);
+    S.session.member='AZ'; go('today'); openApprove(rq.id); const appr = document.getElementById('sheetBody').innerHTML;
+    pickProd.appr = new Set(['adrey']); await doApprove(rq.id, 'B');
+    const done = S.bookings.find(b=>b.id===rq.id);
+    S.session.member='Nora Lind'; render(); const contact = myContact(done);
+    S.session.member='AZ'; save();
+    return {hasBox, azProd, list, prof:/KAN BOKA MED/.test(prof) && /SPARA PRODUCENTERNA/.test(prof), saved,
+      v0:/BOKA MED/.test(v0) && /Välj vem du vill boka med/.test(v0), chips, blocked,
+      st12, st16, bar:/RKAY<\\/div>[\\s\\S]*Upptagen/.test(v1), why,
+      sheet:/med <b>RKAY<\\/b>/.test(sheet), rq:rqv,
+      rkInbox:/Nora Lind/.test(rkInbox) && /med RKAY/.test(rkInbox), rkCan, adCan,
+      appr:/PRODUCENT/.test(appr) && /pp-appr/.test(appr), done:done && {with:done.with, studio:done.studio, status:done.status}, contact:contact && contact.name};`);
+  ok('en manager (eller admin) kan vara producent också — då kan artister boka med hen', r.hasBox && r.azProd===true && r.list==='ADREY,AZ,RKAY', r);
+  ok('admin väljer artistens producenter i profilen — den första blir huvudproducent', r.prof && JSON.stringify(r.saved.producers)==='["rkay","adrey"]' && r.saved.producer==='rkay', r.saved);
+  ok('kundvyn: BOKA MED med artistens producenter — inget förvalt när det finns flera', r.v0 && JSON.stringify(r.chips)==='["RKAY","ADREY"]' || JSON.stringify(r.chips)==='["ADREY","RKAY"]', r.chips);
+  ok('utan vald producent går det inte att skicka förfrågan', r.blocked===true);
+  ok('tider då RKAY är upptagen stängs — andra är öppna', r.st12==='producer' && r.st16==='ok' && /RKAY är upptagen/.test(r.why), r);
+  ok('RKAYs upptagna tid syns som en egen rad i tidslinjen', r.bar===true);
+  ok('förfrågan går med RKAY', r.sheet && r.rq && JSON.stringify(r.rq.with)==='["RKAY"]' && r.rq.studio==='', r.rq);
+  ok('RKAY ser förfrågan i inkorgen och kan svara — ADREY (inte vald) kan inte', r.rkInbox && r.rkCan===true && r.adCan===false, r);
+  ok('admin godkänner och kan byta producent', r.appr && r.done && JSON.stringify(r.done.with)==='["ADREY"]' && r.done.studio==='B' && r.done.status==='', r.done);
+  ok('kontakten vid sen avbokning är passets producent', r.contact==='ADREY', r.contact);
+
   /* ============ ALLMÄN AGENDA OCH MÅLSÄTTNING — två separata delar ============ */
   log('\n── Allmän agenda (gemensamt) och Målsättning (personligt) ──');
   w = await boot(seed());

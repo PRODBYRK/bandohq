@@ -127,8 +127,10 @@ begin
           rqname || ' föreslår ' || bs_when(d) || ' för ' || coalesce(circ,'cirkeln') || '. Svara i BANDOHQ.',
           'request', 'req:' || new.id || ':' || coalesce(who,''));
       else
+        /* admins, och de producenter artisten valt — har hen inte valt någon: huvudproducenten */
         for m in select id from members where active and (role::text in ('manager','admin')
-                   or id = (select producer from members where id = rq)) loop
+                   or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) > 0 and coalesce(d->'with','[]'::jsonb) ? name)
+                   or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) = 0 and id = (select producer from members where id = rq))) loop
           perform bs_notify(m.id, null, 'Ny bokningsförfrågan från ' || rqname,
             'Ny bokningsförfrågan från ' || rqname || ': ' || bs_when(d) || bs_studio_opt(d->>'studio')
             || case when coalesce(d->>'note','') <> '' then '.' || E'\n\n' || 'Meddelande: ' || (d->>'note') else '' end
