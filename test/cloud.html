@@ -210,17 +210,27 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
 
   /* ============ KUNDEN ============ */
   log('\n── kund ──');
-  w = await boot('#join='+T.K);
-  r = await ev(w,`
-    ${JOIN('Studio Nord AB','studionord','kund@b.se','kund12345')}
+  /* kundinbjudan: kontot skapas på Access-sidan (personnummer, inriktning, godkännande) */
+  const goPg = url => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = url; });
+  w = await boot();
+  r = await ev(w,`const nav = []; window.__nav = u => nav.push(u);
+    joinToken = '${T.K}'; joinInfo = null; showGate(); ${wait(900)} delete window.__nav; return {nav};`);
+  const redirected = r.nav.some(u=>/access\.html\?inbjudan=/.test(u));
+  w = await goPg('../access.html?inbjudan=' + T.K + '&cb=' + Math.random());
+  r = await ev(w,`${wait(400)}
+    const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
+    const reg = !!document.getElementById('f_pnr');
+    document.querySelector('#chips .chip[data-id="production"]').click();
+    set('name','Studio Nord AB'); set('email','kund@b.se'); set('phone','070-555 66 77'); set('pnr','${PNR('19880808','321')}'); set('password','kund12345');
+    document.getElementById('f_consent').click();
+    await submit(); ${wait(300)}
+    return {reg, done:/Välkommen in/.test(document.getElementById('stage').textContent), msg:(document.getElementById('msg')||{}).textContent||''};`);
+  ok('en kundlänk (#join) leder till Access-sidan, där kontot skapas', redirected && r.reg && r.done, {redirected, r});
+  w = await goPg('../index.html?cb=' + Math.random() + '#welcome');
+  r = await ev(w,`${wait(700)}
     const view = roleView();
-    ${wait(300)} await cloudView(); render();
-    /* Access: en kund som gått med via inbjudan kompletterar profilen innan den bokar */
-    const gaps = profileGaps(); openSlot('${D(4)}','12:00'); const blocked = /Komplettera din profil/.test(document.getElementById('sheetBody').innerHTML);
-    const askPhone = !!document.getElementById('pfP'); if(askPhone) document.getElementById('pfP').value = '070-555 66 77';
-    document.getElementById('pfN').value = '${PNR('19880808','321')}'; document.querySelector('#pfI .chip').click(); document.getElementById('pfC').checked = true;
-    await saveProfile(); const gapsAfter = profileGaps(), prof = S.profile, pfMsg = (document.getElementById('pfMsg')||{}).textContent || '';
-    if(gapsAfter) return {gapsAfter, pfMsg, prof};
+    await cloudView(); render();
+    const gapsAfter = profileGaps(), prof = S.profile, phone = me().phone;
     bookDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
     openSlot('${D(3)}','18:00'); const uiFull = paintSlot('${D(3)}', booked(), 'sl'); closeSheet();
     let clash = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(3)}',p_start:'18:00',p_end:'21:00',p_studio:'',p_note:''}); }catch(e){ clash = e.message; }
@@ -230,13 +240,12 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
     const last = mine.find(b=>b.date==='${D(5)}');
     await cancelMine(last.id);
-    return {gaps:gaps && gaps.pnr && gaps.interests && gaps.consent, blocked, gapsAfter, prof, askPhone, phone:me().phone, prices:/DINA PRISER OCH FÖRMÅNER/.test(html), group:/Vi placerar dig i en grupp/.test(html),
+    return {gapsAfter, prof, phone, prices:/DINA PRISER OCH FÖRMÅNER/.test(html), group:/Vi placerar dig i en grupp/.test(html),
       view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
       noStudio:mine.every(b=>b.studio==='' && b.end==='15:00'), note:(last||{}).note,
       after:S.bookings.filter(b=>!b.busy && b.status==='request').length};`);
-  ok('Access: kunden från inbjudan saknar personnummer, inriktning och godkännande — och kan inte boka än', r.gaps===true && r.blocked===true, r);
-  ok('kompletterar profilen mot servern: personnumret sparas (krypterat), telefonen fylls i, inget saknas', r.gapsAfter===null && r.prof && r.prof.pnr===true
-     && r.prof.consent===true && r.askPhone===true && r.phone==='+46705556677', r);
+  ok('kunden är inloggad med komplett profil: personnumret sparat (krypterat), inget saknas', r.gapsAfter===null && r.prof && r.prof.pnr===true
+     && r.prof.consent===true && r.phone==='+46705556677', r);
   ok('kundvyn har priser och förmåner och "Vi placerar dig i en grupp"', r.prices && r.group, r);
   ok('kunden landar i kundvyn: bokat syns, men inte vem eller vad', r.view==='customer' && r.free===true, r);
   ok('kan inte fråga om en fullbokad tid — varken i appen eller på servern', r.uiFull==='taken' && /fullbokad/.test(r.clash), r);
@@ -289,22 +298,26 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   const vera = box.find(m=>m.kind==='lead-ok' && m.email==='vera@x.se');
   const costa = box.find(m=>m.kind==='invite' && m.email==='costa@b.se');
   const ans = box.find(m=>m.kind==='booked' && m.email==='kund@b.se');
-  ok('kunden får bokningsbekräftelsen med kontolänken på mejlen', vera && /^Bokningsbekräftelse/.test(vera.subject) && /#join=/.test(vera.link), vera);
+  ok('kunden får bokningsbekräftelsen med länken till Access-sidan på mejlen', vera && /^Bokningsbekräftelse/.test(vera.subject) && /access\.html\?inbjudan=/.test(vera.link), vera);
   ok('kunden med konto får en orderbekräftelse när förfrågan godkänns', !!ans && /THE BOOTH/.test(ans.body), box.filter(m=>m.kind==='booked').map(m=>m.email+' '+m.body));
   ok('Costa får sin inbjudan på mejlen, som admin', costa && /som admin/.test(costa.body) && /#join=/.test(costa.link), costa);
-  const tokV = vera.link.split('#join=')[1], tokC = costa.link.split('#join=')[1];
+  const tokV = new URL(vera.link).searchParams.get('inbjudan'), tokC = costa.link.split('#join=')[1];
 
-  w = await boot('#join='+tokV);
-  r = await ev(w,`
-    ${wait(250)}
-    const pre = /Vera Ny/.test(document.getElementById('gateTag').textContent) && !document.getElementById('jN');
-    const mail = document.getElementById('jE').value;
-    document.getElementById('jU').value='vera'; document.getElementById('jP').value='vera12345';
-    document.getElementById('jC').checked=true; await doJoin();
-    const bk = S.bookings.find(b=>!b.busy && b.who==='Vera Ny');
-    return {pre, mail, view:roleView(), bk:!!bk, username:me()&&me().username, err:gateErr};`);
-  ok('kundlänken har namnet och e-posten från förfrågan', r.pre && r.mail==='vera@x.se', r);
-  ok('kunden går med och ser sin bokning', r.view==='customer' && r.bk===true && r.username==='vera', r);
+  /* den nya kunden från bokningssidan skapar kontot på Access-sidan — bokningen följer med */
+  w = await boot();
+  w = await new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = '../access.html?inbjudan=' + tokV + '&cb=' + Math.random(); });
+  r = await ev(w,`${wait(400)}
+    const pre = {name:document.getElementById('f_name').value, mail:document.getElementById('f_email').value};
+    const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
+    document.querySelector('#chips .chip[data-id="production"]').click();
+    set('name','Vera Ny'); set('phone','070-111 22 33'); set('pnr','${PNR('19920909','101')}'); set('password','vera12345');
+    document.getElementById('f_consent').click(); await submit(); ${wait(300)}
+    return {pre, done:/Välkommen in/.test(document.getElementById('stage').textContent), msg:(document.getElementById('msg')||{}).textContent||''};`);
+  ok('kundlänken har namnet och e-posten från förfrågan', r.pre.name==='Vera Ny' && r.pre.mail==='vera@x.se', r);
+  w = await new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = '../index.html?cb=' + Math.random() + '#welcome'; });
+  r = await ev(w,`${wait(600)} await cloudView(); const bk = S.bookings.find(b=>!b.busy && b.who==='Vera Ny');
+    return {view:roleView(), bk:!!bk, mine:!!bk && bk.reqBy===(me()||{}).id};`);
+  ok('kunden går med och ser sin bokning', r.view==='customer' && r.bk===true && r.mine===true, r);
 
   log('\n── v8: admin ──');
   w = await boot('#join='+tokC);
@@ -567,14 +580,14 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('och en deltagare i sin grupp', r.d && r.d.role==='participant' && r.inCircle===true, r);
   ok('men kan inte skapa en admin eller bjuda in någon som producent', /Bara admin/.test(r.crew) && !!r.ins, r);
   box = await outbox();
-  ok('kunden och deltagaren får sina inbjudningar på mejlen', box.some(m=>m.kind==='invite' && m.email==='kalle@x.se') && box.some(m=>m.kind==='invite' && m.email==='dina@x.se'),
-     box.filter(m=>m.kind==='invite').map(m=>m.email));
+  ok('kunden (till Access-sidan) och deltagaren får sina inbjudningar på mejlen', box.some(m=>m.kind==='invite-access' && m.email==='kalle@x.se' && /access\.html\?inbjudan=/.test(m.link||''))
+     && box.some(m=>m.kind==='invite' && m.email==='dina@x.se'), box.filter(m=>/invite/.test(m.kind)).map(m=>m.kind+':'+m.email));
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   log('\n── iPhone-appen mot servern: enhetstoken, radera mitt konto, demoläget ──');
   w = await boot();
   r = await ev(w,`
-    ${LOGIN('studionord','kund12345')}
+    ${LOGIN('kund@b.se','kund12345')}
     const L = {};
     window.Capacitor = {isNativePlatform:()=>true, Plugins:{
       PushNotifications:{checkPermissions:async()=>({receive:'granted'}), requestPermissions:async()=>({receive:'granted'}),
@@ -583,10 +596,10 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
       App:{addListener:async()=>({remove(){}})}}};
     await nativeInit(); await enablePush();
     const subs = (await sb('/push_subs?select=endpoint,kind')).map(x=>x.kind+'|'+x.endpoint);
-    openDeleteMe(); document.getElementById('dmW').value='studionord'; await deleteMe();
+    openDeleteMe(); document.getElementById('dmW').value='Studio Nord AB'; await deleteMe();
     const out = document.getElementById('gate').classList.contains('on');
     delete window.Capacitor;
-    ${LOGIN('studionord','kund12345')}
+    ${LOGIN('kund@b.se','kund12345')}
     return {subs, out, again:gateErr, session:!!S.session};`);
   ok('appen sparar telefonens token på servern', JSON.stringify(r.subs)===JSON.stringify(['apns|apns:'+'c0ffee'.repeat(10)+'abcd']), r.subs);
   ok('kunden raderar sitt konto i appen och loggas ut', r.out===true, r);
@@ -768,20 +781,50 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   const goPage = url => new Promise(res=>{ fr.onload=()=>setTimeout(()=>res(fr.contentWindow), 700); fr.src = url; });
   const sql = async q => (await fetch(EMU+'/__sql', {method:'POST', body:JSON.stringify({sql:q})})).json();
   const P1 = PNR('19990315','123'), P2 = PNR('20010101','456');
-  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:true})});
   w = await boot();
   w = await goPage('../access.html?cb=' + Math.random());
   const fill = (name, email, pnr) => `
-    const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); };
+    const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
     if(!document.querySelector('#chips .chip[data-id="production"][aria-pressed="true"]')) document.querySelector('#chips .chip[data-id="production"]').click();
     set('name','${name}'); set('email','${email}'); set('phone','070-123 45 67'); set('pnr','${pnr}'); set('password','studio2026x');
     if(!document.getElementById('f_consent').checked) document.getElementById('f_consent').click();
     await submit();`;
+  /* 1 · förfrågan utan konto */
   r = await ev(w,`${wait(300)}
     const chips = document.querySelectorAll('#chips .chip').length;
+    const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); };
+    document.querySelector('#chips .chip[data-id="production"]').click();
+    set('name','Alva Strand'); set('email','alva@acc.se'); set('phone','070-123 45 67'); set('message','Producerar R&B');
+    document.getElementById('f_consent').click();
+    await sendRequest();
+    return {chips, sent:/Tack, Alva/.test(document.getElementById('stage').textContent)};`);
+  ok('förfrågan från sidan går till servern — utan konto, utan personnummer', r.chips===12 && r.sent, r);
+  const reqRow = await sql(`select id, status, phone, message from access_requests where email='alva@acc.se'`);
+  ok('förfrågan ligger på servern', reqRow.length===1 && reqRow[0].status==='new' && reqRow[0].phone==='+46701234567' && reqRow[0].message==='Producerar R&B', reqRow);
+  let abox0 = await outbox();
+  ok('crewet får "Förfrågan om Bando HQ Access" och personen ett kvitto', abox0.some(m=>m.kind==='access-req' && m.member_id==='rkay')
+     && abox0.some(m=>m.kind==='received' && m.email==='alva@acc.se'), abox0.filter(m=>/access|received/.test(m.kind)).map(m=>m.kind+':'+(m.member_id||m.email)));
+  /* 2 · AZ godkänner i appen */
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    await sync(true); go('today'); const inbox = document.getElementById('view').innerHTML;
+    const x = (S.accessReqs||[]).find(a=>a.email==='alva@acc.se'); await approveAccess(x.id);
+    return {inbox:/Alva Strand/.test(inbox) && /ACCESS/.test(inbox)};`);
+  ok('admin ser förfrågan i inkorgen och godkänner', r.inbox, r);
+  abox0 = await outbox();
+  const invMail = abox0.filter(m=>m.kind==='invite-access' && m.email==='alva@acc.se').pop();
+  const TOKA = invMail && new URL(invMail.link).searchParams.get('inbjudan');
+  ok('inbjudan på mejlen med länk till Access-sidan', invMail && /access\.html\?inbjudan=/.test(invMail.link) && !!TOKA, invMail);
+  /* 3 · kontot med inbjudan */
+  await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
+  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:true})});
+  w = await goPage('../access.html?inbjudan=' + TOKA + '&cb=' + Math.random());
+  r = await ev(w,`${wait(400)}
+    const pre = {email:document.getElementById('f_email').value, name:document.getElementById('f_name').value};
     ${fill('Alva Strand', 'alva@acc.se', P1)}
-    return {chips, code:!!document.getElementById('f_code'), msg:(document.getElementById('msg')||{}).textContent||''};`);
-  ok('registreringssidan hämtar inriktningarna från servern och skapar kontot', r.chips===12 && r.code===true, r);
+    return {pre, code:!!document.getElementById('f_code'), msg:(document.getElementById('msg')||{}).textContent||''};`);
+  ok('länken fyller i uppgifterna och kontot skapas', r.pre.email==='alva@acc.se' && r.pre.name==='Alva Strand' && r.code===true, r);
   let mail = await (await fetch(EMU+'/__mail')).json();
   const m1 = mail.filter(m=>m.to==='alva@acc.se' && m.type==='signup').pop();
   ok('koden kommer på mejlen', m1 && /^\d{6}$/.test(m1.code), m1);
@@ -793,6 +836,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('fel kod nekas', /stämmer inte/.test(r.wrong), r.wrong);
   ok('rätt kod: e-posten bekräftas, profilen skapas och inloggningen sparas där appen läser den', r.done && r.auth, r);
   ok('personnumret skickas aldrig med kontot', !r.meta.includes(P1.slice(-4)) && !r.meta.includes(P1.replace('-','')), r.meta);
+  ok('inbjudan är förbrukad', (await sql(`select uses from invites where token='${TOKA}'`))[0].uses===1);
   const enc = await sql(`select encode(p.pnr_enc,'hex') e, p.birth from member_pnr p join members m on m.id = p.member_id where m.name = 'Alva Strand'`);
   ok('i databasen ligger personnumret krypterat — bara födelsedatumet går att läsa', enc.length===1 && enc[0].birth==='990315'
      && !enc[0].e.includes([...P1.replace('-','')].map(c=>c.charCodeAt(0).toString(16)).join('')), enc);
@@ -812,10 +856,12 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   w = await goPage('../access.html?cb=' + Math.random());
   r = await ev(w,`${wait(300)} return {already:!!document.getElementById('already') && /Alva Strand/.test(document.getElementById('already').textContent), form:!!document.getElementById('form')};`);
   ok('inloggad på enheten: sidan visar "Du är redan inloggad" i stället för formuläret', r.already && !r.form, r);
-  /* samma personnummer igen (annan e-post): inget nytt konto */
+  /* samma personnummer igen (annan e-post, ny inbjudan): inget nytt konto */
   await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
-  w = await goPage('../access.html?cb=' + Math.random());
-  r = await ev(w,`${wait(200)}
+  await sql(`insert into invites(token,role,created_by,max_uses,name,email) values('DUPE-111111','customer','az',1,'Alva Igen','alva2@acc.se'),
+    ('DUPE-222222','customer','az',1,'Alva Strand','alva@acc.se')`);
+  w = await goPage('../access.html?inbjudan=DUPE-111111&cb=' + Math.random());
+  r = await ev(w,`${wait(300)}
     ${fill('Alva Igen', 'alva2@acc.se', P1)}
     return {code:!!document.getElementById('f_code')};`);
   mail = await (await fetch(EMU+'/__mail')).json();
@@ -826,8 +872,8 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('samma personnummer en gång till: "Du har redan ett konto", inget nytt konto och inloggningen tas bort', r.form && /redan ett konto/.test(r.msg) && !r.auth
      && dupe[0].m===1 && dupe[0].u===0, {r, dupe});
   await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
-  w = await goPage('../access.html?cb=' + Math.random());
-  r = await ev(w,`${wait(200)}
+  w = await goPage('../access.html?inbjudan=DUPE-222222&cb=' + Math.random());
+  r = await ev(w,`${wait(300)}
     ${fill('Alva Strand', 'alva@acc.se', P2)}
     return {code:!!document.getElementById('f_code'), msg:(document.getElementById('msg')||{}).textContent||''};`);
   ok('en e-post som redan har ett konto: logga in i stället (ingen kod skickas)', !r.code && /redan ett konto/.test(r.msg), r);

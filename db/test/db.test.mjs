@@ -354,7 +354,7 @@ const ap = await C(()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'B',p_url:'ht
 const lb = await one(`select data from records where id=$1`,[ap.booking]);
 ok('godkänt: bokningen ligger i schemat', lb.data.who==='Nova Lind' && lb.data.status==='' && lb.data.leadId===lead.id, lb.data);
 const lmail = await one(`select * from outbox where dedupe_key=$1`,['lead-ok:'+lead.id]);
-ok('och kunden får bekräftelsen med länken till sitt konto på mejlen', lmail && lmail.email==='nova@x.se' && lmail.link==='https://bandohq.se/#join='+ap.invite
+ok('och kunden får bekräftelsen med länken till sitt konto på mejlen', lmail && lmail.email==='nova@x.se' && lmail.link==='https://bandohq.se/access.html?inbjudan='+ap.invite
    && /Din tid är bokad/.test(lmail.body) && /^Bokningsbekräftelse: tis 15 dec/.test(lmail.subject), lmail);
 ok('och ingen dubblett från bokningen', (await box('booked:%')).length===0);
 ok('samma förfrågan kan inte godkännas två gånger', /finns inte längre/.test(await boom(()=>C(()=>rpc('approve_lead',{p_lead:lead.id,p_studio:'A',p_url:'x'})))||''));
@@ -830,8 +830,14 @@ for (const k of ['a1','a2','a3','a4','a5','a6','a7','a8','old','oldp']) AU[k] = 
 /* en kund och en deltagare från tiden före Access (med inloggning, utan personnummer) */
 await M('oldk', AU.old, 'customer', 'Studio Syd AB', 'old@acc.se', '070-000 00 20');
 await M('oldp', AU.oldp, 'participant', 'Petra Gammal', 'oldp@acc.se', '070-000 00 21');
-const reg = (u, o) => as(db, u, ()=>rpc('register_access', Object.assign({p_name:'Alva Strand', p_phone:'070-123 45 67', p_pnr:P1,
-  p_interests:JSON.stringify(['production','mixing']), p_consent:true, p_url:'https://www.bandohq.se/'}, o)));
+/* nya konton kräver en kundinbjudan — varje registrering får en egen om testet inte anger någon */
+let invN = 0;
+const mkInv = async (o={}) => { const t = 'INV-' + String(++invN).padStart(6,'0');
+  await q(`insert into invites(token,role,created_by,max_uses,name,email,member_id,interests) values($1,'customer',$2,1,$3,$4,$5,$6)`,
+    [t, o.by||'az', o.name||null, o.email||null, o.member||null, o.interests||[]]); return t; };
+const reg = async (u, o) => { o = Object.assign({}, o); if(!('p_invite' in o)) o.p_invite = await mkInv();
+  return as(db, u, ()=>rpc('register_access', Object.assign({p_name:'Alva Strand', p_phone:'070-123 45 67', p_pnr:P1,
+    p_interests:JSON.stringify(['production','mixing']), p_consent:true, p_url:'https://www.bandohq.se/'}, o))); };
 
 const info = await asAnon(db,()=>rpc('access_info',{}));
 ok('registreringssidan får tolv inriktningar och sex förmåner — utan priser', info.interests.length===12 && info.perks.length===6
@@ -1074,6 +1080,88 @@ await q(`insert into member_pnr(member_id,pnr_enc,pnr_hash,birth) values('ar8','
 ok('en artist utan producenter kan inte välja någon', /crewet väljer/.test(await boom(()=>as(db,nu,()=>rpc('request_customer_slot',{p_date:'2026-12-15',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'["PZ"]'})))||''));
 const r8 = await as(db,nu,()=>rpc('request_customer_slot',{p_date:'2026-12-15',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'[]'}));
 ok('men bokar utan — som förut', r8.status==='request' && r8.with.length===0, r8);
+}
+
+/* ============ ACCESS VIA FÖRFRÅGAN ELLER INBJUDAN ============ */
+{
+head('Access via förfrågan eller inbjudan');
+await q(`delete from outbox`);
+const CA = fn => as(db,U.costa,fn), RK = fn => as(db,U.rkay,fn);
+const box = async k => q(`select * from outbox where dedupe_key like $1 order by id`,[k]);
+const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+const pnr = (ymd, nnn) => ymd + '-' + nnn + luhn(ymd.slice(2) + nnn);
+const AU_K = await user('kund9@ny.se');
+await q(`insert into members(id,user_id,role,name,email) values('kund9',$1,'customer','Kund Nio','kund9@ny.se')`,[AU_K]);
+const ra = o => asAnon(db,()=>rpc('request_access', Object.assign({p_name:'Mira Ny', p_email:'mira@ny.se', p_phone:'070-765 43 21',
+  p_interests:'["production"]', p_message:'Jag skriver och sjunger R&B.', p_consent:true, p_hp:''}, o)));
+ok('förfrågan kräver för- och efternamn, e-post, telefon, inriktning och godkännande',
+   /för- och efternamn/.test(await boom(()=>ra({p_name:'Mira'}))||'') && /e-postadress/.test(await boom(()=>ra({p_email:'mira'}))||'')
+   && /mobilnummer/.test(await boom(()=>ra({p_phone:'12'}))||'') && /minst en inriktning/.test(await boom(()=>ra({p_interests:'["golf"]'}))||'')
+   && /Godkänn/.test(await boom(()=>ra({p_consent:false}))||''));
+ok('robotar (dolt fält) får "ok" men inget sparas', (await ra({p_hp:'x'})).ok===true && (await q(`select 1 from access_requests`)).length===0);
+const r1 = await ra({});
+const row = await one(`select * from access_requests where email='mira@ny.se'`);
+ok('en anonym förfrågan sparas — utan lösenord och personnummer', r1.ok===true && row && row.status==='new' && row.phone==='+46707654321'
+   && JSON.stringify(row.interests)==='["production"]' && row.message==='Jag skriver och sjunger R&B.', row);
+const crew = (await q(`select member_id from outbox where kind='access-req'`)).map(x=>x.member_id).sort();
+ok('admins, managern och producenterna får "Förfrågan om Bando HQ Access"', crew.includes('az') && crew.includes('costa') && crew.includes('rkay')
+   && !crew.includes('moez') && !crew.includes('will'), crew);
+ok('och personen får ett kvitto', !!(await one(`select 1 from outbox where kind='received' and email='mira@ny.se' and subject='Vi har tagit emot din förfrågan'`)));
+await ra({p_message:'Nytt meddelande'});
+ok('samma e-post igen blir ingen ny rad', (await q(`select 1 from access_requests where email='mira@ny.se'`)).length===1
+   && (await one(`select message from access_requests where email='mira@ny.se'`)).message==='Nytt meddelande');
+await ra({p_name:'Någon Annan', p_email:'rkay@b.se'});
+ok('en e-post som redan har konto: ingen rad, men adressen får ett mejl om det', !(await one(`select 1 from access_requests where email='rkay@b.se'`))
+   && !!(await one(`select 1 from outbox where email='rkay@b.se' and subject='Du har redan ett konto i Bando HQ'`)));
+ok('crewet ser förfrågningarna — kunder och anonyma gör det inte', (await RK(()=>q(`select 1 from access_requests`))).length===1
+   && (await as(db,AU_K,()=>q(`select 1 from access_requests`))).length===0 && (await asAnon(db,()=>q(`select 1 from access_requests`))).length===0);
+ok('en kund kan inte godkänna', /Bara admin och producenter/.test(await boom(()=>as(db,AU_K,()=>rpc('approve_access',{p_id:row.id,p_url:'https://www.bandohq.se/'})))||''));
+const ap = await RK(()=>rpc('approve_access',{p_id:row.id,p_url:'https://www.bandohq.se/'}));
+const inv = await one(`select * from invites where token=$1`,[ap.invite]);
+ok('en producent godkänner: en kundinbjudan med uppgifterna från förfrågan', inv && inv.role==='customer' && inv.created_by==='rkay' && inv.email==='mira@ny.se'
+   && inv.phone==='+46707654321' && JSON.stringify(inv.interests)==='["production"]' && inv.request_id===row.id && inv.max_uses===1, inv);
+const im = await one(`select * from outbox where dedupe_key=$1`,['invite:'+ap.invite]);
+ok('och personen får länken till Access-sidan på mejlen', im && im.email==='mira@ny.se' && im.kind==='invite-access'
+   && im.link==='https://www.bandohq.se/access.html?inbjudan='+ap.invite && /godkänd/.test(im.body), im);
+ok('förfrågan är besvarad', (await one(`select status, invite, handled_by from access_requests where id=$1`,[row.id])).status==='approved');
+ok('och kan inte godkännas igen', /finns inte längre/.test(await boom(()=>CA(()=>rpc('approve_access',{p_id:row.id,p_url:'x'})))||''));
+const info = await asAnon(db,()=>rpc('invite_info',{p_token:ap.invite}));
+ok('Access-sidan får uppgifterna via länken', info.ok && info.role==='customer' && info.name==='Mira Ny' && info.phone==='+46707654321'
+   && JSON.stringify(info.interests)==='["production"]' && info.by==='RKAY', info);
+/* kontot */
+const mu = await user('mira@ny.se'), xu = await user('utan@ny.se'), yu = await user('igen@ny.se');
+const regA = (u, o) => as(db, u, ()=>rpc('register_access', Object.assign({p_name:'Mira Ny', p_phone:'070-765 43 21', p_pnr:pnr('19980202','314'),
+  p_interests:'["production"]', p_consent:true, p_url:'https://www.bandohq.se/'}, o)));
+ok('utan inbjudan går det inte att skapa ett konto', /kräver en inbjudan/.test(await boom(()=>regA(xu, {}))||''));
+ok('med en påhittad inbjudan inte heller', /kräver en inbjudan/.test(await boom(()=>regA(xu, {p_invite:'FAKE-123456'}))||''));
+const okA = await regA(mu, {p_invite:ap.invite});
+const mm = await one(`select * from members where id=$1`,[okA.id]);
+ok('med inbjudan skapas kontot — och producenten som godkände blir artistens producent', okA.ok && mm.role==='customer'
+   && JSON.stringify(mm.producers)==='["rkay"]' && mm.producer==='rkay', mm);
+ok('inbjudan är förbrukad', (await one(`select uses from invites where token=$1`,[ap.invite])).uses===1
+   && /redan använd/.test(await boom(()=>regA(yu, {p_invite:ap.invite, p_pnr:pnr('19970303','222')}))||''));
+/* avböj */
+await ra({p_name:'Nej Tack', p_email:'nej@ny.se'});
+const nr = await one(`select id from access_requests where email='nej@ny.se'`);
+await CA(()=>rpc('decline_access',{p_id:nr.id,p_reason:'Vi är fulla till våren.'}));
+const nm = await one(`select * from outbox where dedupe_key=$1`,['acc-no:'+nr.id]);
+ok('avböjd: personen får ett vänligt mejl med raden', nm && nm.email==='nej@ny.se' && /Vi är fulla till våren/.test(nm.body)
+   && (await one(`select status from access_requests where id=$1`,[nr.id])).status==='declined', nm);
+/* direktinbjudan */
+ok('direktinbjudan till en adress med konto nekas', /redan ett konto/.test(await boom(()=>RK(()=>rpc('invite_access',{p_name:'X Y',p_email:'rkay@b.se',p_phone:'',p_interests:'[]',p_url:'https://www.bandohq.se/'})))||''));
+const di = await RK(()=>rpc('invite_access',{p_name:'Direkt Inbjuden',p_email:'direkt@ny.se',p_phone:'',p_interests:'["production"]',p_url:'https://www.bandohq.se/'}));
+const dm = await one(`select * from outbox where dedupe_key=$1`,['invite:'+di.invite]);
+ok('en producent bjuder in direkt — länken till Access-sidan på mejlen', dm && dm.email==='direkt@ny.se' && dm.kind==='invite-access' && /av RKAY/.test(dm.body), dm);
+const di2 = await RK(()=>rpc('invite_access',{p_name:'Direkt Inbjuden',p_email:'direkt@ny.se',p_phone:'',p_interests:'[]',p_url:'https://www.bandohq.se/'}));
+ok('en ny inbjudan till samma adress stänger den förra', (await one(`select closed from invites where token=$1`,[di.invite])).closed===true && di2.invite!==di.invite);
+/* inbjudan till en person som crewet redan lagt in */
+await q(`insert into members(id,role,name,email) values('crw1','customer','Crew Inlagd','crewinlagd@ny.se')`);
+const ci = await CA(()=>rpc('create_invite',{p_role:'customer',p_circle:null,p_days:14,p_max:1,p_team:null,p_name:null,p_email:null,p_url:'https://www.bandohq.se/',p_member:'crw1'}));
+const cm = await one(`select * from outbox where dedupe_key=$1`,['invite:'+ci]);
+ok('kundinbjudningar från appen länkar också till Access-sidan', cm && cm.kind==='invite-access' && cm.link==='https://www.bandohq.se/access.html?inbjudan='+ci, cm);
+const cu = await user('crewinlagd@ny.se');
+const cr = await as(db, cu, ()=>rpc('register_access',{p_name:'Annat Namn',p_phone:'0701112299',p_pnr:pnr('19960404','333'),p_interests:'["production"]',p_consent:true,p_url:null,p_invite:ci}));
+ok('och kontot kopplas till personen crewet lade in', cr.ok && cr.linked && cr.id==='crw1' && (await one(`select user_id from members where id='crw1'`)).user_id===cu, cr);
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

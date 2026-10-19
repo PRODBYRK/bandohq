@@ -395,3 +395,26 @@ alter table members add column if not exists producers text[] not null default '
 update members set producers = array[producer]
  where coalesce(producer,'') <> '' and cardinality(producers) = 0;
 
+-- ---------------------------------------------------------------------
+--  ACCESS VIA FÖRFRÅGAN ELLER INBJUDAN (2026-10)
+--  Ingen skapar längre ett konto direkt: man skickar en förfrågan (access_requests) som
+--  admin eller en producent godkänner — eller blir inbjuden. Inbjudan (invites, roll kund)
+--  leder till Access-sidan där kontot skapas (register_access kräver den).
+-- ---------------------------------------------------------------------
+create table if not exists access_requests (
+  id         text primary key,
+  name       text not null,
+  email      text not null,
+  phone      text,
+  interests  text[] not null default '{}',
+  message    text,
+  status     text not null default 'new' check (status in ('new','approved','declined')),
+  invite     text,
+  handled_by text,
+  handled_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists access_requests_status_idx on access_requests (status, created_at);
+alter table invites add column if not exists interests text[] not null default '{}';
+alter table invites add column if not exists request_id text;
+

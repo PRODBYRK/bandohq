@@ -34,7 +34,7 @@ studiocirkel. Ett pass är tre timmar och bekräftelsen kommer direkt i telefone
 BANDOHQ är Bando Collectives app för studion, crewet och studiecirklarna.
 
 BANDO HQ ACCESS
-Registrera dig i appen och få tillgång till studiobokningar, bättre priser på mix & master, foto,
+Skicka en förfrågan i appen och få en inbjudan till studiobokningar, bättre priser på mix & master, foto,
 musikvideo och content, och Bandos studiocirklar. Välj vad du vill utvecklas inom, så placerar vi
 dig i en grupp med en ansvarig producent.
 
@@ -55,7 +55,7 @@ sin cirkel.
 NOTISER
 Bokningsbekräftelser, svar på förfrågningar och påminnelser dagen innan, direkt i telefonen.
 
-Registrera dig direkt i appen (Registrera dig). Crewet får sina konton med en inbjudan från
+Bando HQ Access ges via inbjudan: skicka en förfrågan i appen, så mejlar vi dig en inbjudan. Crewet får sina konton med en inbjudan från
 Bando Collective.
 
 ## Nyckelord (max 100 tecken, komma utan mellanslag)
@@ -74,8 +74,9 @@ studio,boka,studiotid,inspelning,musik,producent,studiecirkel,crew,beats,schema,
 
 > BANDOHQ is the app of Bando Collective, a recording studio and music collective in Sweden.
 > The crew, study-circle members and studio customers use it to book the studio, run the
-> schedule and get booking confirmations as push notifications. Anyone can create an account:
-> tap "REGISTRERA DIG" on the first screen (Bando HQ Access). Registration confirms the e-mail
+> schedule and get booking confirmations as push notifications. Accounts are by invitation: new
+> customers tap "BANDO HQ ACCESS — SKICKA FÖRFRÅGAN" on the first screen to send a request, and the
+> crew answers with an e-mailed invitation link where the account is created. Registration confirms the e-mail
 > address with a six-digit code. Crew accounts are created by invitation.
 >
 > Registration asks for the Swedish personal identity number (personnummer). It is required

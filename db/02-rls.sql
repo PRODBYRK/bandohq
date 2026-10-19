@@ -28,6 +28,7 @@ alter table level_history enable row level security;
 alter table artist_notes enable row level security;
 alter table artist_crm enable row level security;
 alter table member_pnr enable row level security;
+alter table access_requests enable row level security;
 -- personnumren: ingen policy och inga rättigheter alls — bara funktionerna i 03 når dem
 revoke all on member_pnr from anon, authenticated;
 -- (Rewards-tabellerna har inga policys: bara funktionerna i 03 läser och skriver dem)
@@ -239,4 +240,7 @@ create policy reports_read on session_reports for select to authenticated
   using (bs_is_admin() or bs_leads_booking(booking_id));
 drop policy if exists history_read on record_history;
 create policy history_read on record_history for select to authenticated using (bs_is_admin());
+/* förfrågningar om Access: crewet (admin och producenter) ser dem och svarar via funktionerna */
+drop policy if exists access_requests_read on access_requests;
+create policy access_requests_read on access_requests for select to authenticated using (bs_is_crew());
 

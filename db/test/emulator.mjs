@@ -59,7 +59,8 @@ await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"
 /* ---------- PostgREST: filter → SQL ---------- */
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ARRAYS = new Set(['interests', 'perms', 'producers']);
-const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership']);
+const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership',
+  'access_requests']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){

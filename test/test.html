@@ -1138,12 +1138,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
     openLead(tel.id); const telSheet = document.getElementById('sheetBody').innerHTML;
     await approveLead(tel.id,'A'); const smsSheet = document.getElementById('sheetBody').innerHTML;
-    return {noBook:!/BOKA STUDIOTID/.test(gate), reg:reg && /access\.html$/.test(reg.getAttribute('href')) && /REGISTRERA DIG/.test(reg.textContent),
+    return {noBook:!/BOKA STUDIOTID/.test(gate), reg:reg && /access\.html$/.test(reg.getAttribute('href')) && /SKICKA FÖRFRÅGAN/.test(reg.textContent),
       inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
       bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status,
       telSheet:/TELEFON/.test(telSheet) && !/E-POST/.test(telSheet) && /färdig text/.test(telSheet),
       sms:/SKICKA SOM SMS/.test(smsSheet) && /sms:\\+46701234567/.test(smsSheet) && /#join=/.test(leadText)};`);
-  ok('inloggningen: "Boka studiotid utan konto" är ersatt av Registrera dig (Bando HQ Access)', r.noBook && r.reg, r);
+  ok('inloggningen: "Boka studiotid utan konto" är ersatt av Bando HQ Access — skicka förfrågan', r.noBook && r.reg, r);
   ok('admin ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
   ok('ny kund utan e-post: admin får en färdig text med länken att sms:a', r.telSheet===true && r.sms===true, r);
@@ -1767,26 +1767,63 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(seed());
   await ev(w, `return true;`);
   w = await goPage('../access.html?cb=' + Math.random());
+  /* 1 · utan inbjudan: en förfrågan — inget lösenord, inget personnummer */
   r = await ev(w,`
-    const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
-    const P = '19990315-123' + luhn('990315123');
     const chips = document.querySelectorAll('#chips .chip').length;
     const title = document.querySelector('#title .sr').textContent, h = [...document.querySelectorAll('h2')].map(x=>x.textContent.trim().toUpperCase());
-    const perks = [...document.querySelectorAll('#perks h3')].map(x=>x.textContent);
-    await submit();
-    const errs = ['name','email','phone','pnr','password','interests','consent'].map(k=>document.getElementById('e_'+k).textContent);
+    const perks = [...document.querySelectorAll('#perks h3')].map(x=>x.textContent), cta = document.getElementById('ctaTop').textContent;
+    const noPw = !document.getElementById('f_password') && !document.getElementById('f_pnr') && !!document.getElementById('f_message');
+    await sendRequest();
+    const errs = ['name','email','phone','interests','consent'].map(k=>document.getElementById('e_'+k).textContent);
     const focused = document.activeElement && document.activeElement.id;
     document.querySelector('#chips .chip[data-id="production"]').click();
     document.querySelector('#chips .chip[data-id="mixing"]').click();
     const count = document.getElementById('chipsCount').textContent, picked1 = document.getElementById('picked').textContent;
     const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('blur')); };
     set('name','Alva'); const e1 = document.getElementById('e_name').textContent;
-    set('name','Alva Strand'); set('email','Alva@Acc.se'); set('phone','070-123 45 67');
+    set('name','Alva Strand'); set('email','Alva@Acc.se'); set('phone','070-123 45 67'); set('message','Jag producerar och mixar.');
+    await sendRequest(); const noConsent = document.getElementById('e_consent').textContent, stillForm = !!document.getElementById('form');
+    document.getElementById('f_consent').click();
+    await sendRequest();
+    const sent = document.getElementById('stage').textContent, req = ((JSON.parse(localStorage.getItem('bandosesh_v2')||'{}').accessReqs)||[]).find(x=>x.email==='alva@acc.se');
+    return {chips, title, h, perks, cta, noPw, errs, focused, count, picked1, e1, noConsent, stillForm, sent, req};`);
+  ok('sidan: BANDO HQ ACCESS, tre rubriker och sex förmåner — och en förfrågan i stället för ett konto', r.title==='BANDO HQ ACCESS'
+     && r.h.join('|')==='VAD INGÅR I BANDO HQ ACCESS?|VÄLJ DIN INRIKTNING|SKICKA EN FÖRFRÅGAN' && r.perks.length===6 && r.perks[4]==='A&R-feedback' && /SKICKA FÖRFRÅGAN/.test(r.cta), r);
+  ok('förfrågan har inget lösenord och inget personnummer — men plats för ett meddelande', r.noPw===true);
+  ok('tolv inriktningar att välja bland — flera går att välja', r.chips===12 && /2 valda/.test(r.count) && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.picked1), r);
+  ok('tom förfrågan: varje fält får sitt fel och första fältet får fokus', r.errs.every(Boolean) && r.focused==='f_name', r.errs);
+  ok('för- och efternamn krävs', /för- och efternamn/.test(r.e1));
+  ok('utan godkännande skickas ingen förfrågan', /Godkänn/.test(r.noConsent) && r.stillForm);
+  ok('skickad: tack, och vi mejlar en inbjudan', /Tack, Alva/.test(r.sent) && /alva@acc.se/.test(r.sent) && r.req && r.req.status==='new'
+     && r.req.phone==='+46701234567' && r.req.interests.join()==='production,mixing' && r.req.message==='Jag producerar och mixar.', r);
+  /* 2 · admin godkänner i appen */
+  w = await goPage('../index.html?mock=1&cb=' + Math.random());
+  r = await ev(w,`await new Promise(r=>setTimeout(r,300));
+    signIn(byName('AZ')); go('today'); const inbox = document.getElementById('view').innerHTML;
+    const x = S.accessReqs.find(a=>a.email==='alva@acc.se'); openAccessReq(x.id); const sheet = document.getElementById('sheetBody').innerHTML;
+    await approveAccess(x.id); const inv = S.invites.find(i=>i.request_id===x.id);
+    go('today'); const inbox2 = document.getElementById('view').innerHTML;
+    return {inbox:/ACCESS/.test(inbox) && /Alva Strand/.test(inbox), sheet:/GODKÄNN OCH SKICKA INBJUDAN/.test(sheet) && /Jag producerar och mixar/.test(sheet),
+      inv:inv && {role:inv.role, email:inv.email, interests:inv.interests, by:inv.created_by, max:inv.max_uses}, tok:inv && inv.token, status:x.status,
+      gone:!/Alva Strand/.test(inbox2)};`);
+  ok('admin ser förfrågan i inkorgen, med inriktning och meddelande', r.inbox && r.sheet, r);
+  ok('godkänd: en kundinbjudan till personen', r.inv && r.inv.role==='customer' && r.inv.email==='alva@acc.se' && r.inv.interests.join()==='production,mixing'
+     && r.inv.max===1 && r.status==='approved' && r.gone, r);
+  const ACC_TOK = r.tok;
+  /* 3 · länken: kontot skapas med inbjudan */
+  w = await goPage('../access.html?inbjudan=' + ACC_TOK + '&cb=' + Math.random());
+  r = await ev(w,`await new Promise(r=>setTimeout(r,300));
+    const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+    const P = '19990315-123' + luhn('990315123');
+    const head = document.getElementById('regH').textContent, lead = document.getElementById('regLead').textContent;
+    const pre = {name:document.getElementById('f_name').value, email:document.getElementById('f_email').value, phone:document.getElementById('f_phone').value,
+      picked:document.getElementById('picked').textContent};
+    const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('blur')); };
     set('pnr', P.slice(0,-1) + ((+P.slice(-1)+1)%10)); const e2 = document.getElementById('e_pnr').textContent;
     set('pnr', P.replace('-','').slice(2)); const fmt = document.getElementById('f_pnr').value;
     set('password','Password1'); const e3 = document.getElementById('e_password').textContent;
     set('password','studio2026x');
-    await submit(); const noConsent = document.getElementById('e_consent').textContent, stillForm = !!document.getElementById('form');
+    await submit(); const noConsent = document.getElementById('e_consent').textContent;
     document.getElementById('f_consent').click();
     await submit();
     const code = !!document.getElementById('f_code'), codeText = document.getElementById('stage').textContent;
@@ -1795,21 +1832,22 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const done = document.getElementById('stage').textContent;
     const saved = localStorage.getItem('bandohq_access_preview');
     const anywhere = JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k, localStorage.getItem(k)])));
-    return {chips, title, h, perks, errs, focused, count, picked1, e1, e2, fmt, e3, noConsent, stillForm, code, codeText, e4, done, saved,
+    return {head, lead, pre, e2, fmt, e3, noConsent, code, codeText, e4, done, saved,
       leak: anywhere.includes(P.slice(-4) + '"') || anywhere.includes(P.replace('-','')), P};`);
-  ok('sidan: BANDO HQ ACCESS, tre rubriker och sex förmåner i specens ordning', r.title==='BANDO HQ ACCESS'
-     && r.h.join('|')==='VAD INGÅR I BANDO HQ ACCESS?|VÄLJ DIN INRIKTNING|REGISTRERA DIG' && r.perks.length===6 && r.perks[4]==='A&R-feedback', r);
-  ok('tolv inriktningar att välja bland — flera går att välja', r.chips===12 && /2 valda/.test(r.count) && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.picked1), r);
-  ok('tomt formulär: varje fält får sitt fel och första fältet får fokus', r.errs.every(Boolean) && r.focused==='f_name', r.errs);
-  ok('för- och efternamn krävs', /för- och efternamn/.test(r.e1));
+  ok('med inbjudan: "Skapa ditt konto", inbjuden av AZ, uppgifterna ifyllda', /Skapa ditt konto/.test(r.head) && /inbjuden till Bando HQ Access av AZ/.test(r.lead)
+     && r.pre.name==='Alva Strand' && r.pre.email==='alva@acc.se' && r.pre.phone==='+46701234567' && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.pre.picked), r);
   ok('personnummer med fel kontrollsiffra nekas, ett rätt formateras ÅÅÅÅMMDD-XXXX', /stämmer inte/.test(r.e2) && r.fmt===r.P, r);
   ok('för enkla lösenord nekas', /för lätt/.test(r.e3), r.e3);
-  ok('utan godkännande skapas inget konto', /Godkänn/.test(r.noConsent) && r.stillForm);
+  ok('utan godkännande skapas inget konto', /Godkänn/.test(r.noConsent));
   ok('sedan kodsteget: koden från mejlet bekräftar e-posten', r.code && /alva@acc.se/.test(r.codeText) && /sex siffror/.test(r.e4), r);
   ok('klart: välkommen in, och vidare till Bando HQ', /Välkommen in, Alva/.test(r.done), r.done);
   const sv = JSON.parse(r.saved||'{}');
-  ok('förhandsläget lämnar uppgifterna till appen — personnumret bara maskerat', sv.name==='Alva Strand' && sv.email==='alva@acc.se' && sv.pnr==='990315-••••'
-     && sv.interests.join()==='production,mixing' && sv.phone==='+46701234567' && r.leak===false, sv);
+  ok('förhandsläget lämnar uppgifterna till appen — med inbjudan, personnumret bara maskerat', sv.name==='Alva Strand' && sv.email==='alva@acc.se' && sv.pnr==='990315-••••'
+     && sv.interests.join()==='production,mixing' && sv.phone==='+46701234567' && sv.invite===ACC_TOK && r.leak===false, sv);
+  /* 4 · en länk som inte fungerar: förfrågan i stället */
+  w = await goPage('../access.html?inbjudan=FEL1-234567&cb=' + Math.random());
+  r = await ev(w,`await new Promise(r=>setTimeout(r,250)); return {msg:document.getElementById('stage').textContent, form:!!document.getElementById('f_message'), head:document.getElementById('regH').textContent};`);
+  ok('en ogiltig länk: tydligt besked och förfrågan i stället', /fungerar inte längre/.test(r.msg) && r.form && /Skicka en förfrågan/.test(r.head), r);
   w = await goPage('../index.html?mock=1&cb=' + Math.random() + '#welcome');
   r = await ev(w,`
     await new Promise(r=>setTimeout(r,500));

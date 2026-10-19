@@ -496,13 +496,25 @@ saknar egna policys, så ingen läser dem direkt.
 - **Cirkelledare, deltagare och kamerateam** ser ingenting av Rewards, omdömena eller Artist
   Intelligence. **Kunden** ser aldrig omdömen eller uppföljning.
 
-## Bando HQ Access (registreringen)
+## Bando HQ Access (förfrågan eller inbjudan)
 
-**Flödet.** QR-koden i studion (eller länken) leder till `bandohq.se/access`. Där läser man om
-förmånerna och väljer en eller flera inriktningar. Sedan fyller man i namn, e-post, telefon,
-personnummer och lösenord, och bekräftar e-posten med en kod. Därefter är man inloggad i Bando HQ
-som **kund och cirkeldeltagare**. Det finns ingen ansökan, och man kan inte registrera sig bara
-för bokningar.
+**Flödet.** Ingen skapar ett konto direkt.
+
+1. QR-koden i studion (eller länken) leder till `bandohq.se/access`. Där läser man om förmånerna,
+   väljer inriktningar och **skickar en förfrågan**: namn, e-post, telefon och gärna några rader om
+   sig själv. Inget lösenord och inget personnummer.
+2. **Admin eller en producent** svarar under **IDAG → Väntar på svar**. *Godkänn* skickar en
+   inbjudan på mejlen. *Avböj* skickar ett vänligt mejl, med en egen rad om man vill.
+3. Med länken i mejlet (`…/access.html?inbjudan=…`) skapar personen sitt konto: lösenord, kod på
+   mejlen, personnummer och godkännande. Därefter är hen inloggad i Bando HQ som **kund och
+   cirkeldeltagare**.
+
+**Bjuda in direkt:** Crew → Kunder eller Cirklar → Deltagare → **+ Bjud in till Bando HQ
+Access**, med namn och e-post. En producent som godkänner eller bjuder in blir artistens
+producent.
+
+En inbjudan gäller i 30 dagar och kan bara användas en gång. Kunder som läggs till via
+**+ Kund** får också en länk till Access-sidan.
 
 **Admin, efteråt:**
 - **Cirklar → Deltagare → Väntar på en grupp**: alla nya, med inriktningar och datum. Admin får

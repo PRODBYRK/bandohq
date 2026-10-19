@@ -870,6 +870,7 @@ function blank(){
     rewardsCfg:{up:0},                                     /* poängtrappan m.m. (setting/rewards) — tomt = standard */
     accessCfg:{up:0},                                      /* Access: inriktningar, förmåner, tjänstepriser (setting/access) */
     signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
+    accessReqs:[],                                         /* förfrågningar om Access (crewet svarar) */
     reports:{},                                            /* kontrollerade/rapporterade cirkelpass (session_reports) */
     cloud:{pushedAt:0, pulledTs:0},                     /* synkmarkörer för den här enheten */
     invites:[],                                         /* bara förhandsvisningen — annars i databasen */
@@ -912,6 +913,7 @@ function heal(s){
   s.rewardsCfg = Object.assign(blank().rewardsCfg, s.rewardsCfg||{});
   s.accessCfg = Object.assign(blank().accessCfg, s.accessCfg||{});
   if(!Array.isArray(s.signups)) s.signups = [];
+  if(!Array.isArray(s.accessReqs)) s.accessReqs = [];
   if(!s.reports || typeof s.reports !== 'object') s.reports = {};
   s.cloud = Object.assign(blank().cloud, s.cloud||{});
   if(!Array.isArray(s.invites)) s.invites = [];
@@ -1529,7 +1531,7 @@ const customerOf = b => b && !b.circleId ? accounts().find(a=>a.r==='customer' &
 /* Får jag avsluta passet och skriva omdöme? Samma regel som bs_may_close. */
 function mayClose(b){
   const m = me(), cu = customerOf(b); if(!m || !cu) return false;
-  return isAdminRole(m.r) || (isCrewRole(m.r) && (cu.producer===m.id || (b.with||[]).includes(m.n) || b.closedBy===m.n));
+  return isAdminRole(m.r) || (isCrewRole(m.r) && (cu.producer===m.id || (cu.producers||[]).includes(m.id) || (b.with||[]).includes(m.n) || b.closedBy===m.n));
 }
 const canIntel = () => { const m = me(); return !!m && (isAdminRole(m.r) || (m.perms||[]).includes('artist_intel')); };
 async function rw(fn, args){ return PREVIEW_LOGIN ? rwLocal[fn](args||{}) : sbRpc(fn, args||{}); }
@@ -1952,8 +1954,10 @@ function customersSection(){
   const m = me(); if(!m || !isCrewRole(m.r)) return '';
   const list = accounts().filter(a=>a.r==='customer' && a.active!==false && !a.del
     && (canIntel() || a.producer===m.id || (a.producers||[]).includes(m.id))).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
-  if(!list.length) return '';
+  const inv = can('answerAccess') ? `<button class="btn ghost" style="margin-bottom:10px" onclick="openAccessInvite()">+ BJUD IN TILL BANDO HQ ACCESS</button>` : '';
+  if(!list.length) return inv ? `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span></div>${inv}` : '';
   return `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
+    ${inv}
     ${list.slice(0, 30).map(a=>{ const bs = live().filter(b=>!b.circleId && b.who===a.n && !['request','declined'].includes(b.status));
       const open = bs.filter(b=>!b.closed && startAt(b) < new Date() && mayClose(b)).length;
       return `<button class="member" onclick="openArtistProfile('${a.id}')">${avatar(a)}
@@ -2306,6 +2310,89 @@ function saveAccessCfg(){
   save(); sync(true); render(); toast('Sparat — gäller direkt på registreringssidan och i kundvyn');
 }
 
+/* ---------- förfrågningar om Access och inbjudningar ----------
+   Admin och producenter godkänner en förfrågan (inbjudan på mejlen) eller bjuder in direkt. Länken går
+   till Access-sidan där kontot skapas. I förhandsläget sker allt lokalt (S.accessReqs, S.invites). */
+const accessLink = tok => accessUrl() + '?inbjudan=' + encodeURIComponent(tok);
+function openAccessReq(id){
+  const x = (S.accessReqs||[]).find(r=>r.id===id); if(!x || !can('answerAccess')) return;
+  openSheet(`${X}<h2>${esc(x.name)}</h2>
+    <div class="sub">Förfrågan om Bando HQ Access · ${esc(new Date(x.created_at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'}))}</div>
+    <div style="margin-top:12px">
+      <div class="kv"><span>E-POST</span><b><a href="mailto:${esc(x.email)}" style="color:var(--txt)">${esc(x.email)}</a></b></div>
+      ${x.phone?`<div class="kv"><span>TELEFON</span><b><a href="${telHref(x.phone)}" style="color:var(--txt)">${esc(x.phone)}</a></b></div>`:''}
+      <div class="kv"><span>INRIKTNING</span><b>${esc(interestText(x.interests||[])) || '—'}</b></div>
+      ${x.message?`<div class="kv" style="border:0"><span>OM SIG</span><b style="font-weight:500">${esc(x.message)}</b></div>`:''}</div>
+    <div class="note">Godkänn = personen får en inbjudan på mejlen och skapar sitt konto på Access-sidan${isProducer(me()) ? ' — och du blir hens producent' : ''}.</div>
+    <button class="btn" style="margin-top:14px" onclick="approveAccess('${x.id}')">GODKÄNN OCH SKICKA INBJUDAN</button>
+    <label class="lbl" for="arNo">MEDDELANDE OM DU AVBÖJER <span class="muted">(valfritt)</span></label>
+    <input id="arNo" maxlength="200" placeholder="t.ex. Vi är fulla till våren — hör av dig igen">
+    <button class="btn ghost" style="margin-top:9px" onclick="declineAccess('${x.id}')">AVBÖJ</button>`);
+}
+async function approveAccess(id){
+  const x = (S.accessReqs||[]).find(r=>r.id===id); if(!x) return;
+  try{
+    let tok;
+    if(PREVIEW_LOGIN){
+      tok = localToken();
+      S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0, closed:false,
+        created:Date.now(), created_by:me().id, name:x.name, email:x.email, phone:x.phone||'', interests:x.interests||[], request_id:x.id});
+      Object.assign(x, {status:'approved', invite:tok, handled_by:me().id}); save();
+    } else {
+      tok = (await sbRpc('approve_access', {p_id:id, p_url:appUrl()})).invite;
+      S.accessReqs = (S.accessReqs||[]).filter(r=>r.id!==id); save();
+    }
+    render();
+    openSheet(`${X}<h2>Godkänd</h2><div class="sub">${esc(x.name)} får en inbjudan till <b>${esc(x.email)}</b>${PREVIEW_LOGIN ? ' (i drift som mejl)' : ''}.</div>
+      <button class="btn ghost" style="margin-top:14px" onclick="copy('${esc(accessLink(tok))}','Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`);
+  }catch(e){ toast(e.message); }
+}
+async function declineAccess(id){
+  const x = (S.accessReqs||[]).find(r=>r.id===id); if(!x) return;
+  const why = ((document.getElementById('arNo')||{}).value || '').trim();
+  if(!confirm(`Avböj ${x.name}? Hen får ett mejl.`)) return;
+  try{
+    if(!PREVIEW_LOGIN) await sbRpc('decline_access', {p_id:id, p_reason:why});
+    Object.assign(x, {status:'declined'}); S.accessReqs = (S.accessReqs||[]).filter(r=>r.status==='new'); save();
+    closeSheet(); render(); toast('Avböjd');
+  }catch(e){ toast(e.message); }
+}
+/* Bjud in direkt — namn och e-post (telefon och inriktning om man vet). */
+function openAccessInvite(){
+  if(!can('answerAccess')) return;
+  pickInt.ai = new Set();
+  openSheet(`${X}<h2>Bjud in till Bando HQ Access</h2>
+    <div class="sub">Personen får en länk på mejlen och skapar sitt konto${isProducer(me()) ? ' — du blir hens producent' : ''}.</div>
+    <label class="lbl" for="aiN">NAMN</label><input id="aiN" autocomplete="off" maxlength="60" placeholder="För- och efternamn">
+    <label class="lbl" for="aiE">E-POST</label><input id="aiE" type="email" inputmode="email" autocapitalize="none" maxlength="120" placeholder="namn@exempel.se">
+    <label class="lbl" for="aiP">TELEFON <span class="muted">(valfritt)</span></label><input id="aiP" type="tel" inputmode="tel" maxlength="20" placeholder="070-123 45 67">
+    <label class="lbl">INRIKTNING <span class="muted">(valfritt — personen kan ändra)</span></label>
+    <div class="chips" ${CHIPWRAP}>${interestChips('ai')}</div>
+    <div id="aiOut"></div>
+    <button class="btn" style="margin-top:20px" onclick="inviteAccess()">SKICKA INBJUDAN</button>`);
+}
+async function inviteAccess(){
+  const v = id => (document.getElementById(id).value||'').trim(), name = v('aiN'), email = v('aiE').toLowerCase(), phone = v('aiP');
+  const out = t => { document.getElementById('aiOut').innerHTML = t; };
+  if(name.length < 2) return out(`<div class="warn">Fyll i namnet</div>`);
+  if(!EMAIL_RE.test(email)) return out(`<div class="warn">Fyll i en giltig e-postadress</div>`);
+  if(phone && !normPhone(phone)) return out(`<div class="warn">Telefonnumret ser fel ut</div>`);
+  try{
+    let tok;
+    if(PREVIEW_LOGIN){
+      if(accounts().some(a=>a.login && (a.email||'').toLowerCase()===email)) throw new Error('Det finns redan ett konto med den e-postadressen');
+      S.invites.filter(i=>(i.email||'').toLowerCase()===email && i.role==='customer' && !i.closed && !i.uses).forEach(i=>i.closed = true);
+      tok = localToken();
+      S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0, closed:false,
+        created:Date.now(), created_by:me().id, name, email, phone:normPhone(phone), interests:[...pickInt.ai]});
+      save();
+    } else tok = (await sbRpc('invite_access', {p_name:name, p_email:email, p_phone:phone, p_interests:[...pickInt.ai], p_url:appUrl()})).invite;
+    out(`<div class="okbox"><b>Inbjudan skickad</b> till ${esc(email)}${PREVIEW_LOGIN ? ' (i drift som mejl)' : ''}. Länken gäller i 30 dagar.</div>
+      <button class="btn ghost slim" style="margin-top:9px" onclick="copy('${esc(accessLink(tok))}','Länken kopierad')">KOPIERA LÄNKEN</button>`);
+    ['aiN','aiE','aiP'].forEach(id=>document.getElementById(id).value='');
+  }catch(e){ out(`<div class="warn">${esc(e.message)}</div>`); }
+}
+
 /* ---------- tillbaka från registreringen ---------- */
 /* Förhandsläget: registreringssidan lämnar uppgifterna här (inget personnummer, bara det maskerade). */
 function takeAccessPreview(){
@@ -2313,14 +2400,21 @@ function takeAccessPreview(){
   localStorage.removeItem('bandohq_access_preview');
   if(!p || !p.name) return;
   const em = String(p.email||'').toLowerCase();
-  let a = em && accounts().find(x=>(x.email||'').toLowerCase()===em && ['customer','participant'].includes(x.r));
+  /* inbjudan (krävs för nya konton): förbrukas; gällde den en person som redan finns kopplas kontot dit */
+  const inv = p.invite && (S.invites||[]).find(i=>String(i.token).toUpperCase()===String(p.invite).toUpperCase() && i.role==='customer');
+  if(!inv) return;
+  inv.uses = (inv.uses||0) + 1;
+  let a = (inv.member_id && byId(inv.member_id)) || (em && accounts().find(x=>(x.email||'').toLowerCase()===em && ['customer','participant'].includes(x.r)));
   if(!a){
     let n = p.name, i = 1; while(accounts().some(x=>x.n.toLowerCase()===n.toLowerCase())) n = p.name + ' ' + (++i);
     a = {id:'m_' + uid(), n, r:'customer', email:em, phone:'', c:'#6633b8', g:'#9d5cf5', active:true, del:false};
     S.accounts.push(a);
   }
   Object.assign(a, {r:'customer', part:true, interests:p.interests||[], pnr:p.pnr||'', consent:true, phone:p.phone || a.phone || '',
-    reg:a.reg || new Date(p.at || Date.now()).toISOString(), source:a.source || 'access'});
+    reg:a.reg || new Date(p.at || Date.now()).toISOString(), source:a.source || 'access', login:true});
+  /* en producent som bjöd in blir artistens producent */
+  const by = byId(inv.created_by);
+  if(isProducer(by) && !(a.producers||[]).length){ a.producers = [by.id]; a.producer = a.producer || by.id; }
   bump(a);
   S.session = {email:a.email||'', name:a.n, picture:'', member:a.n, ts:Date.now(), via:'preview'};
   save();
@@ -2446,6 +2540,8 @@ function can(action, t){
     case 'answerCustomer':  { const c = t && byId(t.reqBy), w = (t && t.with) || [];
                               return adm || (w.length ? w.includes(m.n) : (!!c && (c.producer===m.id || (c.producers||[]).includes(m.id)))); }
     case 'answerLeads':     return adm;
+    /* förfrågningar om Access och direktinbjudan: admin och producenter */
+    case 'answerAccess':    return crewRole;
     case 'uploadMedia':     return team;
     case 'editMedia':       return crewRole || (!!t && t.by===m.id);
     /* --- v5: arbetsytan --- */
@@ -2666,7 +2762,7 @@ function renderGate(){
     }
     tag.textContent = 'Logga in för att fortsätta.';
     /* Bando HQ Access: nya registrerar sig (och blir kund och cirkeldeltagare) — i appen lika viktigt som inloggningen */
-    const bookBtn = `<a class="btn ${isNative()?'':'ghost'}" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:${isNative()?'0':'14px'}" href="${esc(accessUrl())}">REGISTRERA DIG</a>`;
+    const bookBtn = `<a class="btn ${isNative()?'':'ghost'}" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:${isNative()?'0':'14px'}" href="${esc(accessUrl())}">BANDO HQ ACCESS — SKICKA FÖRFRÅGAN</a>`;
     b.innerHTML = `${isNative() ? bookBtn + `<div class="gate-or">har du ett konto?</div>` : ''}<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
         <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
         <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
@@ -2676,7 +2772,7 @@ function renderGate(){
         ${gateErrBox()}
       </form>
       <button class="linkbtn" onclick="gateEmail=(document.getElementById('gE')||{}).value||gateEmail;gateMode='forgot';gateErr='';renderGate()">Glömt lösenordet?</button>
-      <div class="gate-foot">Ny här? <a href="${esc(accessUrl())}">Registrera dig för Bando HQ Access</a> ·
+      <div class="gate-foot">Ny här? <a href="${esc(accessUrl())}">Skicka en förfrågan om Bando HQ Access</a> ·
         <a href="#integritet" onclick="event.preventDefault();openPrivacy()">Integritet</a> ·
         <a href="#support" onclick="event.preventDefault();openSupport()">Hjälp</a></div>
       ${isNative() ? '' : bookBtn}`;
@@ -2697,7 +2793,7 @@ function renderGate(){
           <span class="chev">›</span>
         </button>`).join('')}</div>`).join('')}
     ${gateErrBox()}
-    <a class="btn ghost" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:18px" href="${esc(accessUrl())}">REGISTRERA DIG (BANDO HQ ACCESS)</a>
+    <a class="btn ghost" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:18px" href="${esc(accessUrl())}">BANDO HQ ACCESS — SKICKA FÖRFRÅGAN</a>
     ${DEMO ? `<div class="note">Demoläget visar appen med påhittade personer, pass och artister — producent, admin,
         kamerateam, cirkelledare, deltagare och kund. Inget sparas på servern.</div>
       <button class="btn ghost" style="margin-top:9px" onclick="leaveDemo()">AVSLUTA DEMOLÄGET</button>`
@@ -2786,6 +2882,8 @@ async function renderJoin(tag, b){
     catch(e){ joinInfo = {ok:false, why:e.message}; }
     return renderGate();
   }
+  /* kunder skapar kontot på Access-sidan (personnummer, inriktning, godkännande) */
+  if(joinInfo.ok && joinInfo.role==='customer' && !PREVIEW_LOGIN){ const t = joinToken; joinToken = null; return goAccess('?inbjudan=' + encodeURIComponent(t)); }
   if(!joinInfo.ok){
     tag.textContent = 'Inbjudan går inte att använda.';
     b.innerHTML = `<div class="warn">${esc(joinInfo.why||'Länken fungerar inte')}. Be AZ om en ny länk.</div>
@@ -3173,7 +3271,8 @@ async function sync(silent){
              if((S.cloud.v||0) < 11){ S.circles = []; S.cloud.pulledTs = 0; S.cloud.v = 11; }
              await cloudPull();
              if(can('manageCircles') || lcircle().some(c=>c.leader===(me()||{}).n)) await refreshReports().catch(()=>{});
-             if(can('answerLeads')) S.leads = (await sb('/leads?select=*&status=eq.new&order=created_at.asc')) || []; }
+             if(can('answerLeads')) S.leads = (await sb('/leads?select=*&status=eq.new&order=created_at.asc')) || [];
+             if(can('answerAccess')) S.accessReqs = (await sb('/access_requests?select=*&status=eq.new&order=created_at.asc')) || []; }
            else await cloudView(); }
     if(d && Date.now() - lastBeatScan > 120000){ await scanBeats(); await scanMedia(); }
     syncState = 'ok';
@@ -5669,8 +5768,9 @@ function openPrivacy(){
       <p>Namn, e-post, användarnamn, telefon och din roll. Bokningar och pass, närvaro och timmar i studiecirklar,
         uppgifter i agendan, och det du själv laddar upp (beats, bilder, film). Kunder: poäng och inlösta belöningar i
         Bando Rewards, och producenternas interna omdömen och uppföljning efter passen.</p>
-      <p><b>Bando HQ Access:</b> när du registrerar dig sparar vi också dina valda inriktningar, när du registrerade dig
-        och att du godkänt den här texten — och ditt <b>personnummer</b>.</p>
+      <p><b>Bando HQ Access:</b> när du skickar en förfrågan sparar vi namn, e-post, telefon, inriktningar och ditt meddelande
+        tills förfrågan är besvarad, och högst ett år. När du skapar ditt konto sparar vi också dina valda inriktningar, när du
+        registrerade dig och att du godkänt den här texten — och ditt <b>personnummer</b>.</p>
       <h3>Varför</h3>
       <p>För att ge dig tillgång till Bando HQ, boka studion, driva studiecirklarna, svara på
         bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.
@@ -5974,10 +6074,10 @@ async function saveAddPerson(){
     const as = (d.main ? ROLE_NAME[d.main].toLowerCase() : '') + (d.lead ? (d.main ? ' och ' : '') + 'cirkelledare' : '');
     document.getElementById('apOut').innerHTML = PREVIEW_LOGIN
       ? `<div class="okbox"><b>${esc(name)} är tillagd</b> som ${esc(as)}. I drift går inbjudan som mejl — här kan du prova länken direkt.</div>
-         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN</button>`
+         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(${role==='customer' ? `accessLink('${tok}')` : `inviteUrl('${tok}')`},'Länken kopierad')">KOPIERA LÄNKEN</button>`
       : `<div class="okbox"><b>Klart.</b> ${esc(name)} bjuds in som ${esc(as)} och får ett mejl till <b>${esc(em)}</b>
           inom någon minut. Länken gäller i 14 dagar.</div>
-         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(inviteUrl('${tok}'),'Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`;
+         <button class="btn ghost slim" style="margin-top:9px" onclick="copy(${role==='customer' ? `accessLink('${tok}')` : `inviteUrl('${tok}')`},'Länken kopierad')">KOPIERA LÄNKEN OCKSÅ</button>`;
     if(!ex){ addDraft.name = ''; addDraft.email = ''; }
     buildNav(); render(); sync(true);
   }catch(e){ toast(e.message); }
@@ -6508,6 +6608,7 @@ function vCirclePeople(){
         <span class="chev">›</span></button>`).join('')}
       ${waiting.length > 12 ? `<div class="tiny muted" style="margin:4px 2px">+ ${waiting.length - 12} till</div>` : ''}
       ${can('manageCircles') ? `<button class="btn" style="margin-top:10px" onclick="openDistribute()">FÖRDELA I GRUPPER</button>` : ''}`:''}
+    ${can('answerAccess') ? `<button class="btn ghost" style="margin-top:${waiting.length?'9':'0'}px" onclick="openAccessInvite()">+ BJUD IN TILL BANDO HQ ACCESS</button>` : ''}
     ${sg.length?`<div class="eyebrow"${waiting.length?'':' style="margin-top:0"'}>NYA ANMÄLNINGAR<span class="ln"></span><span style="color:var(--warn)">${sg.length}</span></div>
       ${sg.map(x=>`<div class="member" style="cursor:default">
         <div class="grow" style="min-width:0"><div class="mname">${esc(x.name)} <span class="badge warn" style="margin-left:4px">ANMÄLAN</span></div>
@@ -7284,9 +7385,15 @@ function inboxCard(){
   const reqs = requests().filter(b=>!b.circleId && endAt(b)>new Date() && can('answerCustomer', b))
     .sort((a,b)=>startAt(a)-startAt(b));
   const leads = can('answerLeads') ? (S.leads||[]).filter(l=>l.status==='new') : [];
-  if(!reqs.length && !leads.length) return '';
+  const accs = can('answerAccess') ? (S.accessReqs||[]).filter(x=>x.status==='new') : [];
+  if(!reqs.length && !leads.length && !accs.length) return '';
   const sm = (label, js, ghost) => `<button class="btn slim ${ghost?'ghost':''}" style="width:auto;flex:1;padding:9px 13px" onclick="${js}">${label}</button>`;
-  return `<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${reqs.length + leads.length}</span></div>
+  return `<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${reqs.length + leads.length + accs.length}</span></div>
+    ${accs.map(x=>`<div class="srow req" data-acc="${x.id}">
+      <div class="srow-d"><b>${new Date(x.created_at).getDate()}</b><span>${MON[new Date(x.created_at).getMonth()]}</span></div>
+      <div class="grow" style="min-width:0"><div class="srow-t">${esc(x.name)} <span class="badge" style="margin-left:4px;background:rgba(255,62,191,.14);color:#ff8fd8">ACCESS</span></div>
+        <div class="srow-m">${esc(interestText(x.interests||[])) || 'ingen inriktning'}${x.message ? ' · ' + esc(x.message) : ''}</div></div>
+      <div class="srow-a">${sm('Svara',`openAccessReq('${x.id}')`)}</div></div>`).join('')}
     ${leads.map(l=>`<div class="srow req">
       <div class="srow-d"><b>${fromIso(l.date).getDate()}</b><span>${MON[fromIso(l.date).getMonth()]}</span></div>
       <div class="grow" style="min-width:0"><div class="srow-t">${esc(l.name)} <span class="badge warn" style="margin-left:4px">NY KUND</span></div>
@@ -7536,9 +7643,10 @@ function openSupport(){
       <h3>Kontakt</h3>
       <p>Mejla <a href="mailto:${esc(ORG.email)}">${esc(ORG.email)}</a> — vi svarar inom ett par dagar.</p>
       <h3>Bli medlem och boka</h3>
-      <p>Registrera dig för <b>Bando HQ Access</b> på <a href="${esc(accessUrl())}">bandohq.se/access</a> (eller tryck <b>Registrera dig</b>
-        vid inloggningen). Då kan du boka sessions, se dina bokningar, priser och förmåner, och du blir deltagare i våra studiocirklar.
-        Ett pass är tre timmar och du avbokar själv fram till en timme innan.</p>
+      <p><b>Bando HQ Access</b> ges via inbjudan. Skicka en förfrågan på <a href="${esc(accessUrl())}">bandohq.se/access</a> (eller tryck
+        <b>Bando HQ Access</b> vid inloggningen), så går vi igenom den och mejlar dig en inbjudan. Med den skapar du ditt konto, bokar
+        sessions, ser dina priser och förmåner, och blir deltagare i våra studiocirklar. Ett pass är tre timmar och du avbokar själv
+        fram till en timme innan.</p>
       <h3>Konto</h3>
       <p>Du loggar in med din e-post och ditt lösenord. Crewet får sina konton via en inbjudan. Glömt lösenordet? Tryck
         <b>Glömt lösenordet?</b> vid inloggningen.</p>

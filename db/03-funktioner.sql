@@ -209,6 +209,15 @@ begin
     /* leder personen cirklar (t.ex. producent och cirkelledare) står det i mejlet */
     select string_agg(data->>'n', ', ' order by data->>'n') into leads from records
      where kind = 'circle' and not del and p_member is not null and data->>'leader' = nm;
+    if p_role::text = 'customer' then
+      /* kunder skapar kontot på Access-sidan (personnummer, inriktning, godkännande) */
+      perform bs_notify(p_member, em, 'Du är inbjuden till Bando HQ Access',
+        'Hej' || coalesce(' ' || split_part(nm,' ',1), '') || '!' || E'\n\n'
+        || 'Du är inbjuden till Bando HQ Access — boka sessions, se dina priser och förmåner, och bli deltagare i Bandos studiocirklar.'
+        || E'\n\n' || 'Tryck på knappen och skapa ditt konto. Länken gäller i ' || days || ' dagar och bara för dig.',
+        'invite-access', 'invite:' || tok, '0', bs_access_link(p_url, tok));
+      return tok;
+    end if;
     perform bs_notify(p_member, em, 'Du är inbjuden till BANDOHQ',
       'Hej' || coalesce(' ' || split_part(nm,' ',1), '') || '!' || E'\n\n'
       || 'Du är inbjuden till BANDOHQ som '
@@ -236,6 +245,8 @@ begin
                 when inv.max_uses is not null and inv.uses >= inv.max_uses then 'Länken är redan använd'
                 else '' end,
     'role', inv.role, 'circle', cname, 'team', inv.team, 'name', inv.name, 'email', inv.email,
+    'phone', inv.phone, 'interests', to_jsonb(coalesce(inv.interests, '{}')),
+    'by', (select name from members where id = inv.created_by),
     'member', inv.member_id is not null,
     /* cirklarna en befintlig person leder — "producent och cirkelledare för …" */
     'leads', case when inv.member_id is null then '[]'::jsonb else coalesce((select jsonb_agg(data->>'n' order by data->>'n')
@@ -1133,7 +1144,7 @@ begin
     'Hej ' || split_part(l.name,' ',1) || '! Din tid är bokad:' || E'\n\n'
     || bs_when(d) || ' · ' || bs_studio(p_studio) || E'\n\n'
     || 'Skapa ditt konto med knappen nedan för att se och ändra bokningen. Länken gäller i 30 dagar.',
-    'lead-ok', 'lead-ok:' || l.id, '0', p_url || '#join=' || tok);
+    'lead-ok', 'lead-ok:' || l.id, '0', bs_access_link(p_url, tok));
   return jsonb_build_object('booking', d->>'id', 'invite', tok);
 end $$;
 
@@ -1795,17 +1806,29 @@ $$;
    fyller i det som saknas för en befintlig kund ("Komplettera din profil").
    Dubbletter: samma personnummer, eller e-post på ett konto som redan loggar in, ger
    inget nytt konto — då tas den nya inloggningen bort igen och personen får logga in. */
+drop function if exists register_access(text, text, text, jsonb, boolean, text);
 create or replace function register_access(p_name text, p_phone text, p_pnr text, p_interests jsonb,
-  p_consent boolean, p_url text default null) returns jsonb
+  p_consent boolean, p_url text default null, p_invite text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := auth.uid(); em text; me members; nm text := bs_clean_name(p_name); ph text; p12 text; h text;
         ints text[]; bad text; cand members; owner text; mid text; base text; n int := 1; linked boolean := false;
-        labels text; a record;
+        labels text; a record; inv invites;
 begin
   if uid is null then raise exception 'Skapa kontot först'; end if;
   select lower(email) into em from auth.users where id = uid;
   select * into me from members where user_id = uid;
   if me.id is not null and not me.active then raise exception 'Kontot är avstängt — hör av dig till oss'; end if;
+  /* Nya konton kräver en inbjudan (efter en godkänd förfrågan, eller direkt från crewet).
+     Befintliga kunder som kompletterar profilen behöver ingen. */
+  if me.id is null then
+    select * into inv from invites where token = upper(trim(coalesce(p_invite,''))) for update;
+    if inv.token is null or inv.role::text <> 'customer' then
+      raise exception 'Bando HQ Access kräver en inbjudan — skicka en förfrågan på bandohq.se/access';
+    end if;
+    if inv.closed or inv.expires_at <= now() or (inv.max_uses is not null and inv.uses >= inv.max_uses) then
+      raise exception 'Inbjudan har gått ut eller är redan använd — skicka en ny förfrågan på bandohq.se/access';
+    end if;
+  end if;
 
   /* ---- kontrollerna (samma som på sidan) ---- */
   if me.id is null then
@@ -1857,6 +1880,11 @@ begin
     return jsonb_build_object('ok', false, 'exists', true,
       'why', 'Det finns redan ett konto med den e-postadressen. Logga in med det.');
   end if;
+  /* inbjudan till en person som redan finns (crewet lade in hen): just den raden */
+  if cand.id is null and inv.member_id is not null then
+    select * into cand from members where id = inv.member_id;
+    if cand.user_id is not null then raise exception 'Inbjudan gäller ett konto som redan finns — logga in med det'; end if;
+  end if;
   /* en person utan inloggning: personnummer, e-post, telefon + namn, eller bara namnet
      om crewet inte lagt in några kontaktuppgifter */
   if cand.id is null then
@@ -1886,6 +1914,19 @@ begin
     values (mid, uid, 'customer', nm, em, ph, true, ints, now(), now(), 'access', now_ms());
   end if;
   perform bs_put_pnr(mid, p12);
+  /* inbjudan förbrukas; en producent som bjöd in blir artistens producent */
+  update invites set uses = uses + 1 where token = inv.token;
+  if inv.created_by is not null and bs_is_producer(inv.created_by) then
+    perform set_config('bs.link', '1', true);
+    update members set producers = case when cardinality(producers) = 0 then array[inv.created_by] else producers end,
+           producer = coalesce(nullif(producer,''), inv.created_by), up = now_ms() where id = mid;
+    perform set_config('bs.link', '', true);
+  end if;
+  /* en godkänd förfrågan från bokningssidan (före Access): bokningen blir personens */
+  if inv.lead_id is not null then
+    update records set data = data || jsonb_build_object('who', nm, 'reqBy', mid, 'up', now_ms()), up = now_ms()
+     where kind = 'booking' and data->>'leadId' = inv.lead_id;
+  end if;
 
   /* ---- mejlen ---- */
   select string_agg(i->>'label', ', ') into labels from jsonb_array_elements(bs_acfg()->'interests') i where i->>'id' = any(ints);
@@ -1991,7 +2032,165 @@ revoke all on function bs_clean_name(text) from public, anon, authenticated;
 revoke all on function bs_is_part(text) from public, anon, authenticated;
 revoke all on function access_info() from public;
 grant execute on function access_info() to anon, authenticated;
-revoke all on function register_access(text, text, text, jsonb, boolean, text), access_status(), set_my_interests(jsonb),
+revoke all on function register_access(text, text, text, jsonb, boolean, text, text), access_status(), set_my_interests(jsonb),
   pnr_masks(), reveal_pnr(text), report_pnrs(jsonb), access_people() from public, anon;
-grant execute on function register_access(text, text, text, jsonb, boolean, text), access_status(), set_my_interests(jsonb),
+grant execute on function register_access(text, text, text, jsonb, boolean, text, text), access_status(), set_my_interests(jsonb),
   pnr_masks(), reveal_pnr(text), report_pnrs(jsonb), access_people() to authenticated;
+
+-- =====================================================================
+--  ACCESS VIA FÖRFRÅGAN ELLER INBJUDAN (2026-10)
+--  Man skickar en förfrågan (request_access, utan konto). Admin eller en producent godkänner
+--  (approve_access) — då skapas en kundinbjudan och personen får en länk till Access-sidan, där
+--  kontot skapas (register_access kräver inbjudan). Crewet kan också bjuda in direkt (invite_access).
+-- =====================================================================
+/* Länken till Access-sidan med inbjudan, byggd på appens adress (utan filnamn, fråga och #). */
+create or replace function bs_access_link(p_url text, p_tok text) returns text
+language sql immutable as $$
+  select regexp_replace(regexp_replace(coalesce(p_url,''), '[?#].*$', ''), '[^/]*$', '') || 'access.html?inbjudan=' || p_tok
+$$;
+create or replace function bs_invite_token() returns text
+language sql volatile as $$
+  select upper(substr(md5(random()::text || clock_timestamp()::text), 1, 4) || '-' ||
+               substr(md5(clock_timestamp()::text || random()::text), 1, 6))
+$$;
+/* Inriktningarna som en giltig lista (okända tas bort). */
+create or replace function bs_clean_interests(p jsonb) returns text[]
+language sql stable security definer set search_path = public as $$
+  select array(select distinct x from jsonb_array_elements_text(case when jsonb_typeof(p) = 'array' then p else '[]'::jsonb end) x
+                where x = any(bs_interest_ids()) order by x)
+$$;
+
+/* Förfrågan från Access-sidan, utan konto. p_hp är ett dolt fält som bara robotar fyller i.
+   Svaret är alltid "tack" — om e-posten redan har ett konto får den adressen ett mejl om det
+   (ingen kan på så sätt ta reda på vilka som finns). */
+create or replace function request_access(p_name text, p_email text, p_phone text, p_interests jsonb,
+  p_message text, p_consent boolean, p_hp text default '') returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare nm text := bs_clean_name(p_name); em text := lower(trim(coalesce(p_email,''))); ph text := bs_phone(p_phone);
+        ints text[] := bs_clean_interests(p_interests); id text; ex text; labels text; a record;
+begin
+  if coalesce(p_hp,'') <> '' then return jsonb_build_object('ok', true); end if;          -- robot: säg ok, gör inget
+  if length(nm) < 3 or nm !~ '\S+\s+\S' then raise exception 'Fyll i för- och efternamn'; end if;
+  if length(nm) > 60 then raise exception 'Namnet är för långt'; end if;
+  if nm ~ '[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]' then raise exception 'Namnet får bara innehålla bokstäver'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 120 then raise exception 'Fyll i en giltig e-postadress'; end if;
+  if ph is null then raise exception 'Fyll i ett giltigt mobilnummer'; end if;
+  if coalesce(array_length(ints, 1), 0) = 0 then raise exception 'Välj minst en inriktning'; end if;
+  if not coalesce(p_consent, false) then raise exception 'Godkänn hur vi hanterar dina uppgifter'; end if;
+  if (select count(*) from access_requests where created_at > now() - interval '1 day') >= 100 then
+    raise exception 'Många förfrågningar just nu — försök igen imorgon';
+  end if;
+  /* gamla besvarade förfrågningar sparas inte längre än ett år */
+  delete from access_requests where status <> 'new' and created_at < now() - interval '365 days';
+  if exists (select 1 from members where user_id is not null and lower(email) = em) then
+    perform bs_notify(null, em, 'Du har redan ett konto i Bando HQ',
+      'Hej! Vi fick en förfrågan om Bando HQ Access med din e-postadress, men du har redan ett konto.'
+      || E'\n\n' || 'Logga in med din e-post — har du glömt lösenordet kan du få ett nytt där.',
+      'received', 'acc-exists:' || em || ':' || to_char(now(), 'YYYYMMDD'));
+    return jsonb_build_object('ok', true);
+  end if;
+  /* samma e-post som redan väntar: uppdatera den i stället för en ny rad */
+  select r.id into ex from access_requests r where r.status = 'new' and lower(r.email) = em limit 1;
+  if ex is not null then
+    update access_requests set name = left(nm,60), phone = ph, interests = ints,
+           message = left(coalesce(nullif(trim(p_message),''), message, ''), 600) where access_requests.id = ex;
+    return jsonb_build_object('ok', true);
+  end if;
+  id := bs_uid('ar_');
+  insert into access_requests(id, name, email, phone, interests, message)
+  values (id, left(nm,60), em, ph, ints, left(nullif(trim(coalesce(p_message,'')),''), 600));
+  select string_agg(i->>'label', ', ') into labels from jsonb_array_elements(bs_acfg()->'interests') i where i->>'id' = any(ints);
+  for a in select m.id from members m where m.active and role::text in ('manager','admin','producer') loop
+    perform bs_notify(a.id, null, 'Förfrågan om Bando HQ Access: ' || nm,
+      nm || ' (' || em || ', ' || ph || ') vill ha Bando HQ Access.' || E'\n\n' || 'Inriktning: ' || coalesce(labels, '—') || '.'
+      || coalesce(E'\n\n' || 'Meddelande: ' || nullif(trim(p_message),''), '') || E'\n\n' || 'Godkänn eller avböj i BANDOHQ.',
+      'access-req', 'access-req:' || id || ':' || a.id);
+  end loop;
+  perform bs_notify(null, em, 'Vi har tagit emot din förfrågan',
+    'Hej ' || split_part(nm,' ',1) || '! Tack för din förfrågan om Bando HQ Access.' || E'\n\n'
+    || 'Vi går igenom den och mejlar dig en inbjudan när den är godkänd. Med inbjudan skapar du ditt konto.',
+    'received', 'acc-rcv:' || id);
+  return jsonb_build_object('ok', true);
+end $$;
+
+/* Kundinbjudan till Access-sidan, med mejl. Intern: approve_access och invite_access. */
+create or replace function bs_make_access_invite(p_name text, p_email text, p_phone text, p_interests text[],
+  p_request text, p_url text, p_by text, p_note text) returns text
+language plpgsql security definer set search_path = public as $$
+declare tok text := bs_invite_token(); byname text := (select name from members where id = p_by);
+begin
+  insert into invites(token, role, created_by, expires_at, max_uses, name, email, phone, interests, request_id)
+  values (tok, 'customer', p_by, now() + interval '30 days', 1, p_name, lower(p_email), p_phone, coalesce(p_interests,'{}'), p_request);
+  perform bs_notify(null, lower(p_email), 'Välkommen till Bando HQ Access',
+    'Hej ' || split_part(coalesce(p_name,''),' ',1) || '!' || E'\n\n' || coalesce(p_note,
+      'Du är inbjuden till Bando HQ Access' || coalesce(' av ' || byname, '') || '.')
+    || ' Med Bando HQ Access bokar du sessions, ser dina priser och förmåner, och blir deltagare i Bandos studiocirklar.'
+    || E'\n\n' || 'Tryck på knappen och skapa ditt konto. Länken gäller i 30 dagar och bara för dig.',
+    'invite-access', 'invite:' || tok, '0', bs_access_link(p_url, tok));
+  return tok;
+end $$;
+
+/* Godkänn en förfrågan — admin eller en producent. Personen får en inbjudan på mejlen. */
+create or replace function approve_access(p_id text, p_url text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r access_requests; tok text;
+begin
+  if not bs_is_crew() then raise exception 'Bara admin och producenter svarar på förfrågningar'; end if;
+  select * into r from access_requests where id = p_id for update;
+  if r.id is null or r.status <> 'new' then raise exception 'Förfrågan finns inte längre'; end if;
+  if exists (select 1 from members where user_id is not null and lower(email) = lower(r.email)) then
+    update access_requests set status = 'declined', handled_by = bs_my_id(), handled_at = now() where id = r.id;
+    raise exception '% har redan ett konto', r.name;
+  end if;
+  tok := bs_make_access_invite(r.name, r.email, r.phone, r.interests, r.id, p_url, bs_my_id(),
+           'Din förfrågan om Bando HQ Access är godkänd.');
+  update access_requests set status = 'approved', invite = tok, handled_by = bs_my_id(), handled_at = now() where id = r.id;
+  return jsonb_build_object('invite', tok);
+end $$;
+
+/* Avböj en förfrågan — med ett vänligt mejl (och en egen rad om man vill). */
+create or replace function decline_access(p_id text, p_reason text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare r access_requests;
+begin
+  if not bs_is_crew() then raise exception 'Bara admin och producenter svarar på förfrågningar'; end if;
+  select * into r from access_requests where id = p_id for update;
+  if r.id is null or r.status <> 'new' then raise exception 'Förfrågan finns inte längre'; end if;
+  update access_requests set status = 'declined', handled_by = bs_my_id(), handled_at = now() where id = r.id;
+  perform bs_notify(null, r.email, 'Din förfrågan om Bando HQ Access',
+    'Hej ' || split_part(r.name,' ',1) || '! Tack för din förfrågan om Bando HQ Access. Just nu kan vi tyvärr inte erbjuda dig en plats.'
+    || case when coalesce(trim(p_reason),'') <> '' then E'\n\n' || trim(p_reason) else '' end
+    || E'\n\n' || 'Hör gärna av dig igen längre fram.',
+    'answer', 'acc-no:' || r.id);
+end $$;
+
+/* Bjud in direkt — admin och producenter. En producent som bjuder in blir artistens producent. */
+create or replace function invite_access(p_name text, p_email text, p_phone text, p_interests jsonb, p_url text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare nm text := bs_clean_name(p_name); em text := lower(trim(coalesce(p_email,''))); tok text;
+begin
+  if not bs_is_crew() then raise exception 'Bara admin och producenter bjuder in'; end if;
+  if length(nm) < 2 then raise exception 'Fyll i namnet'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Fyll i en giltig e-postadress'; end if;
+  if nullif(trim(coalesce(p_phone,'')),'') is not null and bs_phone(p_phone) is null then raise exception 'Telefonnumret ser fel ut'; end if;
+  if exists (select 1 from members where user_id is not null and lower(email) = em) then
+    raise exception 'Det finns redan ett konto med den e-postadressen';
+  end if;
+  /* en tidigare öppen inbjudan till samma adress stängs */
+  update invites set closed = true where lower(email) = em and role::text = 'customer' and not closed and uses = 0;
+  tok := bs_make_access_invite(nm, em, bs_phone(p_phone), bs_clean_interests(p_interests), null, p_url, bs_my_id(), null);
+  /* väntar personen redan med en förfrågan är den besvarad nu */
+  update access_requests set status = 'approved', invite = tok, handled_by = bs_my_id(), handled_at = now()
+   where status = 'new' and lower(email) = em;
+  return jsonb_build_object('invite', tok);
+end $$;
+
+revoke all on function bs_access_link(text, text) from public, anon, authenticated;
+revoke all on function bs_invite_token() from public, anon, authenticated;
+revoke all on function bs_clean_interests(jsonb) from public, anon, authenticated;
+revoke all on function bs_make_access_invite(text, text, text, text[], text, text, text, text) from public, anon, authenticated;
+revoke all on function request_access(text, text, text, jsonb, text, boolean, text) from public;
+grant execute on function request_access(text, text, text, jsonb, text, boolean, text) to anon, authenticated;
+revoke all on function approve_access(text, text), decline_access(text, text), invite_access(text, text, text, jsonb, text) from public, anon;
+grant execute on function approve_access(text, text), decline_access(text, text), invite_access(text, text, text, jsonb, text) to authenticated;
+
