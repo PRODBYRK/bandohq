@@ -226,6 +226,7 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
   .form-foot .btn { width: auto; min-width: 420px; }
 }
 
+.static .tube-on .t1, .static .tube-on .t2, .static .hero-text, .static .hero-cta { animation: none !important; opacity: 1 !important; transform: none !important; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .lit .tube-on .t1, .lit .tube-on .t2 { animation: fadeOn 300ms ease both !important; }
@@ -235,7 +236,9 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
 </style>
 </head>
 <body>
-<script>document.documentElement.classList.add('js');</script>
+<script>document.documentElement.classList.add('js');
+/* ?static=1: skylten och texten färdiga direkt (skärmdumpar — App Store-bilderna) */
+if(/[?&]static=1/.test(location.search)) document.documentElement.classList.add('static');</script>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <defs>
     <filter id="neonGlow" x="-10%" y="-40%" width="120%" height="180%" color-interpolation-filters="sRGB">

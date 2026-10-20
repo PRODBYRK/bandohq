@@ -3,14 +3,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>BANDOHQ</title>
 <style>
-  html,body{margin:0;height:100%;background:#07050c;color:#f6f2ff;font:16px/1.5 -apple-system,system-ui,sans-serif}
-  main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;text-align:center}
-  .w{font-weight:700;letter-spacing:.2em;font-size:26px}.w span{color:#c084fc}
-  p{color:#9a91b5;max-width:300px;margin:14px 0 26px}
-  button{background:linear-gradient(150deg,#a855f7,#7c3aed);color:#fff;border:0;border-radius:14px;padding:15px 26px;font:inherit;font-weight:700;letter-spacing:.06em}
+  /* Bando Collectives identitet: natt, neonrosa, Barlow (typsnitten ligger i appen — sidan visas utan nät) */
+  @font-face{font-family:"Barlow Condensed";src:url("fonts/barlow-condensed-800.woff2") format("woff2");font-weight:800}
+  @font-face{font-family:"Barlow";src:url("fonts/barlow-400.woff2") format("woff2");font-weight:400}
+  @font-face{font-family:"Barlow";src:url("fonts/barlow-600.woff2") format("woff2");font-weight:600}
+  html,body{margin:0;height:100%;background:#0b090e;color:#f3eff7;font:17px/1.55 "Barlow","Helvetica Neue",-apple-system,system-ui,sans-serif}
+  main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;text-align:center;
+    background:radial-gradient(80% 44% at 50% 30%, rgba(255,62,191,.12), transparent 70%)}
+  .w{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:800;letter-spacing:.12em;font-size:34px;line-height:1;color:#fff}
+  .w span{color:#ff6ad8;margin-left:.28em;text-shadow:0 0 18px rgba(255,62,191,.6)}
+  .rule{width:180px;height:2px;margin:20px auto 0;background:#ff6ad8;box-shadow:0 0 14px rgba(255,62,191,.5)}
+  p{color:#a39bae;max-width:300px;margin:18px 0 28px}
+  button{background:#d01b8c;color:#fff;border:0;border-radius:2px;min-height:50px;padding:14px 28px;font:600 13px/1 "Barlow",sans-serif;letter-spacing:.22em;text-transform:uppercase}
+  button:active{transform:scale(.97)}
 </style></head>
 <body><main>
   <div class="w">BANDO<span>HQ</span></div>
+  <div class="rule"></div>
   <p>Ingen anslutning. BANDOHQ behöver internet för att visa schemat och bokningarna.</p>
   <button onclick="location.href='https://www.bandohq.se/'">FÖRSÖK IGEN</button>
 </main></body></html>
