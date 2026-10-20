@@ -26,7 +26,8 @@ window.bandohqDemo = function(o){
     ACC(A('p4','Ida Berg','participant','#6633b8','#9d5cf5','ida@exempel.se','070-000 04'),['performance','vocals'],'060104-••••'),
     ACC(Object.assign(A('k1','Studio Nord AB','customer','#0284c7','#38bdf8','bokning@studionord.se','070-123 45 67'),{producer:'rkay',producers:['rkay','adrey']}),['production','mixing'],'900412-••••',-40,'access'),
     /* ny via QR-koden i går — väntar på en grupp */
-    ACC(A('k2','Lea Novak','customer','#db2777','#f472b6','lea.novak@exempel.se','073-456 78 90'),['vocals','artistdev','content'],'020317-••••',-1,'access'),
+    /* värvad av Studio Nord (värva en vän) */
+    Object.assign(ACC(A('k2','Lea Novak','customer','#db2777','#f472b6','lea.novak@exempel.se','073-456 78 90'),['vocals','artistdev','content'],'020317-••••',-1,'access'),{referredBy:'k1'}),
     /* v8: admins och kamerateam */
     A('costa','Costa','admin','#7c3aed','#a855f7','costa@bandocollective.com','070-200 00 01'),
     A('nabbe','Nabbe','admin','#0284c7','#38bdf8','nabbe@bandocollective.com','070-200 00 02'),
@@ -155,8 +156,13 @@ window.bandohqDemo = function(o){
     /* dbx=1 → Dropbox kopplat och uppsatt (mock-läget svarar i stället för Dropbox) */
     dropbox: o.dbx ? {appKey:'mockappkey1', sharedId:'sf1', setupAt:Date.now(), up:1}
       : {appKey:'', sharedId:'', setupAt:0, up:0},
-    invites: o.join ? [{token:o.join, role:o.jrole||'participant', circle_id:o.jrole==='producer'?null:'c1',
-      expires_at:Date.now()+7*864e5, max_uses:null, uses:2, closed:false, created:Date.now()}] : [],
+    invites: (o.join ? [{token:o.join, role:o.jrole||'participant', circle_id:o.jrole==='producer'?null:'c1',
+      expires_at:Date.now()+7*864e5, max_uses:null, uses:2, closed:false, created:Date.now()}] : [])
+      /* Studio Nord har bjudit in en vän till (väntar) och Lea (har gått med) */
+      .concat([{token:'DEMO-F00001', role:'customer', circle_id:null, expires_at:Date.now()+26*864e5, max_uses:1, uses:0, closed:false,
+        created:Date.now()-4*864e5, created_by:'k1', referrer:'k1', name:'Elsa Holm', email:'elsa.holm@exempel.se', phone:'', interests:[]},
+        {token:'DEMO-F00002', role:'customer', circle_id:null, expires_at:Date.now()+29*864e5, max_uses:1, uses:1, closed:false,
+        created:Date.now()-2*864e5, created_by:'k1', referrer:'k1', name:'Lea Novak', email:'lea.novak@exempel.se', phone:'', interests:[]}]),
     courses,
     /* Bando Rewards (förhandslägets "server", se rwLocal i index.html) */
     rw:{seq:20, levelHist:[], redemptions:[],
@@ -164,10 +170,14 @@ window.bandohqDemo = function(o){
               {id:'lv_gold',name:'Gold',rank:2,criteria:{minEarned:3000,minSessions12:10},perks:'',active:true},{id:'lv_platinum',name:'Platinum',rank:3,criteria:{minEarned:6000,minSessions12:20},perks:'',active:true}],
       rewards:[{id:'rw1',title:'Bando-hoodie',description:'Hämtas i studion',cost:500,active:true},{id:'rw2',title:'Gratis mixpass',description:'3 timmar med en producent',cost:2000,active:true}],
       points:[{id:1,member_id:'k1',booking_id:'k0b',kind:'earn',points:100,note:'Studiotid',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
-              {id:2,member_id:'k1',kind:'adjust',points:500,note:'Välkomstbonus',by_id:'az',at:new Date(Date.now()-30*864e5).toISOString()}],
+              {id:2,member_id:'k1',kind:'bonus',points:100,note:'Välkomstbonus',ref:'welcome',by_id:'k1',at:new Date(Date.now()-40*864e5).toISOString()},
+              {id:4,member_id:'k1',booking_id:'k0b',kind:'bonus',points:200,note:'Första sessionen',ref:'first',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
+              {id:5,member_id:'k2',kind:'bonus',points:100,note:'Välkomstbonus',ref:'welcome',by_id:'k2',at:new Date(Date.now()-1*864e5).toISOString()}],
       notes:[{id:3,member_id:'k1',booking_id:'k0b',author_id:'rkay',created_at:new Date(Date.now()-5*864e5).toISOString(),went:'Fokuserad session — två tagningar räckte',
               created:'Vers 1 och refrängen',strengths:'Melodier och röstkontroll',develop:'Detaljer i texten',next:'Mixa refrängen och spela in vers 2',other:''}],
       crm:{k1:{projects:'EP till våren',goals:'Första egna spelningen',followup:D(10),followup_note:'Boka mixpass'}}},
-    rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1}};
+    rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1},
+    /* en pågående kampanj (Mer → Rewards → Poäng) */
+    rewardsCfg:{campaigns:[{id:'k_demo',label:'Dubbla poäng i höst',from:D(-7),to:D(21),multiplier:2}],up:1}};
     return S;
 };

@@ -738,6 +738,8 @@ ok('lektionen följer med i rapporten', snap5[0].lesson==='DAW-grunder', snap5[0
 
 /* ============ BANDO REWARDS ============ */
 head('Bando Rewards: poäng, belöningar, nivåer, omdömen och artist intelligence');
+/* poängtrappan för sig — bonusarna, kampanjerna och värva en vän har ett eget avsnitt längst ned */
+await R('setting','rewards',{bonuses:{welcome:0,first:0,recurring:0},referral:{enabled:false}});
 U.ku1 = await user('ku1@b.se'); U.pr2 = await user('pr2@b.se');
 await M('ku1', U.ku1, 'customer', 'Kim Kund', 'ku1@b.se', null);
 await q(`update members set producer='rkay' where id='ku1'`);
@@ -1162,6 +1164,128 @@ ok('kundinbjudningar från appen länkar också till Access-sidan', cm && cm.kin
 const cu = await user('crewinlagd@ny.se');
 const cr = await as(db, cu, ()=>rpc('register_access',{p_name:'Annat Namn',p_phone:'0701112299',p_pnr:pnr('19960404','333'),p_interests:'["production"]',p_consent:true,p_url:null,p_invite:ci}));
 ok('och kontot kopplas till personen crewet lade in', cr.ok && cr.linked && cr.id==='crw1' && (await one(`select user_id from members where id='crw1'`)).user_id===cu, cr);
+}
+/* ============ REWARDS: BONUSPOÄNG, KAMPANJER OCH VÄRVA EN VÄN ============ */
+{
+head('Rewards: bonuspoäng, kampanjer och värva en vän');
+await q(`delete from outbox`);
+const CA = fn => as(db,U.costa,fn);
+const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
+const pnr = (ymd, nnn) => ymd + '-' + nnn + luhn(ymd.slice(2) + nnn);
+const cfg = data => q(`update records set data=$1, up=up+1 where kind='setting' and id='rewards'`, [JSON.stringify(data)]);
+await cfg({});
+const bon = await one(`select bs_rcfg('bonuses') b, bs_rcfg('referral') r`);
+ok('standardvärden: välkomst 100, första 200, återkommande 150 vid 3 sessioner samma månad, värvning 300 och högst 3 öppna',
+   bon.b.welcome===100 && bon.b.first===200 && bon.b.recurring===150 && bon.b.recurringCount===3 && bon.r.points===300 && bon.r.maxOpen===3 && bon.r.enabled===true, bon);
+await cfg({bonuses:{first:250}});
+const mg = (await one(`select bs_rcfg('bonuses') b`)).b;
+ok('det admin sparat går före, resten följer standardvärdena', mg.first===250 && mg.welcome===100 && mg.recurring===150, mg);
+await cfg({bonuses:{first:'mycket'}});
+ok('ett felskrivet värde ger standardvärdet i stället för ett fel', +(await one(`select bs_rnum('bonuses','first',7) v`)).v===7);
+await cfg({});
+
+/* den som värvar: en kund med komplett profil */
+const rvU = await user('rita@vv.se');
+await q(`insert into members(id,user_id,role,name,email,interests,consent_at) values('rv1',$1,'customer','Rita Värvare','rita@vv.se','{production}',now())`,[rvU]);
+await q(`insert into member_pnr(member_id,pnr_enc,pnr_hash,birth) values('rv1','\\x00','h-rv1','990101')`);
+const RV = fn => as(db, rvU, fn);
+const fr = (name, email) => RV(()=>rpc('invite_friend',{p_name:name, p_email:email, p_url:'https://www.bandohq.se/'}));
+ok('bara artister bjuder in vänner', /Bara artister/.test(await boom(()=>as(db,U.rkay,()=>rpc('invite_friend',{p_name:'Vän Ett',p_email:'v1@vv.se',p_url:null})))||''));
+const kxU = await user('kx1@vv.se');
+await q(`insert into members(id,user_id,role,name,email) values('kx1',$1,'customer','Kim Ofärdig','kx1@vv.se')`,[kxU]);
+ok('en artist utan komplett profil kompletterar först', /Komplettera din profil/.test(await boom(()=>as(db,kxU,()=>rpc('invite_friend',{p_name:'Vän Ett',p_email:'v1@vv.se',p_url:null})))||''));
+ok('namn och e-post kontrolleras', /för- och efternamn/.test(await boom(()=>fr('Vän','v1@vv.se'))||'') && /e-postadress/.test(await boom(()=>fr('Vän Ett','v1'))||''));
+ok('inte sin egen adress, och inte någon som redan finns hos Bando', /din egen/.test(await boom(()=>fr('Rita Själv','rita@vv.se'))||'')
+   && /finns redan/.test(await boom(()=>fr('Någon Annan','rkay@b.se'))||''));
+const f1 = await fr('Vera Vän', 'vera@vv.se');
+const iv = await one(`select * from invites where token=$1`,[f1.invite]);
+ok('inbjudan: en kundinbjudan från artisten, 30 dagar och en användning', iv.role==='customer' && iv.referrer==='rv1' && iv.created_by==='rv1'
+   && iv.email==='vera@vv.se' && iv.max_uses===1 && f1.open===1 && f1.max===3, iv);
+const vm = await one(`select * from outbox where dedupe_key=$1`,['invite:'+f1.invite]);
+ok('vännen får mejlet "Rita Värvare bjuder in dig" med länken till Access-sidan', vm && vm.email==='vera@vv.se' && vm.kind==='invite-access'
+   && vm.subject==='Rita Värvare bjuder in dig till Bando HQ Access' && vm.link==='https://www.bandohq.se/access.html?inbjudan='+f1.invite, vm);
+ok('samma vän två gånger går inte', /redan fått en inbjudan/.test(await boom(()=>fr('Vera Vän','vera@vv.se'))||''));
+await fr('Olle Vän', 'olle@vv.se'); await fr('Per Vän', 'per@vv.se');
+ok('högst tre inbjudningar väntar samtidigt', /3 inbjudningar som väntar/.test(await boom(()=>fr('Fyra Vän','fyra@vv.se'))||''));
+await cfg({referral:{enabled:false}});
+ok('admin kan stänga av värva en vän', /avstängt/.test(await boom(()=>fr('Fem Vän','fem@vv.se'))||''));
+await cfg({});
+const info = await asAnon(db,()=>rpc('invite_info',{p_token:f1.invite}));
+ok('Access-sidan visar vem som bjöd in', info.ok && info.by==='Rita Värvare' && info.name==='Vera Vän', info);
+
+/* vännen skapar sitt konto */
+const veU = await user('vera@vv.se');
+const regV = o => as(db, veU, ()=>rpc('register_access', Object.assign({p_name:'Vera Vän',p_phone:'0703334455',p_pnr:pnr('20000101','111'),
+  p_interests:'["production"]',p_consent:true,p_url:'https://www.bandohq.se/',p_invite:null}, o)));
+const reg = await regV({p_invite:f1.invite});
+const ve = await one(`select * from members where id=$1`,[reg.id]);
+ok('vännen är värvad av artisten och får välkomstbonusen', reg.ok && ve.referred_by==='rv1' && reg.bonus===100
+   && !!(await one(`select 1 from points where member_id=$1 and kind='bonus' and ref='welcome' and points=100`,[reg.id])), [reg, ve.referred_by]);
+const wm = await one(`select * from outbox where dedupe_key=$1`,['welcome:'+reg.id]);
+ok('välkomstmejlet nämner poängen', /Välkomstgåva: 100 poäng i Bando Rewards/.test(wm.body), wm.body);
+const again = await regV({});
+ok('välkomstbonusen ges en gång', again.ok && again.bonus===0 && (await q(`select 1 from points where member_id=$1 and ref='welcome'`,[reg.id])).length===1, again);
+await as(db, veU, ()=>q(`update members set referred_by=null where id=$1`,[reg.id]).catch(()=>null));
+ok('vännen kan inte ändra vem som värvade', (await one(`select referred_by from members where id=$1`,[reg.id])).referred_by==='rv1');
+const sumR = await RV(()=>rpc('points_summary',{}));
+ok('artisten ser sina vänner: en har gått med, två väntar', sumR.friends.length===3 && sumR.friends.filter(f=>f.status==='waiting').length===2
+   && sumR.friends.some(f=>f.name==='Vera Vän' && f.status==='joined'), sumR.friends);
+ok('och kan bjuda in en till nu när en gått med', !!(await fr('Fyra Vän','fyra@vv.se')).invite);
+
+/* första sessionen och värvningen */
+const VB = (id, date, o) => R('booking', id, Object.assign({id, studio:'A', date, start:'10:00', end:'13:00', who:'Vera Vän', title:'Studiotid',
+  circleId:'', status:'', with:[]}, o));
+await VB('vb1','2026-08-04'); await VB('vb2','2026-08-11'); await VB('vb3','2026-08-18'); await VB('vb4','2026-08-25');
+await VB('vb5','2026-09-02'); await VB('vb6','2026-09-03', {end:'16:00'});
+const c1 = await CA(()=>rpc('close_session',{p_booking:'vb1',p_paid:true,p_note:null}));
+ok('första betalda sessionen: 100 poäng + 200 i bonus', c1.points===100 && c1.bonus===200, c1);
+const rvp = await one(`select * from points where member_id='rv1' and ref=$1`,['referral:'+reg.id]);
+ok('och den som värvade får 300 poäng', rvp && rvp.points===300 && rvp.kind==='bonus' && /Värva en vän: Vera Vän/.test(rvp.note), rvp);
+const pn = await one(`select * from outbox where kind='points' and member_id='rv1'`);
+ok('med en notis', pn && /tack för att du bjöd in Vera/.test(pn.subject) && /300 poäng/.test(pn.body), pn);
+await CA(()=>rpc('close_session',{p_booking:'vb1',p_paid:true,p_note:null}));
+await CA(()=>rpc('close_session',{p_booking:'vb2',p_paid:true,p_note:null}));
+ok('bonusarna ges bara en gång', (await q(`select 1 from points where member_id=$1 and ref='first'`,[reg.id])).length===1
+   && (await q(`select 1 from points where member_id='rv1' and ref like 'referral:%'`)).length===1);
+const sumR2 = await RV(()=>rpc('points_summary',{}));
+ok('vännen står som klar, med poängen', sumR2.friends.some(f=>f.name==='Vera Vän' && f.status==='done' && f.points===300) && sumR2.available===300, sumR2.friends);
+
+/* återkommande */
+const c3 = await CA(()=>rpc('close_session',{p_booking:'vb3',p_paid:true,p_note:null}));
+ok('tre betalda sessioner samma månad: 150 i bonus', c3.bonus===150
+   && (await one(`select note from points where member_id=$1 and ref='recurring:2026-08'`,[reg.id])).note==='Återkommande: 3 sessioner i augusti', c3);
+ok('en fjärde samma månad ger ingen till', (await CA(()=>rpc('close_session',{p_booking:'vb4',p_paid:true,p_note:null}))).bonus===0);
+await CA(()=>rpc('close_session',{p_booking:'vb4',p_paid:false,p_note:null}));
+ok('avmarkeras betalt dras passets poäng tillbaka, bonusarna står kvar', +(await one(`select coalesce(sum(points),0) s from points where booking_id='vb4'`)).s===0
+   && !!(await one(`select 1 from points where member_id=$1 and ref='recurring:2026-08'`,[reg.id])));
+
+/* kampanjer */
+await cfg({campaigns:[{id:'k1',label:'Dubbla poäng',from:'2026-09-01',to:'2026-09-30',multiplier:2},
+                      {id:'k2',label:'Lite extra',from:'2026-09-03',to:'2026-09-03',multiplier:1.5},
+                      {id:'kx',label:'Trasig',from:'x',to:'y',multiplier:'z'}]});
+const c5 = await CA(()=>rpc('close_session',{p_booking:'vb5',p_paid:true,p_note:null}));
+ok('under en kampanj gångras passets poäng: 3 h = 200', c5.points===200 && c5.campaign==='Dubbla poäng', c5);
+ok('historiken säger vilken kampanj', /Dubbla poäng ×2/.test((await one(`select note from points where booking_id='vb5' and kind='earn'`)).note));
+ok('överlappar två kampanjer gäller den högsta faktorn, och en trasig rad stoppar inget',
+   (await CA(()=>rpc('close_session',{p_booking:'vb6',p_paid:true,p_note:null}))).points===1000);
+await CA(()=>rpc('close_session',{p_booking:'vb5',p_paid:false,p_note:null}));
+ok('rättelse: kampanjpoängen dras tillbaka', +(await one(`select sum(points) s from points where booking_id='vb5'`)).s===0);
+await CA(()=>rpc('close_session',{p_booking:'vb5',p_paid:true,p_note:null}));
+ok('och kommer tillbaka', +(await one(`select sum(points) s from points where booking_id='vb5'`)).s===200);
+ok('faktorn skrivs på svenska', (await one(`select bs_mult_text(1.5) a, bs_mult_text(2.00) b`)).a==='×1,5');
+const t = Date.now(), d0 = new Date(t - 864e5).toISOString().slice(0,10), d1 = new Date(t + 864e5).toISOString().slice(0,10);
+await cfg({campaigns:[{id:'k1',label:'Dubbla poäng',from:'2026-09-01',to:'2026-09-30',multiplier:2},{id:'k3',label:'Höstkampanj',from:d0,to:d1,multiplier:2}]});
+const catV = await as(db, veU, ()=>rpc('rewards_catalog',{}));
+ok('artisten ser kampanjen som pågår, och bonusarna', catV.campaign && catV.campaign.label==='Höstkampanj' && catV.campaigns.length===1
+   && catV.bonuses.first===200 && catV.referral.points===300 && catV.referral.enabled===true, catV);
+ok('admin ser alla kampanjer, även de som är slut', (await CA(()=>rpc('rewards_catalog',{}))).campaigns.length===2);
+const sv = await as(db, veU, ()=>rpc('points_summary',{}));
+ok('bonusarna räknas som intjänade poäng (nivåerna)', sv.earned===sv.history.filter(h=>['earn','reversal','adjust','bonus'].includes(h.kind)).reduce((a,h)=>a+h.points,0)
+   && sv.history.some(h=>h.kind==='bonus' && h.note==='Första sessionen'), [sv.earned, sv.history]);
+/* bara admin ändrar inställningarna */
+await as(db, U.rkay, ()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting',id:'rewards',data:{bonuses:{first:99999}},up:9e12,del:false}])}).catch(()=>null));
+ok('en producent kan inte ändra bonusarna', (await one(`select bs_rcfg('bonuses') b`)).b.first===200);
+await cfg({});
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

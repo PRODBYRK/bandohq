@@ -475,6 +475,24 @@ saknar egna policys, så ingen läser dem direkt.
     utvecklingsområden, nästa gång och övrigt. Det är daterat och visar producenten.
 - **Kunden** ser sina poäng, sin nivå och belöningarna i sin vy, och löser in själv. Poängen dras
   direkt och admins får en notis.
+- **Bonuspoäng** (en gång var, en nyckel i poängloggen ser till det):
+  - välkomstbonus 100 när kontot skapas på Access-sidan
+  - första betalda sessionen 200
+  - återkommande 150 när artisten har 3 betalda sessions samma månad (en gång per månad)
+
+  Bonusarna står kvar om ett pass senare avmarkeras som betalt. Justera saldot för hand om det
+  behövs.
+- **Kampanjer** (till exempel dubbla poäng i november) gäller sessions vars datum ligger inom
+  kampanjen. Trappans poäng gångras med faktorn (högst 10), och historiken säger vilken kampanj det
+  var. Överlappar två kampanjer gäller den högsta faktorn. Kunden ser en banderoll medan kampanjen
+  pågår.
+- **Värva en vän:** kunden bjuder in en vän (namn och e-post) från sin vy, och vännen får en
+  inbjudan till Access-sidan. När vännens första betalda session är avslutad får kunden 300 poäng
+  och en notis.
+  - Högst 3 inbjudningar väntar samtidigt per kund, och högst 10 skickas per dygn.
+  - En adress som redan finns hos Bando går inte att bjuda in.
+  - Fanns vännen redan i BANDOHQ räknas det inte som värvning.
+- Allt det här ställs in under **Mer → Rewards → Poäng**, och bara admin ändrar det.
 - **Mer → Rewards** (admin, och den som fått behörigheten *Artist Intelligence* under
   Crew → Hantera konton):
 
@@ -483,7 +501,7 @@ saknar egna policys, så ingen läser dem direkt.
   | Inlösen | lämna ut eller makulera; makulerat ger tillbaka poängen |
   | Belöningar | skapa, ändra och ta bort |
   | Nivåer | Member, Silver, Gold och Platinum med exempelgränser — ändra dem |
-  | Poäng | trappan och gränserna för återkommande och inaktiv |
+  | Poäng | trappan, bonuspoängen, värva en vän, kampanjerna, och gränserna för återkommande och inaktiv |
   | Intelligence | alla artister med filter och sortering |
 
 - **Nivån räknas fram automatiskt**: den högsta nivån vars krav uppfylls (intjänade poäng, betalda pass

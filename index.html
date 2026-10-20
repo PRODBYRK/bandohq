@@ -245,6 +245,7 @@ select{background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),li
   background-position:calc(100% - 19px) 50%,calc(100% - 13px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat}
 input[type=date],input[type=time]{min-height:50px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two.end{align-items:end}                                  /* fälten i jämnhöjd även när en etikett bryts */
 .studiopick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .spick{border:1.5px solid var(--line);background:var(--card);border-radius:17px;padding:14px 13px;
   color:var(--txt);font:inherit;text-align:left;transition:.16s var(--ease)}
@@ -599,6 +600,22 @@ h2+.rank,.row .rank{font-size:15px;padding:2px 8px;border-radius:7px;background:
 .tl-key .k-own{background:var(--pur)}
 .rwcard .rwpts,.rwpts{font-family:var(--disp);font-size:34px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .pill.rwlevel{background:linear-gradient(150deg,rgba(168,85,247,.35),rgba(124,58,237,.2));color:#fff;letter-spacing:.12em}
+/* kampanjbanderollen, "så tjänar du poäng" och värva en vän */
+.rwcamp{display:flex;flex-direction:column;gap:3px;padding:12px 14px;margin-bottom:10px;border:1px solid rgba(255,62,191,.5);background:rgba(255,62,191,.08)}
+.rwcamp b{font-size:12px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:#ff8fd8}
+.rwcamp span{font-size:13px;color:var(--txt)}
+.rwearn{margin-top:10px}
+.rwearn .plrow.done span{color:var(--mut)}
+.rwearn .plrow.done b{color:var(--mut)}
+.rwearn .plrow b i{font-style:normal;color:var(--txt);letter-spacing:.08em}
+.rwfriend{margin-top:10px}
+.rwfriends{margin-top:10px}
+.rwfriends .kv b{font-size:11px;font-weight:700;letter-spacing:.14em}
+.rwfriends .kv b.ok{color:var(--ok2)}
+.rwfriends .kv b.muted{color:var(--mut)}
+.camprow{padding:10px 0;border-bottom:1px solid var(--line)}
+.camprow .badge.ok{background:rgba(52,211,153,.14);color:var(--ok2)}
+.camprow .badge.off{background:rgba(255,255,255,.06);color:var(--mut)}
 .notecard{margin-bottom:9px}.notecard p{margin:4px 0 0;line-height:1.55;font-size:14px}
 .notecard .lsub,.card .lsub{font-size:10.5px;font-weight:700;letter-spacing:.1em;color:var(--mut);margin-top:10px;text-transform:uppercase}
 .spark{display:flex;align-items:flex-end;gap:5px;height:40px;margin-top:6px}
@@ -1521,9 +1538,34 @@ function vCircleOverview(){
    belöningar att lösa in, nivåer, producenternas omdömen och en intern CRM. På servern går
    allt via funktioner som kontrollerar behörigheten (03-funktioner.sql: BANDO REWARDS); i
    förhandsläget spelar rwLocal samma roll med samma regler. */
-const RCFG = {tiers:[{hours:3, points:100}, {hours:6, points:500}], activeDays:60, recurringMin:3, recurringWindow:90};
-const rcfg = () => { const c = Object.assign({}, RCFG, S.rewardsCfg||{}); delete c.up; return c; };
+const RCFG = {tiers:[{hours:3, points:100}, {hours:6, points:500}], activeDays:60, recurringMin:3, recurringWindow:90,
+  /* bonusar (en gång var): välkomst, första betalda sessionen, återkommande = recurringCount sessioner samma månad */
+  bonuses:{welcome:100, first:200, recurring:150, recurringCount:3},
+  /* värva en vän: poängen när vännens första betalda session är klar */
+  referral:{enabled:true, points:300, maxOpen:3},
+  campaigns:[]};                                           /* [{id, label, from, to, multiplier}] */
+/* Som bs_rcfg: det admin sparat går före, och objekten slås ihop nyckel för nyckel. */
+const rcfg = () => { const s0 = S.rewardsCfg||{}, c = Object.assign({}, RCFG, s0);
+  c.bonuses = Object.assign({}, RCFG.bonuses, s0.bonuses||{}); c.referral = Object.assign({}, RCFG.referral, s0.referral||{});
+  c.campaigns = Array.isArray(s0.campaigns) ? s0.campaigns : []; delete c.up; return c; };
+/* ett felskrivet värde ger standardvärdet (bs_rnum) */
+const rnum = (v, d) => { const n = typeof v === 'string' && !v.trim() ? NaN : Number(v); return v == null || !Number.isFinite(n) ? d : Math.max(0, Math.min(1e6, n)); };
+const bonusOf = k => Math.round(rnum(rcfg().bonuses[k], 0));
+const refOn = () => { const v = rcfg().referral.enabled; return !(v === false || v === 'false'); };
+const refPts = () => Math.round(rnum(rcfg().referral.points, 0));
+const recurN = () => Math.max(1, Math.round(rnum(rcfg().bonuses.recurringCount, 3)));
 const pointsFor = h => Math.max(0, ...rcfg().tiers.filter(t=>+t.hours <= h + 1e-4).map(t=>+t.points||0));
+const ISO_D = /^\d{4}-\d{2}-\d{2}$/;
+/* Kampanjen som gäller ett datum (högsta faktorn om flera överlappar), som bs_campaign. */
+function campaignOn(date){
+  let best = null;
+  (rcfg().campaigns||[]).forEach(c=>{ const m = Math.round(+(c && c.multiplier)*100)/100;
+    if(c && m > 1 && m <= 10 && ISO_D.test(c.from||'') && ISO_D.test(c.to||'') && date >= c.from && date <= c.to && (!best || m > best.multiplier))
+      best = {id:c.id, label:String(c.label||'').trim() || 'Kampanj', from:c.from, to:c.to, multiplier:m}; });
+  return best;
+}
+const multText = m => '×' + String(+m).replace('.', ',');
+const MONTH_SV = ['januari','februari','mars','april','maj','juni','juli','augusti','september','oktober','november','december'];
 const NOTE_FIELDS = [['went','Hur sessionen gick'],['created','Vad som skapades eller blev klart'],['strengths','Artistens styrkor'],
   ['develop','Utvecklingsområden'],['next','Rekommendation till nästa session'],['other','Övrigt']];
 const fmtP = n => Math.round(+n||0).toLocaleString('sv-SE');
@@ -1546,7 +1588,12 @@ function rwState(){
 const rwFail = t => { throw new Error(t); };
 const rwLocal = {
   _bal(mid){ const ps = rwState().points.filter(p=>p.member_id===mid), sum = k => ps.filter(p=>k.includes(p.kind)).reduce((a,p)=>a+p.points,0);
-    return {earned:sum(['earn','reversal','adjust']), spent:-sum(['redeem','refund']), available:ps.reduce((a,p)=>a+p.points,0)}; },
+    return {earned:sum(['earn','reversal','adjust','bonus']), spent:-sum(['redeem','refund']), available:ps.reduce((a,p)=>a+p.points,0)}; },
+  /* en bonus = en rad med en nyckel; finns nyckeln redan händer ingenting (bs_bonus) */
+  _bonus(mid, ref, pts, note, booking){
+    pts = Math.round(+pts||0); if(!mid || pts <= 0 || rwState().points.some(p=>p.member_id===mid && p.ref===ref)) return 0;
+    this._add({member_id:mid, booking_id:booking||null, kind:'bonus', points:pts, note:String(note).slice(0,200), by_id:(me()||{}).id||null, ref});
+    this._upd(mid); return pts; },
   _stats(mid){ const a = byId(mid), y = iso(addDays(new Date(), -365));
     const bs = live().filter(b=>!b.circleId && a && b.who===a.n && b.closed && b.paid && b.date >= y);
     return {earned:this._bal(mid).earned, sessions12:bs.length, hours12:bs.reduce((s,b)=>s+dur(b),0)}; },
@@ -1564,13 +1611,24 @@ const rwLocal = {
     if(startAt(b) > new Date()) rwFail('Passet har inte börjat än');
     const cu = customerOf(b) || rwFail('Passet är inte bokat av en kund');
     if(!mayClose(b)) rwFail('Bara kundens producent, en producent som var med eller admin kan avsluta passet');
-    const pts = p_paid ? pointsFor(dur(b)) : 0;
+    let pts = p_paid ? pointsFor(dur(b)) : 0, note = `${longDate(b.date).toLowerCase()} ${b.start}-${b.end}`;
+    const cmp = pts > 0 ? campaignOn(b.date) : null;
+    if(cmp){ pts = Math.round(pts * cmp.multiplier); note += ` · ${cmp.label} ${multText(cmp.multiplier)}`; }
     const net = rwState().points.filter(p=>p.booking_id===b.id && ['earn','reversal'].includes(p.kind)).reduce((a,p)=>a+p.points,0);
-    if(pts - net) this._add({member_id:cu.id, booking_id:b.id, kind:pts-net>0?'earn':'reversal', points:pts-net, note:`${longDate(b.date).toLowerCase()} ${b.start}-${b.end}`, by_id:me().id});
+    if(pts - net) this._add({member_id:cu.id, booking_id:b.id, kind:pts-net>0?'earn':'reversal', points:pts-net, note, by_id:me().id});
     Object.assign(b, {closed:true, paid:!!p_paid, closedBy:b.closedBy||me().n, closedAt:Date.now()}); bump(b);
     if(p_note && NOTE_FIELDS.some(([k])=>String(p_note[k]||'').trim())) this.add_artist_note({p_booking, p_note, _ok:true});
+    let bonus = 0;
+    if(p_paid){
+      bonus += this._bonus(cu.id, 'first', bonusOf('first'), 'Första sessionen', b.id);
+      const rc = recurN(), mon = String(b.date).slice(0,7);
+      if(live().filter(x=>!x.circleId && x.who===cu.n && x.closed && x.paid && String(x.date).slice(0,7)===mon).length >= rc)
+        bonus += this._bonus(cu.id, 'recurring:' + mon, bonusOf('recurring'), `Återkommande: ${rc} sessioner i ${MONTH_SV[+mon.slice(5,7)-1]}`, b.id);
+      const rf = cu.referredBy ? byId(cu.referredBy) : null;
+      if(rf && rf.r==='customer' && rf.active!==false && refOn()) this._bonus(rf.id, 'referral:' + cu.id, refPts(), 'Värva en vän: ' + cu.n);
+    }
     this._upd(cu.id); save();
-    return {points:pts, available:this._bal(cu.id).available};
+    return {points:pts, bonus, campaign:cmp ? cmp.label : null, available:this._bal(cu.id).available};
   },
   add_artist_note({p_booking, p_note, _ok}){
     const b = S.bookings.find(x=>x.id===p_booking) || rwFail('Passet finns inte'), cu = customerOf(b) || rwFail('Passet är inte bokat av en kund');
@@ -1587,15 +1645,44 @@ const rwLocal = {
       .slice().reverse().map(n=>{ const b = S.bookings.find(x=>x.id===n.booking_id)||{};
         return Object.assign({}, n, {at:n.created_at, author:(byId(n.author_id)||{}).n||'', mine:n.author_id===m.id, date:b.date, start:b.start, end:b.end}); });
   },
-  rewards_catalog(){ const all = canIntel();
+  rewards_catalog(){ const all = canIntel(), c = rcfg(), today = iso(new Date());
     return {rewards:rwState().rewards.filter(w=>all || w.active!==false).slice().sort((a,b)=>a.cost-b.cost),
-      levels:rwState().levels.filter(l=>all || l.active!==false).slice().sort((a,b)=>a.rank-b.rank), tiers:rcfg().tiers}; },
+      levels:rwState().levels.filter(l=>all || l.active!==false).slice().sort((a,b)=>a.rank-b.rank), tiers:c.tiers, bonuses:c.bonuses,
+      referral:{enabled:refOn(), points:refPts(), maxOpen:Math.round(rnum(c.referral.maxOpen, 3))}, campaign:campaignOn(today),
+      campaigns:c.campaigns.filter(x=>x && typeof x==='object' && (all || String(x.to||'') >= today)).slice().sort((a,b)=>String(a.from).localeCompare(String(b.from)))}; },
   points_summary({p_member}){
     const mid = p_member || me().id; if(mid!==me().id && !canIntel()) rwFail('Inte behörig');
     const lv = this._level(mid), nx = rwState().levels.filter(l=>l.active!==false && l.rank > (lv ? lv.rank : -1)).sort((a,b)=>a.rank-b.rank)[0] || null;
     return Object.assign(this._bal(mid), {stats:this._stats(mid), level:lv, next:nx,
       history:rwState().points.filter(p=>p.member_id===mid).slice().reverse().slice(0,50),
-      redemptions:rwState().redemptions.filter(r=>r.member_id===mid).slice().reverse()});
+      redemptions:rwState().redemptions.filter(r=>r.member_id===mid).slice().reverse(),
+      friends:accounts().filter(a=>a.referredBy===mid).map(a=>{ const p = rwState().points.find(x=>x.member_id===mid && x.ref==='referral:' + a.id);
+          return {name:a.n, at:a.reg||null, status:p ? 'done' : 'joined', points:p ? p.points : null}; })
+        .concat((S.invites||[]).filter(i=>i.referrer===mid && !i.uses).map(i=>({name:i.name, at:new Date(i.created||Date.now()).toISOString(),
+          status:i.closed || i.expires_at <= Date.now() ? 'expired' : 'waiting'})))
+        .sort((x,y)=>String(y.at||'').localeCompare(String(x.at||'')))});
+  },
+  /* värva en vän (invite_friend) */
+  invite_friend({p_name, p_email}){
+    const m = me(); if(!m || m.r!=='customer' || m.active===false) rwFail('Bara artister bjuder in vänner');
+    if(!refOn()) rwFail('Värva en vän är avstängt just nu');
+    if(profileGaps(m)) rwFail('Komplettera din profil först');
+    const nm = String(p_name||'').trim().replace(/\s+/g,' '), em = String(p_email||'').trim().toLowerCase(), first = nm.split(' ')[0];
+    if(nm.length < 3 || !/\S+\s+\S/.test(nm)) rwFail('Fyll i vännens för- och efternamn');
+    if(nm.length > 60) rwFail('Namnet är för långt');
+    if(/[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]/.test(nm)) rwFail('Namnet får bara innehålla bokstäver');
+    if(!EMAIL_RE.test(em) || em.length > 120) rwFail('Fyll i en giltig e-postadress');
+    if(em===String(m.email||'').toLowerCase()) rwFail('Det är din egen e-postadress');
+    if(accounts().some(a=>String(a.email||'').toLowerCase()===em)) rwFail(`${first} finns redan hos Bando`);
+    if((S.invites||[]).some(i=>String(i.email||'').toLowerCase()===em && i.role==='customer' && !i.closed && i.expires_at > Date.now()
+       && !(i.max_uses && i.uses >= i.max_uses))) rwFail(`${first} har redan fått en inbjudan`);
+    const mx = Math.max(1, Math.round(rnum(rcfg().referral.maxOpen, 3)));
+    const open = (S.invites||[]).filter(i=>i.referrer===m.id && !i.closed && i.expires_at > Date.now() && !i.uses).length;
+    if(open >= mx) rwFail(`Du har ${open} inbjudningar som väntar — när någon gått med kan du bjuda in fler`);
+    const tok = localToken();
+    S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0, closed:false,
+      created:Date.now(), created_by:m.id, referrer:m.id, name:nm, email:em, phone:'', interests:[]});
+    save(); return {invite:tok, open:open + 1, max:mx};
   },
   redeem_reward({p_reward, p_member}){
     let mid;
@@ -1661,10 +1748,13 @@ function openClose(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(!mayClose(b)) return toast('Bara kundens producent, en producent som var med eller admin kan avsluta passet');
   const cu = customerOf(b), paid = b.closed ? !!b.paid : true;
+  const cmp = campaignOn(b.date), base = pointsFor(dur(b)), eff = cmp && base ? Math.round(base * cmp.multiplier) : base;
+  const ptsTxt = `${fmtP(eff)} poäng${cmp && base ? ` (${cmp.label} ${multText(cmp.multiplier)})` : ''}`;
   openSheet(`${X}<h2>${b.closed ? 'Avslutat pass' : 'Avsluta passet'}</h2>
     <div class="sub">${esc(cu.n)} · ${esc(longDate(b.date))} ${b.start}–${b.end} · ${fmtH(dur(b))} h</div>
-    <label class="consent" style="margin-top:16px"><input type="checkbox" id="clP" ${paid?'checked':''} onchange="document.getElementById('clPts').textContent=this.checked?'${fmtP(pointsFor(dur(b)))} poäng':'inga poäng'">
-      <span>Genomfört och <b>betalt</b> — ger <b id="clPts">${paid?fmtP(pointsFor(dur(b)))+' poäng':'inga poäng'}</b></span></label>
+    <label class="consent" style="margin-top:16px"><input type="checkbox" id="clP" ${paid?'checked':''} data-on="${esc(ptsTxt)}"
+      onchange="document.getElementById('clPts').textContent=this.checked?this.dataset.on:'inga poäng'">
+      <span>Genomfört och <b>betalt</b> — ger <b id="clPts">${paid?esc(ptsTxt):'inga poäng'}</b></span></label>
     <div class="eyebrow">OMDÖME <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— internt, artisten ser det aldrig</span><span class="ln"></span></div>
     ${NOTE_FIELDS.map(([k,l])=>`<label class="lbl" for="cl_${k}">${l.toUpperCase()}</label><textarea id="cl_${k}" style="min-height:56px"></textarea>`).join('')}
     <button class="btn" style="margin-top:20px" onclick="saveClose('${b.id}')">${b.closed ? 'SPARA' : 'AVSLUTA PASSET'}</button>`);
@@ -1674,7 +1764,8 @@ async function saveClose(id){
   try{
     const r = await rw('close_session', {p_booking:id, p_paid:document.getElementById('clP').checked, p_note:note});
     if(!PREVIEW_LOGIN){ if(remoteRole()) await cloudView(); else await cloudPull(); }
-    closeSheet(); render(); toast(r.points ? `Avslutat · ${fmtP(r.points)} poäng till artisten` : 'Avslutat');
+    closeSheet(); render();
+    toast(r.points || r.bonus ? `Avslutat · ${fmtP(r.points)} poäng${r.bonus ? ' + ' + fmtP(r.bonus) + ' i bonus' : ''} till artisten` : 'Avslutat');
   }catch(e){ toast(e.message); }
 }
 
@@ -1691,27 +1782,72 @@ function rewardsCard(){
   const s1 = rwMine, cat = rwCat; if(!s1 || !cat) return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div><div class="skel" style="height:120px"></div>`;
   const nx = s1.next, need = nx && (nx.criteria||{}).minEarned ? Math.max(0, +nx.criteria.minEarned - s1.earned) : null;
   const waiting = (s1.redemptions||[]).filter(r=>r.status==='waiting');
+  const cmp = cat.campaign, bo = cat.bonuses || {}, rf = cat.referral || {}, rc = Math.max(1, Math.round(+bo.recurringCount || 3));
+  const got = ref => (s1.history||[]).some(h=>h.kind==='bonus' && h.ref===ref);
   return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div>
+    ${cmp ? `<div class="rwcamp" role="status"><b>${esc(cmp.label)}</b><span>${multText(cmp.multiplier)} poäng på sessions till och med ${esc(longDate(cmp.to).toLowerCase())}</span></div>` : ''}
     <div class="card rwcard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
         <div><div class="rwpts">${fmtP(s1.available)}</div><div class="tiny muted">poäng att använda</div></div>
         ${s1.level ? `<span class="pill rwlevel">${esc(s1.level.name.toUpperCase())}</span>` : ''}</div>
       ${nx ? `<div class="tiny muted" style="margin-top:12px">${need!=null ? `${fmtP(need)} poäng till <b style="color:var(--txt)">${esc(nx.name)}</b>` : `Nästa nivå: <b style="color:var(--txt)">${esc(nx.name)}</b>`}</div>
         ${need!=null ? `<div class="bar thin"><i style="width:${Math.min(100, s1.earned / +nx.criteria.minEarned * 100)}%"></i></div>` : ''}` : ''}
-      <div class="tiny muted" style="margin-top:10px">Du får ${cat.tiers.map(t=>`${fmtP(t.points)} poäng för ${fmtH(t.hours)} h`).join(' och ')} när passet är betalt.</div>
     </div>
     ${waiting.length ? `<div class="note">Väntar på att lämnas ut: ${waiting.map(r=>esc(r.title)).join(', ')}.</div>` : ''}
+    <div class="card plcard rwearn"><div class="pltitle">Så tjänar du poäng</div>
+      <div class="plist">
+        ${cat.tiers.map(t=>`<div class="plrow"><span>Session ${fmtH(t.hours)} h</span><b>${fmtP(t.points)}${cmp ? ` <i>${multText(cmp.multiplier)}</i>` : ''}</b></div>`).join('')}
+        ${+bo.first > 0 ? `<div class="plrow ${got('first')?'done':''}"><span>Första sessionen</span><b>+${fmtP(bo.first)}</b></div>` : ''}
+        ${+bo.recurring > 0 ? `<div class="plrow"><span>${rc} sessions samma månad</span><b>+${fmtP(bo.recurring)}</b></div>` : ''}
+        ${rf.enabled && +rf.points > 0 ? `<div class="plrow"><span>Bjud in en vän</span><b>+${fmtP(rf.points)}</b></div>` : ''}
+        ${+bo.welcome > 0 ? `<div class="plrow ${got('welcome')?'done':''}"><span>Välkomstbonus</span><b>+${fmtP(bo.welcome)}</b></div>` : ''}
+      </div>
+      <div class="plnote">Poängen kommer när sessionen är genomförd och betald${rf.enabled && +rf.points > 0 ? ' — för en vän när hen gjort sin första session' : ''}.</div></div>
+    ${rf.enabled ? friendsCard(s1.friends||[], rf) : ''}
     ${cat.rewards.length ? cat.rewards.map(w=>`<div class="member" style="cursor:default">
       <div class="grow" style="min-width:0"><div class="mname">${esc(w.title)}</div><div class="mrole">${fmtP(w.cost)} poäng${w.description?' · '+esc(w.description):''}</div></div>
       <button class="btn slim ${s1.available>=w.cost?'':'ghost'}" style="width:auto;flex:none;padding:9px 13px" ${s1.available>=w.cost?'':'disabled'} onclick="redeemMine('${w.id}')">LÖS IN</button></div>`).join('')
       : `<div class="empty">Belöningarna kommer snart.</div>`}
     ${(s1.history||[]).length ? `<button class="linkbtn" onclick="openPointsHistory()">Poänghistorik</button>` : ''}`;
 }
+const FRIEND_ST = {waiting:'INBJUDEN', joined:'HAR GÅTT MED', done:'KLAR', expired:'LÄNKEN GICK UT'};
+function friendsCard(friends, rf){
+  return `<div class="card rwfriend">
+      <div class="studio-name">VÄRVA EN VÄN</div>
+      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Bjud in en vän till Bando HQ Access. När hen har gjort sin första session får du
+        <b style="color:var(--txt)">${fmtP(rf.points)} poäng</b>.</div>
+      <button class="btn" style="margin-top:12px" onclick="openInviteFriend()">BJUD IN EN VÄN</button>
+      ${friends.length ? `<div class="rwfriends">${friends.map(f=>`<div class="kv"><span>${esc(f.name)}</span>
+        <b class="${f.status==='done'?'ok':f.status==='joined'?'':'muted'}">${FRIEND_ST[f.status]||''}${f.status==='done' && f.points ? ' · +' + fmtP(f.points) : ''}</b></div>`).join('')}</div>` : ''}
+    </div>`;
+}
+function openInviteFriend(){
+  const m = me(); if(!m) return;
+  if(profileGaps(m)) return openProfileSheet();
+  const rf = (rwCat && rwCat.referral) || {};
+  openSheet(`${X}<h2>Bjud in en vän</h2>
+    <div class="sub">Din vän får en inbjudan till Bando HQ Access på mejlen och skapar sitt konto där.${+rf.points > 0 ? ` När hen har gjort sin första session får du ${fmtP(rf.points)} poäng.` : ''}</div>
+    <label class="lbl" for="frN">VÄNNENS NAMN</label><input id="frN" autocomplete="off" maxlength="60" placeholder="För- och efternamn">
+    <label class="lbl" for="frE">VÄNNENS E-POST</label><input id="frE" type="email" inputmode="email" autocapitalize="none" autocomplete="off" maxlength="120" placeholder="namn@exempel.se">
+    <div id="frOut"></div>
+    <button class="btn" style="margin-top:20px" onclick="sendInviteFriend()">SKICKA INBJUDAN</button>`);
+}
+async function sendInviteFriend(){
+  const v = id => (document.getElementById(id).value||'').trim(), out = t => { document.getElementById('frOut').innerHTML = t; };
+  const name = v('frN'), email = v('frE').toLowerCase();
+  try{
+    const r = await rw('invite_friend', {p_name:name, p_email:email, p_url:appUrl()});
+    out(`<div class="okbox" role="status"><b>Inbjudan skickad</b> till ${esc(email)}${PREVIEW_LOGIN ? ' (i drift som mejl)' : ''}.
+      ${r.open} av ${r.max} inbjudningar väntar på svar.</div>`);
+    ['frN','frE'].forEach(id=>document.getElementById(id).value='');
+    loadMyRewards(true);
+  }catch(e){ out(`<div class="warn" role="alert">${esc(e.message)}</div>`); }
+}
 async function redeemMine(id){
   const w = (rwCat.rewards||[]).find(x=>x.id===id); if(!w || !confirm(`Lösa in ${w.title} för ${fmtP(w.cost)} poäng?`)) return;
   try{ await rw('redeem_reward', {p_reward:id}); loadMyRewards(true); toast('Inlöst — vi hör av oss när den kan hämtas'); }catch(e){ toast(e.message); }
 }
-const PKIND = {earn:'Pass', reversal:'Tillbakadraget', redeem:'Inlöst', refund:'Tillbaka', adjust:'Justering'};
+const PKIND = {earn:'Pass', reversal:'Tillbakadraget', redeem:'Inlöst', refund:'Tillbaka', adjust:'Justering', bonus:'Bonus'};
 function pointsRows(h){
   return (h||[]).map(p=>`<div class="kv"><span>${esc(new Date(p.at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'}))} · ${PKIND[p.kind]||p.kind}</span>
     <b style="color:${p.points>0?'var(--ok2)':'var(--txt)'}">${p.points>0?'+':''}${fmtP(p.points)}${p.note?` <span class="muted" style="font-weight:500">${esc(p.note)}</span>`:''}</b></div>`).join('') || '<div class="empty">Inga poäng än.</div>';
@@ -1746,7 +1882,9 @@ function paintArtist(){
           <div class="srow-m">${b.status==='request' ? 'förfrågan' : b.closed ? (b.paid ? `avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'avslutat, ej betalt') : startAt(b) < today ? 'inte avslutat' : 'kommande'}</div></div>
         ${!b.status && startAt(b) < today && mayClose(b) ? `<button class="btn slim ${b.closed?'ghost':''}" style="width:auto;flex:none;padding:8px 12px" onclick="openClose('${b.id}')">${b.closed?'ÄNDRA':'AVSLUTA'}</button>` : ''}</div>`).join('')
       : '<div class="empty">Inga bokningar än.</div>')
-    : t==='rewards' ? (d.sum ? `<div class="card"><div class="rwpts">${fmtP(d.sum.available)}</div><div class="tiny muted">tillgängliga · ${fmtP(d.sum.earned)} intjänade · ${fmtP(d.sum.spent)} förbrukade</div></div>
+    : t==='rewards' ? (d.sum ? `<div class="card"><div class="rwpts">${fmtP(d.sum.available)}</div><div class="tiny muted">tillgängliga · ${fmtP(d.sum.earned)} intjänade · ${fmtP(d.sum.spent)} förbrukade</div>
+        ${a.referredBy && byId(a.referredBy) ? `<div class="tiny muted" style="margin-top:8px">Värvad av ${esc(byId(a.referredBy).n)}</div>` : ''}
+        ${(d.sum.friends||[]).length ? `<div class="tiny muted" style="margin-top:8px">Har bjudit in ${d.sum.friends.length}: ${d.sum.friends.map(f=>esc(f.name) + ' (' + (FRIEND_ST[f.status]||'').toLowerCase() + ')').join(', ')}</div>` : ''}</div>
         ${can('manageCrew') ? `<div class="row" style="gap:8px;margin-top:10px"><button class="btn ghost slim" style="flex:1" onclick="openRedeemFor()">LÖS IN ÅT KUNDEN</button>
           <button class="btn ghost slim" style="flex:1" onclick="openAdjust()">JUSTERA SALDO</button></div>` : ''}
         ${(d.sum.redemptions||[]).length ? `<div class="eyebrow">INLÖSTA<span class="ln"></span></div>${d.sum.redemptions.map(r=>`<div class="kv"><span>${esc(new Date(r.at).toLocaleDateString('sv-SE'))}</span><b>${esc(r.title)} · ${fmtP(r.cost)} · ${{waiting:'väntar',delivered:'utlämnad',cancelled:'makulerad'}[r.status]}</b></div>`).join('')}` : ''}
@@ -1909,25 +2047,64 @@ async function saveLevelEdit(id){
 }
 async function delLevelEdit(id){ if(!confirm('Ta bort nivån?')) return; try{ await rw('delete_level', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
 function pointsCfgPanel(adm){
-  const c = rcfg();
+  const c = rcfg(), dis = adm ? '' : 'disabled', b = c.bonuses, rf = c.referral, num = v => esc(String(v==null ? '' : v));
   return `<div class="card"><div class="studio-name">POÄNGTRAPPAN</div>
       <div class="tiny muted" style="margin-top:6px">Ett avslutat och betalt pass ger poängen för det högsta steget dess längd når.</div>
       <div id="tiers">${c.tiers.map((t,i)=>`<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" value="${t.hours}" aria-label="Timmar" ${adm?'':'disabled'}>
         <input class="tP" inputmode="numeric" value="${t.points}" aria-label="Poäng" ${adm?'':'disabled'}></div>`).join('')}</div>
       ${adm?`<button class="linkbtn" onclick="addTier()">+ steg</button>`:''}</div>
+    <div class="eyebrow">BONUSPOÄNG<span class="ln"></span></div>
+    <div class="tiny muted">Ges en gång var till artisten. 0 = av.</div>
+    <div class="two end"><div><label class="lbl" for="bnW">VÄLKOMSTBONUS</label><input id="bnW" inputmode="numeric" value="${num(b.welcome)}" ${dis}></div>
+      <div><label class="lbl" for="bnF">FÖRSTA SESSIONEN</label><input id="bnF" inputmode="numeric" value="${num(b.first)}" ${dis}></div></div>
+    <div class="two end"><div><label class="lbl" for="bnR">ÅTERKOMMANDE</label><input id="bnR" inputmode="numeric" value="${num(b.recurring)}" ${dis}></div>
+      <div><label class="lbl" for="bnC">SESSIONS SAMMA MÅNAD</label><input id="bnC" inputmode="numeric" value="${num(b.recurringCount)}" ${dis}></div></div>
+    <div class="eyebrow">VÄRVA EN VÄN<span class="ln"></span></div>
+    <label class="consent"><input type="checkbox" id="rfOn" ${refOn()?'checked':''} ${dis}><span>På — artisterna kan bjuda in vänner till Bando HQ Access</span></label>
+    <div class="two end"><div><label class="lbl" for="rfP">POÄNG PER VÄN</label><input id="rfP" inputmode="numeric" value="${num(rf.points)}" ${dis}></div>
+      <div><label class="lbl" for="rfM">MAX ÖPPNA INBJUDNINGAR</label><input id="rfM" inputmode="numeric" value="${num(rf.maxOpen)}" ${dis}></div></div>
+    <div class="tiny muted" style="margin-top:6px">Poängen kommer när vännens första betalda session är avslutad.</div>
+    <div class="eyebrow">KAMPANJER<span class="ln"></span></div>
+    <div class="tiny muted">Poängen för sessions inom datumen gångras med faktorn. Överlappar två gäller den högsta.</div>
+    <div id="camps">${c.campaigns.map(x=>campRow(x, adm)).join('') || (adm ? '' : '<div class="empty">Inga kampanjer.</div>')}</div>
+    ${adm?`<button class="linkbtn" onclick="addCampaign()">+ kampanj</button>`:''}
     <div class="eyebrow">ARTIST INTELLIGENCE<span class="ln"></span></div>
     <label class="lbl" for="rcA">INAKTIV EFTER (DAGAR UTAN PASS)</label><input id="rcA" inputmode="numeric" value="${c.activeDays}" ${adm?'':'disabled'}>
     <label class="lbl" for="rcM">ÅTERKOMMANDE: MINST ANTAL PASS</label><input id="rcM" inputmode="numeric" value="${c.recurringMin}" ${adm?'':'disabled'}>
     <label class="lbl" for="rcW">… UNDER SÅ MÅNGA DAGAR</label><input id="rcW" inputmode="numeric" value="${c.recurringWindow}" ${adm?'':'disabled'}>
     ${adm?`<button class="btn" style="margin-top:20px" onclick="savePointsCfg()">SPARA</button>`:''}`;
 }
+let campSeq = 0;
+function campRow(c, adm){
+  c = c || {}; const today = iso(new Date()), dis = adm ? '' : 'disabled', k = 'cp' + (++campSeq);
+  const st = !ISO_D.test(c.from||'') || !ISO_D.test(c.to||'') ? '' : c.to < today ? 'SLUT' : c.from > today ? 'KOMMANDE' : 'PÅGÅR';
+  return `<div class="camprow" data-id="${esc(c.id||'')}">
+    <div class="accrow"><input class="cL" value="${esc(c.label||'')}" maxlength="40" placeholder="Namn, t.ex. Dubbla poäng i november" aria-label="Kampanjens namn" ${dis}>
+      ${st ? `<span class="badge ${st==='PÅGÅR'?'ok':st==='SLUT'?'off':'warn'}">${st}</span>` : ''}</div>
+    <div class="two end"><div><label class="lbl" for="${k}f">FRÅN OCH MED</label><input id="${k}f" class="cF" type="date" value="${esc(c.from||'')}" ${dis}></div>
+      <div><label class="lbl" for="${k}t">TILL OCH MED</label><input id="${k}t" class="cT" type="date" value="${esc(c.to||'')}" ${dis}></div></div>
+    <div class="accrow"><label class="lbl" for="${k}m" style="margin:0;flex:1">FAKTOR <span class="muted">(2 = dubbla poäng)</span></label>
+      <input id="${k}m" class="cM narrow" inputmode="decimal" value="${esc(c.multiplier!=null ? String(c.multiplier).replace('.', ',') : '2')}" ${dis}>
+      ${adm ? `<button type="button" class="iconbtn" onclick="this.closest('.camprow').remove()" aria-label="Ta bort kampanjen">×</button>` : ''}</div></div>`;
+}
+function addCampaign(){ document.getElementById('camps').insertAdjacentHTML('beforeend', campRow({multiplier:2}, true)); }
 function addTier(){ document.getElementById('tiers').insertAdjacentHTML('beforeend', `<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" aria-label="Timmar" placeholder="timmar"><input class="tP" inputmode="numeric" aria-label="Poäng" placeholder="poäng"></div>`); }
 function savePointsCfg(){
   const hs = [...document.querySelectorAll('.tH')].map(x=>Number(String(x.value).replace(',','.'))), ps = [...document.querySelectorAll('.tP')].map(x=>parseInt(x.value,10));
   const tiers = hs.map((h,i)=>({hours:h, points:ps[i]})).filter(t=>t.hours>0 && t.points>=0).sort((a,b)=>a.hours-b.hours);
   const n = id => parseInt(document.getElementById(id).value,10);
   if(!tiers.length || !(n('rcA')>0) || !(n('rcM')>0) || !(n('rcW')>0)) return toast('Kontrollera siffrorna');
-  S.rewardsCfg = {tiers, activeDays:n('rcA'), recurringMin:n('rcM'), recurringWindow:n('rcW'), up:Date.now()};
+  const z = id => { const v = String(document.getElementById(id).value).trim(); return v==='' ? 0 : /^\d+$/.test(v) ? +v : NaN; };
+  const bonuses = {welcome:z('bnW'), first:z('bnF'), recurring:z('bnR'), recurringCount:z('bnC')};
+  if(Object.values(bonuses).some(x=>!Number.isFinite(x)) || !(bonuses.recurringCount >= 1)) return toast('Kontrollera bonuspoängen — hela tal, minst 1 session');
+  const referral = {enabled:document.getElementById('rfOn').checked, points:z('rfP'), maxOpen:z('rfM')};
+  if(!Number.isFinite(referral.points) || !(referral.maxOpen >= 1)) return toast('Kontrollera värva en vän — minst 1 öppen inbjudan');
+  const campaigns = [...document.querySelectorAll('#camps .camprow')].map(r=>({id:r.dataset.id || 'k_' + uid(), label:r.querySelector('.cL').value.trim(),
+      from:r.querySelector('.cF').value, to:r.querySelector('.cT').value, multiplier:Number(String(r.querySelector('.cM').value).trim().replace(',', '.'))}))
+    .filter(x=>x.label || x.from || x.to);
+  const bad = campaigns.find(x=>!x.label || !ISO_D.test(x.from) || !ISO_D.test(x.to) || x.to < x.from || !(x.multiplier > 1 && x.multiplier <= 10));
+  if(bad) return toast(!bad.label ? 'Kampanjen behöver ett namn' : `Kontrollera ${bad.label}: datum, och en faktor över 1 (högst 10)`);
+  S.rewardsCfg = {tiers, activeDays:n('rcA'), recurringMin:n('rcM'), recurringWindow:n('rcW'), bonuses, referral, campaigns, up:Date.now()};
   save(); sync(true); render(); toast('Sparat');
 }
 function intelPanelList(){
@@ -2075,17 +2252,21 @@ async function saveProfile(){
   if(needPnr && !pnr12(v('pfN'))) return msg('Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX');
   if(!ints.length) return msg('Välj minst en inriktning');
   if(needPnr && !(document.getElementById('pfC')||{}).checked) return msg('Godkänn hur vi hanterar dina uppgifter');
+  let bonus = 0;
   try{
     if(PREVIEW_LOGIN){
       Object.assign(a, {interests:ints, phone:phone || a.phone, consent:true, part:true, reg:a.reg || new Date().toISOString(),
         source:a.source || 'app'}, needPnr ? {pnr:pnrMask(v('pfN'))} : {});
-      bump(a); save();
+      bump(a);
+      if(needPnr && a.r==='customer') bonus = rwLocal._bonus(a.id, 'welcome', bonusOf('welcome'), 'Välkomstbonus');
+      save();
     } else {
-      if(needPnr) await sbRpc('register_access', {p_name:a.n, p_phone:phone, p_pnr:v('pfN'), p_interests:ints, p_consent:true, p_url:appUrl()});
+      if(needPnr) bonus = +((await sbRpc('register_access', {p_name:a.n, p_phone:phone, p_pnr:v('pfN'), p_interests:ints, p_consent:true, p_url:appUrl()}))||{}).bonus || 0;
       else await sbRpc('set_my_interests', {p_interests:ints});
       if(remoteRole()) await cloudView(); else await cloudPull();
     }
-    closeSheet(); render(); toast('Profilen är klar');
+    if(bonus) loadMyRewards(true);
+    closeSheet(); render(); toast(bonus ? `Profilen är klar · ${fmtP(bonus)} välkomstpoäng` : 'Profilen är klar');
   }catch(e){ msg(e.message); }
 }
 function openInterests(id){
@@ -2405,6 +2586,7 @@ function takeAccessPreview(){
   if(!inv) return;
   inv.uses = (inv.uses||0) + 1;
   let a = (inv.member_id && byId(inv.member_id)) || (em && accounts().find(x=>(x.email||'').toLowerCase()===em && ['customer','participant'].includes(x.r)));
+  const linked = !!a;
   if(!a){
     let n = p.name, i = 1; while(accounts().some(x=>x.n.toLowerCase()===n.toLowerCase())) n = p.name + ' ' + (++i);
     a = {id:'m_' + uid(), n, r:'customer', email:em, phone:'', c:'#6633b8', g:'#9d5cf5', active:true, del:false};
@@ -2415,8 +2597,11 @@ function takeAccessPreview(){
   /* en producent som bjöd in blir artistens producent */
   const by = byId(inv.created_by);
   if(isProducer(by) && !(a.producers||[]).length){ a.producers = [by.id]; a.producer = a.producer || by.id; }
+  /* värva en vän: inbjudan kom från en kund (räknas inte om personen redan fanns) */
+  if(inv.referrer && inv.referrer!==a.id && !linked && !a.referredBy) a.referredBy = inv.referrer;
   bump(a);
   S.session = {email:a.email||'', name:a.n, picture:'', member:a.n, ts:Date.now(), via:'preview'};
+  rwLocal._bonus(a.id, 'welcome', bonusOf('welcome'), 'Välkomstbonus');
   save();
 }
 function afterAccess(){
@@ -3079,6 +3264,7 @@ function memberToAcc(m){
     /* artistens producenter (admin väljer); producer är den första */
     producers: Array.isArray(m.producers) && m.producers.length ? m.producers : (m.producer ? [m.producer] : []),
     reg: m.registered_at||'', consent: !!m.consent_at, source: m.source||'',
+    referredBy: m.referred_by||'',                          /* värva en vän: kunden som bjöd in */
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
     active: m.active!==false, del:false, up:+m.up||0};
@@ -5771,6 +5957,9 @@ function openPrivacy(){
       <p><b>Bando HQ Access:</b> när du skickar en förfrågan sparar vi namn, e-post, telefon, inriktningar och ditt meddelande
         tills förfrågan är besvarad, och högst ett år. När du skapar ditt konto sparar vi också dina valda inriktningar, när du
         registrerade dig och att du godkänt den här texten — och ditt <b>personnummer</b>.</p>
+      <p><b>Värva en vän:</b> bjuder du in en vän sparar vi vännens namn och e-post för inbjudan (den gäller i 30 dagar), och att
+        det var du som bjöd in. Vännen får ett mejl från oss — inget annat. Skapar vännen ett konto ser du namnet och om hen har
+        gjort sin första session.</p>
       <h3>Varför</h3>
       <p>För att ge dig tillgång till Bando HQ, boka studion, driva studiecirklarna, svara på
         bokningsförfrågningar och skicka bekräftelser och påminnelser. De är en del av tjänsten och går därför inte att stänga av.

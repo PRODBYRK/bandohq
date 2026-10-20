@@ -1321,13 +1321,76 @@ end $$;
 --    kunden: sina egna poäng, sin nivå och belöningarna — aldrig omdömen eller CRM
 --    cirkelledare, deltagare, kamera: ingenting
 -- =====================================================================
+/* Inställningarna (setting/rewards; admin i Mer → Rewards → Poäng). Det som saknas tas från
+   standardvärdena här, och objekten (bonusar, värvning) slås ihop nyckel för nyckel. */
 create or replace function bs_rcfg(p_key text) returns jsonb
 language sql stable security definer set search_path = public as $$
-  select coalesce(
-    (select data->p_key from records where kind = 'setting' and id = 'rewards' and not del and data ? p_key),
-    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object('hours', 3, 'points', 100), jsonb_build_object('hours', 6, 'points', 500)),
-      'activeDays', 60, 'recurringMin', 3, 'recurringWindow', 90)->p_key)
+  with d as (select jsonb_build_object(
+      'tiers', jsonb_build_array(jsonb_build_object('hours', 3, 'points', 100), jsonb_build_object('hours', 6, 'points', 500)),
+      'activeDays', 60, 'recurringMin', 3, 'recurringWindow', 90,
+      /* bonusar: välkomst (kontot), första betalda sessionen, och återkommande = minst
+         recurringCount betalda sessioner samma månad (en gång per månad) */
+      'bonuses', jsonb_build_object('welcome', 100, 'first', 200, 'recurring', 150, 'recurringCount', 3),
+      /* värva en vän: poängen när vännens första betalda session är klar; högst maxOpen öppna inbjudningar */
+      'referral', jsonb_build_object('enabled', true, 'points', 300, 'maxOpen', 3),
+      /* kampanjer: [{id, label, from, to, multiplier}] — passets datum avgör */
+      'campaigns', '[]'::jsonb)->p_key v),
+  s as (select data->p_key v from records where kind = 'setting' and id = 'rewards' and not del and data ? p_key)
+  select case when jsonb_typeof(d.v) = 'object' and jsonb_typeof(s.v) = 'object' then d.v || s.v else coalesce(s.v, d.v) end
+    from d left join s on true
 $$;
+/* Ett tal eller en av/på-inställning ur ett objekt i inställningarna — ett felskrivet värde
+   ger standardvärdet i stället för att stoppa avslutet av ett pass. */
+create or replace function bs_rnum(p_key text, p_sub text, p_default numeric) returns numeric
+language plpgsql stable security definer set search_path = public as $$
+declare v numeric;
+begin
+  v := (bs_rcfg(p_key)->>p_sub)::numeric;
+  if v is null then return p_default; end if;       -- (greatest/least hoppar över null)
+  return greatest(0, least(1000000, v));
+exception when others then return p_default;
+end $$;
+create or replace function bs_rbool(p_key text, p_sub text, p_default boolean) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return coalesce((bs_rcfg(p_key)->>p_sub)::boolean, p_default);
+exception when others then return p_default;
+end $$;
+/* Kampanjen som gäller ett datum (högsta faktorn om flera överlappar), eller null. */
+create or replace function bs_campaign(p_date date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare c jsonb; best jsonb; m numeric; all_c jsonb := bs_rcfg('campaigns');
+begin
+  if p_date is null or jsonb_typeof(all_c) <> 'array' then return null; end if;
+  for c in select x from jsonb_array_elements(all_c) x loop
+    begin
+      m := round((c->>'multiplier')::numeric, 2);
+      if m > 1 and m <= 10 and p_date between (c->>'from')::date and (c->>'to')::date
+         and (best is null or m > (best->>'multiplier')::numeric) then
+        best := jsonb_build_object('id', c->>'id', 'label', coalesce(nullif(trim(c->>'label'),''), 'Kampanj'),
+                                   'from', c->>'from', 'to', c->>'to', 'multiplier', m);
+      end if;
+    exception when others then null;      -- en trasig rad hoppas över
+    end;
+  end loop;
+  return best;
+end $$;
+create or replace function bs_mult_text(m numeric) returns text
+language sql immutable as $$ select '×' || replace(trim_scale(m)::text, '.', ',') $$;
+/* En bonus = en rad med en nyckel; finns nyckeln redan händer ingenting. Svarar med poängen. */
+create or replace function bs_bonus(p_member text, p_ref text, p_points int, p_note text, p_booking text default null) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if p_member is null or coalesce(p_points, 0) <= 0 then return 0; end if;
+  insert into points(member_id, booking_id, kind, points, note, by_id, ref)
+  values (p_member, p_booking, 'bonus', p_points, left(p_note, 200), bs_my_id(), p_ref)
+  on conflict (member_id, ref) where ref is not null do nothing;
+  get diagnostics n = row_count;
+  if n = 0 then return 0; end if;
+  perform bs_update_level(p_member);
+  return p_points;
+end $$;
 create or replace function bs_has_perm(p text) returns boolean
 language sql stable security definer set search_path = public as $$
   select bs_is_admin() or exists (select 1 from members where user_id = auth.uid() and active and p = any(perms))
@@ -1340,7 +1403,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 create or replace function bs_balance(p_member text) returns table(earned int, spent int, available int)
 language sql stable security definer set search_path = public as $$
-  select coalesce(sum(points) filter (where kind in ('earn','reversal','adjust')), 0)::int,
+  select coalesce(sum(points) filter (where kind in ('earn','reversal','adjust','bonus')), 0)::int,
          coalesce(-sum(points) filter (where kind in ('redeem','refund')), 0)::int,
          coalesce(sum(points), 0)::int
     from points where member_id = p_member
@@ -1395,10 +1458,13 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 /* Efter passet: genomfört och betalt → poäng (en gång per pass; avmarkeras betalt dras de
-   tillbaka). Ett omdöme kan skrivas samtidigt. */
+   tillbaka). Pågår en kampanj på passets datum gångras poängen med kampanjens faktor.
+   Bonusarna (första sessionen, återkommande, värva en vän) ges en gång var. Ett omdöme kan
+   skrivas samtidigt. */
 create or replace function close_session(p_booking text, p_paid boolean, p_note jsonb default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare d jsonb; cu members; pts int; net int; diff int; me members := bs_me();
+declare d jsonb; cu members; pts int; net int; diff int; me members := bs_me(); cmp jsonb; note text; dd date;
+        bonus int := 0; rc int; rf members; rp int;
 begin
   select data into d from records where kind = 'booking' and id = p_booking and not del for update;
   if d is null then raise exception 'Passet finns inte'; end if;
@@ -1408,13 +1474,20 @@ begin
   select * into cu from members where role::text = 'customer' and lower(name) = lower(d->>'who') limit 1;
   if cu.id is null then raise exception 'Passet är inte bokat av en kund'; end if;
   if not bs_may_close(d, cu) then raise exception 'Bara kundens producent, en producent som var med eller admin kan avsluta passet'; end if;
+  dd := (d->>'date')::date;
   pts := case when p_paid then bs_points_for(bs_len_h(d)) else 0 end;
+  note := bs_when(d);
+  cmp := case when pts > 0 then bs_campaign(dd) end;
+  if cmp is not null then
+    pts := round(pts * (cmp->>'multiplier')::numeric)::int;
+    note := note || ' · ' || (cmp->>'label') || ' ' || bs_mult_text((cmp->>'multiplier')::numeric);
+  end if;
   perform pg_advisory_xact_lock(hashtext('points:' || cu.id));
   select coalesce(sum(points), 0) into net from points where booking_id = p_booking and kind in ('earn','reversal');
   diff := pts - net;
   if diff <> 0 then
     insert into points(member_id, booking_id, kind, points, note, by_id)
-    values (cu.id, p_booking, case when diff > 0 then 'earn' else 'reversal' end, diff, bs_when(d), me.id);
+    values (cu.id, p_booking, case when diff > 0 then 'earn' else 'reversal' end, diff, note, me.id);
   end if;
   perform bs_put_booking(d || jsonb_build_object('closed', true, 'paid', p_paid,
     'closedBy', coalesce(d->>'closedBy', me.name), 'closedAt', now_ms()));
@@ -1422,8 +1495,31 @@ begin
     insert into artist_notes(member_id, booking_id, author_id, went, created, strengths, develop, next, other)
     values (cu.id, p_booking, me.id, p_note->>'went', p_note->>'created', p_note->>'strengths', p_note->>'develop', p_note->>'next', p_note->>'other');
   end if;
+  if p_paid then
+    bonus := bonus + bs_bonus(cu.id, 'first', bs_rnum('bonuses','first',0)::int, 'Första sessionen', p_booking);
+    /* återkommande: tillräckligt många betalda sessioner samma månad — en gång per månad */
+    rc := greatest(1, bs_rnum('bonuses','recurringCount',3)::int);
+    if (select count(*) from records r where r.kind = 'booking' and not r.del and lower(r.data->>'who') = lower(cu.name)
+          and coalesce(r.data->>'circleId','') = '' and (r.data->>'closed')::boolean and (r.data->>'paid')::boolean
+          and date_trunc('month', (r.data->>'date')::date) = date_trunc('month', dd)) >= rc then
+      bonus := bonus + bs_bonus(cu.id, 'recurring:' || to_char(dd, 'YYYY-MM'), bs_rnum('bonuses','recurring',0)::int,
+        'Återkommande: ' || rc || ' sessioner i ' || (array['januari','februari','mars','april','maj','juni','juli','augusti',
+        'september','oktober','november','december'])[extract(month from dd)::int], p_booking);
+    end if;
+    /* värva en vän: vännens första betalda session ger den som bjöd in poäng, och en notis */
+    if cu.referred_by is not null and bs_rbool('referral','enabled',true) then
+      select * into rf from members where id = cu.referred_by and role::text = 'customer' and active;
+      rp := bs_bonus(rf.id, 'referral:' || cu.id, bs_rnum('referral','points',0)::int, 'Värva en vän: ' || cu.name);
+      if rp > 0 then
+        perform bs_notify(rf.id, null, 'Du fick ' || rp || ' poäng — tack för att du bjöd in ' || split_part(cu.name, ' ', 1),
+          split_part(cu.name, ' ', 1) || ' har gjort sin första session hos Bando. Tack för att du bjöd in! Du har fått '
+          || rp || ' poäng i Bando Rewards.', 'points', 'referral:' || cu.id);
+      end if;
+    end if;
+  end if;
   perform bs_update_level(cu.id);
-  return jsonb_build_object('points', pts, 'available', (select available from bs_balance(cu.id)));
+  return jsonb_build_object('points', pts, 'bonus', bonus, 'campaign', cmp->>'label',
+    'available', (select available from bs_balance(cu.id)));
 end $$;
 
 /* Omdöme i efterhand (samma regler som när passet avslutas). */
@@ -1464,7 +1560,14 @@ language sql stable security definer set search_path = public as $$
   select case when bs_my_id() is null or not (bs_is_crew() or (bs_me()).role::text = 'customer') then null else jsonb_build_object(
     'rewards', coalesce((select jsonb_agg(to_jsonb(w) order by w.cost) from rewards w where w.active or bs_has_perm('artist_intel')), '[]'::jsonb),
     'levels', coalesce((select jsonb_agg(to_jsonb(l) order by l.rank) from levels l where l.active or bs_has_perm('artist_intel')), '[]'::jsonb),
-    'tiers', bs_rcfg('tiers')) end
+    'tiers', bs_rcfg('tiers'), 'bonuses', bs_rcfg('bonuses'),
+    'referral', jsonb_build_object('enabled', bs_rbool('referral','enabled',true), 'points', bs_rnum('referral','points',0)::int,
+                                   'maxOpen', bs_rnum('referral','maxOpen',3)::int),
+    'campaign', bs_campaign(current_date),
+    /* kunderna ser pågående och kommande kampanjer, admin alla */
+    'campaigns', coalesce((select jsonb_agg(c order by c->>'from') from jsonb_array_elements(
+        case when jsonb_typeof(bs_rcfg('campaigns')) = 'array' then bs_rcfg('campaigns') else '[]'::jsonb end) c
+       where jsonb_typeof(c) = 'object' and (bs_has_perm('artist_intel') or coalesce(c->>'to','') >= to_char(current_date, 'YYYY-MM-DD'))), '[]'::jsonb)) end
 $$;
 /* En artists poäng, nivå, historik och inlösningar — för artisten själv, admin och artist_intel. */
 create or replace function points_summary(p_member text default null) returns jsonb
@@ -1477,9 +1580,19 @@ begin
   select * into nx from levels where active and rank > coalesce(lv.rank, -1) order by rank limit 1;
   return jsonb_build_object('earned', b.earned, 'spent', b.spent, 'available', b.available, 'stats', st,
     'level', case when lv.id is null then null else to_jsonb(lv) end, 'next', case when nx.id is null then null else to_jsonb(nx) end,
-    'history', coalesce((select jsonb_agg(jsonb_build_object('at', at, 'kind', kind, 'points', points, 'note', note) order by at desc)
+    'history', coalesce((select jsonb_agg(jsonb_build_object('at', at, 'kind', kind, 'points', points, 'note', note, 'ref', ref) order by at desc)
                            from (select * from points where member_id = mid order by at desc limit 50) x), '[]'::jsonb),
-    'redemptions', coalesce((select jsonb_agg(to_jsonb(r) order by r.at desc) from redemptions r where r.member_id = mid), '[]'::jsonb));
+    'redemptions', coalesce((select jsonb_agg(to_jsonb(r) order by r.at desc) from redemptions r where r.member_id = mid), '[]'::jsonb),
+    /* värva en vän: de som gått med (klar = första sessionen gav poäng) och inbjudningar som väntar */
+    'friends', coalesce((select jsonb_agg(f order by f->>'at' desc) from (
+        select jsonb_build_object('name', m.name, 'at', m.registered_at, 'status', case when p.id is not null then 'done' else 'joined' end,
+                                  'points', p.points) f
+          from members m left join points p on p.member_id = mid and p.ref = 'referral:' || m.id
+         where m.referred_by = mid
+        union all
+        select jsonb_build_object('name', i.name, 'at', i.created_at,
+                                  'status', case when i.closed or i.expires_at <= now() then 'expired' else 'waiting' end)
+          from invites i where i.referrer = mid and i.uses = 0) x), '[]'::jsonb));
 end $$;
 
 /* Lös in: kunden själv, eller admin åt en kund. Poängen dras direkt. */
@@ -1641,6 +1754,8 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 revoke all on function bs_rcfg(text) from public, anon, authenticated;
+revoke all on function bs_rnum(text, text, numeric), bs_rbool(text, text, boolean), bs_campaign(date), bs_mult_text(numeric),
+  bs_bonus(text, text, int, text, text) from public, anon, authenticated;
 revoke all on function bs_points_for(numeric) from public, anon, authenticated;
 revoke all on function bs_balance(text) from public, anon, authenticated;
 revoke all on function bs_level_stats(text) from public, anon, authenticated;
@@ -1657,6 +1772,14 @@ grant execute on function close_session(text, boolean, jsonb), add_artist_note(t
   points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
   save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
   set_member_perms(text, jsonb), artist_intel() to authenticated;
+
+/* Välkomstbonusen även till kunderna som registrerade sig innan den fanns (en gång — nyckeln). */
+do $$ declare m record; begin
+  for m in select id from members mm where role::text = 'customer' and active and consent_at is not null
+              and exists (select 1 from member_pnr x where x.member_id = mm.id) loop
+    perform bs_bonus(m.id, 'welcome', bs_rnum('bonuses','welcome',0)::int, 'Välkomstbonus');
+  end loop;
+end $$;
 
 -- =====================================================================
 --  BANDO HQ ACCESS — registreringen bakom QR-koden (bandohq.se/access)
@@ -1812,7 +1935,7 @@ create or replace function register_access(p_name text, p_phone text, p_pnr text
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := auth.uid(); em text; me members; nm text := bs_clean_name(p_name); ph text; p12 text; h text;
         ints text[]; bad text; cand members; owner text; mid text; base text; n int := 1; linked boolean := false;
-        labels text; a record; inv invites;
+        labels text; a record; inv invites; wb int := 0;
 begin
   if uid is null then raise exception 'Skapa kontot först'; end if;
   select lower(email) into em from auth.users where id = uid;
@@ -1863,7 +1986,10 @@ begin
      where id = me.id;
     perform set_config('bs.link', '', true);
     perform bs_put_pnr(me.id, p12);
-    return jsonb_build_object('ok', true, 'id', me.id, 'name', me.name, 'completed', true);
+    if me.role::text = 'customer' then
+      wb := bs_bonus(me.id, 'welcome', bs_rnum('bonuses','welcome',0)::int, 'Välkomstbonus');
+    end if;
+    return jsonb_build_object('ok', true, 'id', me.id, 'name', me.name, 'completed', true, 'bonus', wb);
   end if;
 
   /* ---- ny: finns personen redan? ---- */
@@ -1914,6 +2040,13 @@ begin
     values (mid, uid, 'customer', nm, em, ph, true, ints, now(), now(), 'access', now_ms());
   end if;
   perform bs_put_pnr(mid, p12);
+  /* värva en vän: inbjudan kom från en kund (räknas inte om personen redan fanns hos oss) */
+  if inv.referrer is not null and inv.referrer <> mid and not linked then
+    perform set_config('bs.link', '1', true);
+    update members set referred_by = inv.referrer where id = mid and referred_by is null;
+    perform set_config('bs.link', '', true);
+  end if;
+  wb := bs_bonus(mid, 'welcome', bs_rnum('bonuses','welcome',0)::int, 'Välkomstbonus');
   /* inbjudan förbrukas; en producent som bjöd in blir artistens producent */
   update invites set uses = uses + 1 where token = inv.token;
   if inv.created_by is not null and bs_is_producer(inv.created_by) then
@@ -1935,6 +2068,8 @@ begin
     || 'Ditt konto är klart. Du har nu tillgång till Bando HQ Access: boka sessions, se dina bokningar, priser och förmåner.'
     || E'\n\n' || 'Du är också deltagare i våra studiocirklar. Vi placerar dig i en grupp utifrån det du valt ('
     || coalesce(labels, '') || '), och du ser din grupp och ansvariga producent i Bando HQ.'
+    || case when wb > 0 then E'\n\n' || 'Välkomstgåva: ' || wb || ' poäng i Bando Rewards. Du samlar fler på varje betald session'
+         || ' och löser in dem mot belöningar.' else '' end
     || E'\n\n' || 'Logga in med din e-postadress och lösenordet du valde.',
     'welcome', 'welcome:' || mid, '0', coalesce(p_url, 'https://www.bandohq.se/'));
   for a in select id from members where active and role::text in ('manager','admin') loop
@@ -1945,7 +2080,7 @@ begin
       || E'\n\n' || 'Placera personen i en studiocirkel under Cirklar → Fördela.',
       'access', 'access:' || mid || ':' || a.id, '0', coalesce(p_url, 'https://www.bandohq.se/'));
   end loop;
-  return jsonb_build_object('ok', true, 'id', mid, 'name', nm, 'linked', linked);
+  return jsonb_build_object('ok', true, 'id', mid, 'name', nm, 'linked', linked, 'bonus', wb);
 end $$;
 
 /* Är inloggningen kopplad till ett konto, och saknas något i profilen? (Registreringssidan
@@ -2185,6 +2320,47 @@ begin
   return jsonb_build_object('invite', tok);
 end $$;
 
+/* Värva en vän: en kund bjuder in en vän till Bando HQ Access. Vännen får en inbjudan på
+   mejlen (gäller 30 dagar); när vännens första betalda session är klar får kunden poäng
+   (close_session). Högst referral.maxOpen inbjudningar väntar samtidigt, högst 10 per dygn. */
+create or replace function invite_friend(p_name text, p_email text, p_url text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare me members := bs_me(); nm text := bs_clean_name(p_name); em text := lower(trim(coalesce(p_email,'')));
+        mx int := greatest(1, bs_rnum('referral','maxOpen',3)::int); n_open int; tok text; fname text;
+begin
+  if me.id is null or me.role::text <> 'customer' or not me.active then raise exception 'Bara artister bjuder in vänner'; end if;
+  if not bs_rbool('referral','enabled',true) then raise exception 'Värva en vän är avstängt just nu'; end if;
+  if not coalesce((access_status()->>'complete')::boolean, false) then raise exception 'Komplettera din profil först'; end if;
+  if length(nm) < 3 or nm !~ '\S+\s+\S' then raise exception 'Fyll i vännens för- och efternamn'; end if;
+  if length(nm) > 60 then raise exception 'Namnet är för långt'; end if;
+  if nm ~ '[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]' then raise exception 'Namnet får bara innehålla bokstäver'; end if;
+  if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 120 then raise exception 'Fyll i en giltig e-postadress'; end if;
+  if em = lower(coalesce(me.email,'')) then raise exception 'Det är din egen e-postadress'; end if;
+  perform pg_advisory_xact_lock(hashtext('friends:' || me.id));
+  if exists (select 1 from members where lower(email) = em) then raise exception '% finns redan hos Bando', split_part(nm,' ',1); end if;
+  if exists (select 1 from invites where lower(email) = em and role::text = 'customer' and not closed and expires_at > now()
+               and (max_uses is null or uses < max_uses)) then
+    raise exception '% har redan fått en inbjudan', split_part(nm,' ',1);
+  end if;
+  select count(*) into n_open from invites where referrer = me.id and not closed and expires_at > now() and uses = 0;
+  if n_open >= mx then raise exception 'Du har % inbjudningar som väntar — när någon gått med kan du bjuda in fler', n_open; end if;
+  if (select count(*) from invites where referrer = me.id and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'Du har bjudit in många i dag — försök igen imorgon';
+  end if;
+  tok := bs_invite_token(); fname := split_part(me.name, ' ', 1);
+  insert into invites(token, role, created_by, expires_at, max_uses, name, email, referrer)
+  values (tok, 'customer', me.id, now() + interval '30 days', 1, nm, em, me.id);
+  perform bs_notify(null, em, me.name || ' bjuder in dig till Bando HQ Access',
+    'Hej ' || split_part(nm,' ',1) || '!' || E'\n\n' || fname || ' bjuder in dig till Bando HQ Access — Bandos system för artister och kreatörer.'
+    || ' Där bokar du sessions i studion, ser dina priser och förmåner, och samlar poäng i Bando Rewards.'
+    || E'\n\n' || 'Tryck på knappen och skapa ditt konto. Länken gäller i 30 dagar och bara för dig.',
+    'invite-access', 'invite:' || tok, '0', bs_access_link(p_url, tok));
+  /* väntar vännen redan med en förfrågan är den besvarad nu */
+  update access_requests set status = 'approved', invite = tok, handled_by = me.id, handled_at = now()
+   where status = 'new' and lower(email) = em;
+  return jsonb_build_object('invite', tok, 'open', n_open + 1, 'max', mx);
+end $$;
+
 revoke all on function bs_access_link(text, text) from public, anon, authenticated;
 revoke all on function bs_invite_token() from public, anon, authenticated;
 revoke all on function bs_clean_interests(jsonb) from public, anon, authenticated;
@@ -2193,4 +2369,6 @@ revoke all on function request_access(text, text, text, jsonb, text, boolean, te
 grant execute on function request_access(text, text, text, jsonb, text, boolean, text) to anon, authenticated;
 revoke all on function approve_access(text, text), decline_access(text, text), invite_access(text, text, text, jsonb, text) from public, anon;
 grant execute on function approve_access(text, text), decline_access(text, text), invite_access(text, text, text, jsonb, text) to authenticated;
+revoke all on function invite_friend(text, text, text) from public, anon;
+grant execute on function invite_friend(text, text, text) to authenticated;
 

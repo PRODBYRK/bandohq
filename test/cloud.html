@@ -713,6 +713,9 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
 
   /* ============ BANDO REWARDS MOT SERVERN ============ */
   log('\n── Bando Rewards mot servern: avsluta pass, poäng, omdöme, belöning, intelligence ──');
+  /* poängtrappan för sig — bonusarna, kampanjen och värva en vän har ett eget avsnitt längre ned */
+  await fetch(EMU+'/__sql', {method:'POST', body:JSON.stringify({sql:`insert into records(kind,id,data,up) values('setting','rewards',
+    '{"bonuses":{"welcome":0,"first":0,"recurring":0},"referral":{"enabled":false}}',1000) on conflict (kind,id) do update set data=excluded.data, up=excluded.up`})});
   w = await boot();
   r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
     for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
@@ -953,6 +956,63 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.${reqId}'))[0].data;
     return {inbox:/Alva Strand/.test(inbox) && /med RKAY/.test(inbox), srv:{status:srv.status, studio:srv.studio, with:srv.with}};`);
   ok('RKAY ser förfrågan i sin inkorg och godkänner', r.inbox && r.srv.status==='' && r.srv.studio==='A' && JSON.stringify(r.srv.with)==='["RKAY"]', r);
+
+  /* ============ REWARDS MOT SERVERN: VÄRVA EN VÄN, BONUSAR OCH KAMPANJ ============ */
+  log('\n── Rewards mot servern: värva en vän, bonusar och kampanj ──');
+  await sql(`update records set data = '{}'::jsonb, up = 2000 where kind = 'setting' and id = 'rewards'`);
+  w = await boot();
+  r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
+    await cloudView(); rwMineAt = 0; render(); ${wait(400)} render();
+    const card = document.getElementById('view').innerHTML;
+    openInviteFriend(); document.getElementById('frN').value = 'Vilma Vän'; document.getElementById('frE').value = 'vilma@acc.se'; await sendInviteFriend();
+    return {card:/VÄRVA EN VÄN/.test(card) && /Så tjänar du poäng/.test(card), sent:document.getElementById('frOut').textContent};`);
+  ok('artisten bjuder in en vän från sin vy', r.card && /Inbjudan skickad/.test(r.sent), r);
+  let fbox = await outbox();
+  const fm = fbox.filter(m=>m.kind==='invite-access' && m.email==='vilma@acc.se').pop();
+  const TOKV = fm && new URL(fm.link).searchParams.get('inbjudan');
+  ok('vännen får "Alva Strand bjuder in dig till Bando HQ Access" med länken', fm && fm.subject==='Alva Strand bjuder in dig till Bando HQ Access' && !!TOKV, fm);
+  await ev(w,`localStorage.removeItem('bandosesh_auth'); return true;`);
+  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:true})});
+  w = await goPage('../access.html?inbjudan=' + TOKV + '&cb=' + Math.random());
+  r = await ev(w,`${wait(400)} const lead = document.getElementById('regLead').textContent;
+    ${fill('Vilma Vän', 'vilma@acc.se', PNR('20020202','222'))}
+    return {lead, code:!!document.getElementById('f_code')};`);
+  ok('Access-sidan: inbjuden av Alva', /av Alva Strand/.test(r.lead) && r.code, r);
+  mail = await mails();
+  const mv = mail.filter(m=>m.to==='vilma@acc.se' && m.type==='signup').pop();
+  r = await ev(w,`document.getElementById('f_code').value = '${mv && mv.code}'; await verify(); ${wait(200)}
+    return {done:/Välkommen in, Vilma/.test(document.getElementById('stage').textContent)};`);
+  await fetch(EMU+'/__config', {method:'POST', body:JSON.stringify({confirm:false})});
+  const vil = await sql(`select m.id, (select name from members where id = m.referred_by) by_name,
+     (select points from points where member_id = m.id and ref = 'welcome') wb from members m where m.name = 'Vilma Vän'`);
+  ok('vännen skapar kontot: värvad av Alva, välkomstbonus 100', r.done && vil.length===1 && vil[0].by_name==='Alva Strand' && vil[0].wb===100, {r, vil});
+  /* AZ avslutar vännens första session och lägger in en kampanj */
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
+    S.bookings.push(bump({id:'vv1', studio:'A', date:iso(addDays(new Date(),-1)), start:'10:00', end:'13:00', who:'Vilma Vän', title:'Studiotid', note:'',
+      circleId:'', status:'', hours:null, present:[], with:[], artistId:'', del:false}));
+    save(); await sync(true);
+    let t = ''; const rt = toast; window.toast = m => { t = m; };
+    openClose('vv1'); await saveClose('vv1'); const tClose = t;
+    rwTab = 'points'; go('rewards'); await loadRwAdmin(); render();
+    addCampaign(); const row = document.querySelector('#camps .camprow:last-child');
+    row.querySelector('.cL').value = 'Dubbla poäng'; row.querySelector('.cF').value = iso(addDays(new Date(),-3)); row.querySelector('.cT').value = iso(addDays(new Date(),3));
+    row.querySelector('.cM').value = '2'; savePointsCfg(); ${wait(100)} await sync(true); window.toast = rt;
+    const cfg = (await sb('/records?select=data&kind=eq.setting&id=eq.rewards'))[0].data;
+    return {t:tClose, camps:(cfg.campaigns||[]).map(c=>c.label)};`);
+  ok('vännens första session via servern: 100 poäng + 200 i bonus', /100 poäng \+ 200 i bonus/.test(r.t), r.t);
+  ok('admin sparar kampanjen på servern', JSON.stringify(r.camps)==='["Dubbla poäng"]', r);
+  const ap = await sql(`select p.points from points p join members m on m.id = p.member_id where m.name = 'Alva Strand' and p.ref like 'referral:%'`);
+  ok('Alva får 300 poäng för vännen', ap.length===1 && ap[0].points===300, ap);
+  fbox = await outbox();
+  ok('och en notis om det', fbox.some(m=>m.kind==='points' && /tack för att du bjöd in Vilma/.test(m.subject||'')), fbox.filter(m=>m.kind==='points'));
+  w = await boot();
+  r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
+    await cloudView(); rwMineAt = 0; render(); ${wait(400)} render();
+    const html = document.getElementById('view').innerHTML;
+    return {friend:/Vilma Vän/.test(html) && /KLAR · \\+300/.test(html), camp:/rwcamp/.test(html) && /Dubbla poäng/.test(html)};`);
+  ok('Alva ser vännen som klar och kampanjen som pågår', r.friend && r.camp, r);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

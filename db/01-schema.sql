@@ -418,3 +418,17 @@ create index if not exists access_requests_status_idx on access_requests (status
 alter table invites add column if not exists interests text[] not null default '{}';
 alter table invites add column if not exists request_id text;
 
+
+-- ---------------------------------------------------------------------
+--  REWARDS: BONUSPOÄNG, KAMPANJER OCH VÄRVA EN VÄN (2026-10)
+--  Bonusar (välkomst, första sessionen, återkommande, värvning) är egna rader i
+--  poängloggen med en nyckel (ref) — samma bonus kan aldrig ges två gånger.
+--  referred_by: kunden som bjöd in en vän; invites.referrer: inbjudan kommer från en kund.
+-- ---------------------------------------------------------------------
+alter table points add column if not exists ref text;
+create unique index if not exists points_ref_uq on points (member_id, ref) where ref is not null;
+alter table points drop constraint if exists points_kind_check;
+alter table points add constraint points_kind_check check (kind in ('earn','reversal','redeem','refund','adjust','bonus'));
+alter table members add column if not exists referred_by text;
+alter table invites add column if not exists referrer text;
+create index if not exists invites_referrer_idx on invites (referrer) where referrer is not null;

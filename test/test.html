@@ -1590,6 +1590,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(seed());
   r = await ev(w,`
     window.confirm = () => true;
+    /* poängtrappan för sig — bonusarna, kampanjerna och värva en vän har ett eget avsnitt */
+    S.rewardsCfg = {bonuses:{welcome:0, first:0, recurring:0}, referral:{enabled:false}, up:1};
     byId('p2').r = 'customer'; byId('p2').producer = 'rkay';
     Object.assign(byId('p2'), {interests:['rap'], consent:true, pnr:'990101-••••', phone:'070-222 22 22'}); save();
     const D = n => iso(addDays(new Date(), n));
@@ -1639,6 +1641,71 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('nivån uppdateras automatiskt (1 100 intjänat → Silver)', r.lvl==='Silver', r.lvl);
   ok('admin ger en producent Artist Intelligence', r.rkIntel===true);
   ok('Intelligence-listan filtreras', r.il===true);
+
+  /* ============ REWARDS: BONUSPOÄNG, KAMPANJER OCH VÄRVA EN VÄN ============ */
+  log('\n── Rewards: bonuspoäng, kampanjer och värva en vän ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    const D = n => iso(addDays(new Date(), n)), wait = ms => new Promise(r=>setTimeout(r, ms)), rt = toast;
+    const nora = byId('p2'); Object.assign(nora, {r:'customer', producer:'rkay', producers:['rkay'], interests:['rap'], consent:true, pnr:'990101-••••',
+      phone:'070-222 22 22', email:'nora@x.se'}); save();
+    /* kunden: så tjänar du poäng, och värva en vän */
+    signIn(nora); rwMineAt = 0; render(); await wait(80); render();
+    const card = document.getElementById('view').innerHTML;
+    openInviteFriend(); const sheet = document.getElementById('sheetBody').innerHTML;
+    document.getElementById('frN').value = 'Vera Vän'; document.getElementById('frE').value = 'nora@x.se'; await sendInviteFriend();
+    const own = document.getElementById('frOut').textContent;
+    document.getElementById('frN').value = 'Vera Vän'; document.getElementById('frE').value = 'vera@x.se'; await sendInviteFriend();
+    const sent = document.getElementById('frOut').textContent, inv = S.invites.find(i=>i.email==='vera@x.se');
+    await wait(80); closeSheet(); render(); const card2 = document.getElementById('view').innerHTML;
+    /* vännen skapar sitt konto med inbjudan (Access-sidan lämnar uppgifterna här) */
+    localStorage.setItem('bandohq_access_preview', JSON.stringify({name:'Vera Vän', email:'vera@x.se', phone:'+46703334455', interests:['vocals'],
+      pnr:'000101-••••', invite:inv.token, at:Date.now()}));
+    takeAccessPreview(); const vera = byName('Vera Vän');
+    const welcome = rwState().points.filter(p=>p.member_id===vera.id && p.ref==='welcome').map(p=>p.points);
+    /* vännens första session */
+    const VB = (id, d) => S.bookings.push(bump({id, studio:'A', date:D(d), start:'10:00', end:'13:00', who:'Vera Vän', title:'Studiotid', note:'',
+      circleId:'', status:'', hours:null, present:[], with:['RKAY'], artistId:'', del:false}));
+    VB('vb1', -2);
+    signIn(byName('RKAY')); render();
+    let t = ''; window.toast = m => { t = m; }; openClose('vb1'); await saveClose('vb1'); window.toast = rt;
+    const ref = rwState().points.find(p=>p.member_id==='p2' && p.ref==='referral:' + vera.id);
+    signIn(nora); rwMineAt = 0; render(); await wait(80); render(); const card3 = document.getElementById('view').innerHTML;
+    /* admin lägger in en kampanj */
+    signIn(byName('AZ')); rwTab = 'points'; go('rewards'); await wait(80); render();
+    addCampaign(); const row = document.querySelector('#camps .camprow:last-child');
+    row.querySelector('.cL').value = 'Dubbla poäng'; row.querySelector('.cF').value = D(-5); row.querySelector('.cT').value = D(5); row.querySelector('.cM').value = '1';
+    let t2 = ''; window.toast = m => { t2 = m; }; savePointsCfg(); const badMult = t2;
+    row.querySelector('.cM').value = '2'; savePointsCfg(); window.toast = rt;
+    const camps = (S.rewardsCfg.campaigns||[]).map(c=>c.label + ' ' + c.multiplier);
+    render(); const panel = document.getElementById('view').innerHTML;
+    VB('vb2', -1);
+    openClose('vb2'); const closeHtml = document.getElementById('sheetBody').innerHTML; await saveClose('vb2');
+    const vb2 = rwState().points.filter(p=>p.booking_id==='vb2' && p.kind==='earn').map(p=>[p.points, p.note]);
+    signIn(byName('Vera Vän')); rwMineAt = 0; render(); await wait(80); render(); const vcard = document.getElementById('view').innerHTML;
+    openPointsHistory(); const hist = document.getElementById('sheetBody').innerHTML;
+    return {card:/Så tjänar du poäng/.test(card) && /Första sessionen/.test(card) && /\\+200/.test(card) && /VÄRVA EN VÄN/.test(card) && /BJUD IN EN VÄN/.test(card),
+      sheet:/Bjud in en vän/.test(sheet) && /300 poäng/.test(sheet), own, sent, inv:inv && {ref:inv.referrer, by:inv.created_by, max:inv.max_uses},
+      card2:/Vera Vän/.test(card2) && /INBJUDEN/.test(card2), vera:vera && {ref:vera.referredBy, r:vera.r}, welcome, t, ref:ref && ref.points,
+      card3:/Vera Vän/.test(card3) && /KLAR · \\+300/.test(card3), badMult, camps,
+      panel:/KAMPANJER/.test(panel) && /PÅGÅR/.test(panel) && /BONUSPOÄNG/.test(panel) && /VÄRVA EN VÄN/.test(panel),
+      closeTxt:/200 poäng \\(Dubbla poäng ×2\\)/.test(closeHtml), vb2, vcard:/rwcamp/.test(vcard) && /Dubbla poäng/.test(vcard) && /×2/.test(vcard),
+      hist:/Bonus/.test(hist) && /Första sessionen/.test(hist) && /Välkomstbonus/.test(hist)};`);
+  ok('kunden ser "Så tjänar du poäng" med bonusarna, och Värva en vän', r.card===true);
+  ok('bjud in en vän: arket säger vad det ger', r.sheet===true);
+  ok('inte sin egen adress', /din egen/.test(r.own), r.own);
+  ok('inbjudan skickas — från kunden, en användning', /Inbjudan skickad/.test(r.sent) && /1 av 3/.test(r.sent) && r.inv && r.inv.ref==='p2' && r.inv.by==='p2' && r.inv.max===1, r);
+  ok('vännen syns som inbjuden', r.card2===true);
+  ok('vännen skapar kontot med inbjudan: värvad av kunden, välkomstbonus 100', r.vera && r.vera.ref==='p2' && r.vera.r==='customer' && JSON.stringify(r.welcome)==='[100]', r);
+  ok('vännens första session: 100 poäng + 200 i bonus', /100 poäng \+ 200 i bonus/.test(r.t), r.t);
+  ok('och kunden som bjöd in får 300', r.ref===300, r.ref);
+  ok('kunden ser vännen som klar, +300', r.card3===true);
+  ok('kampanj: en faktor på 1 nekas, 2 sparas', /Kontrollera Dubbla poäng/.test(r.badMult) && JSON.stringify(r.camps)==='["Dubbla poäng 2"]', r);
+  ok('adminpanelen: bonuspoäng, värva en vän och kampanjer (PÅGÅR)', r.panel===true);
+  ok('under kampanjen: avslutet visar och ger dubbla poäng', r.closeTxt===true && r.vb2.length===1 && r.vb2[0][0]===200 && /Dubbla poäng ×2/.test(r.vb2[0][1]), r);
+  ok('vännen ser kampanjen i sin vy', r.vcard===true);
+  ok('historiken visar bonusarna med namn', r.hist===true);
 
   /* ============ iPHONE-APPEN · DEMOLÄGET · RADERA MITT KONTO ============ */
   /* ============ PRODUCENTER PER ARTIST ============ */

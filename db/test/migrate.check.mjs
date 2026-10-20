@@ -18,7 +18,11 @@ await db.exec(`insert into members(id,role,name,email) values('az','manager','AZ
   insert into records(kind,id,data,up) values('circle','k1','{"id":"k1","n":"Prod 1","leader":"Lea Ström","members":["pa"]}',1),
     ('booking','cb1','{"id":"cb1","studio":"A","date":"2030-02-01","start":"10:00","end":"13:00","who":"Lea Ström","circleId":"k1","status":""}',1);
   insert into push_subs(member_id,endpoint,p256dh,auth) values('rkay','https://push.example/x','${'k'.repeat(87)}','${'a'.repeat(22)}');`);
-await db.exec(`update members set producer='rkay' where id='k1'`);
+await db.exec(`update members set producer='rkay', consent_at=now(), interests='{production}' where id='k1';
+  insert into member_pnr(member_id,pnr_enc,pnr_hash,birth) values('k1','\\x00','h-k1','990101');
+  insert into points(member_id,kind,points,note) values('k1','earn',100,'gammalt pass');`);
+/* två gånger: varje driftsättning kör filerna igen */
+for (const f of files) await db.exec(readFileSync(newDir + '/' + f, 'utf8'));
 for (const f of files) await db.exec(readFileSync(newDir + '/' + f, 'utf8'));
 const r = (await db.query(`select pg_get_function_arguments(p.oid) a from pg_proc p where proname='request_customer_slot'`)).rows;
 const pol = (await db.query(`select policyname from pg_policies where tablename='members' order by 1`)).rows.map(x=>x.policyname);
@@ -40,5 +44,9 @@ console.log(JSON.stringify({acc, key}));
 /* producenter per artist: kundens producent blev första i listan */
 const prods = (await db.query(`select producers from members where id='k1'`)).rows[0].producers;
 console.log(JSON.stringify({prods}));
-const ok = JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===0 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
+/* Rewards: gamla poäng kvar, och kunden som redan registrerat sig fick välkomstbonusen — en gång */
+const pts = (await db.query(`select kind, points, ref from points where member_id='k1' order by id`)).rows;
+console.log(JSON.stringify({pts}));
+const okPts = pts.length===2 && pts[0].kind==='earn' && pts[0].points===100 && pts[1].kind==='bonus' && pts[1].ref==='welcome' && pts[1].points===100;
+const ok = okPts && JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===1 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
 console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);

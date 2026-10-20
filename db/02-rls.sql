@@ -110,7 +110,7 @@ language sql stable security definer set search_path = public as $$
     when bs_is_crew() then bs_can_read(p_kind, p_id, p_data)
          and p_kind not in ('circle','curriculum','course')
          and not (p_kind = 'booking' and coalesce(p_data->>'circleId','') <> '')
-         and not (p_kind = 'setting' and p_id in ('circles','access'))
+         and not (p_kind = 'setting' and p_id in ('circles','access','rewards'))   -- poäng, bonusar och kampanjer: bara admin
     when bs_is_camera() then
          (p_kind = 'agenda' and coalesce(p_data->>'kind','') <> 'general' and coalesce(p_data->>'who','') in ('', (bs_me()).name))
       /* allmänna agendan: alla lägger till, men ändrar bara det de själva skrivit */
@@ -178,6 +178,7 @@ begin
   new.active := old.active; new.user_id := old.user_id; new.email := old.email;
   new.team := old.team; new.producer := old.producer; new.username := old.username;
   new.perms := old.perms; new.producers := old.producers;     /* artistens producenter väljer admin */
+  new.referred_by := old.referred_by;                         /* värva en vän: sätts bara av register_access */
   /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
   new.participant := old.participant; new.interests := old.interests;
   new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
