@@ -2066,6 +2066,63 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   r = await ev(fr.contentWindow,`return {demo:DEMO, left:localStorage.getItem('bandohq_demo')};`);
   ok('avsluta demoläget tömmer det', r.demo===false && r.left===null, r);
 
+  /* ============ RÖRELSERNA ============ */
+  log('\n── Rörelserna: glidande flikar, staplar, entrén, skylten och reducerad rörelse ──');
+  sessionStorage.removeItem('bandohq_entered'); sessionStorage.removeItem('bandohq_lit');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wait = ms => new Promise(r=>setTimeout(r,ms)), num = t => parseFloat(String(t||'').replace(/^translateX\\(/,''));
+    const entered = sessionStorage.getItem('bandohq_entered');
+    sessionStorage.removeItem('bandohq_entered'); showApp(); await wait(30);
+    const enterNow = document.documentElement.classList.contains('enter'), rises = document.getAnimations().filter(a=>a.animationName==='rise').length;
+    await wait(1000); const enterAfter = document.documentElement.classList.contains('enter');
+    showApp(); await wait(30); const twice = document.documentElement.classList.contains('enter');
+    agendaTab = 'week'; go('agenda'); await wait(120);
+    const seg = () => document.querySelector('#view .seg'), ind = () => seg().querySelector('.seg-ind');
+    const indAnim = () => document.getAnimations().find(a=>a.effect && a.effect.target===ind());
+    const x0 = num(ind() && ind().style.transform);
+    seg().querySelectorAll('button')[1].click(); await wait(40);
+    const a1 = indAnim(), k1 = a1 && a1.effect.getKeyframes().map(k=>k.transform), d1 = a1 && a1.effect.getTiming().duration, x1 = num(ind().style.transform);
+    await wait(60);
+    seg().querySelectorAll('button')[0].click(); await wait(30);
+    const a2 = indAnim(), k2 = a2 && a2.effect.getKeyframes().map(k=>k.transform);
+    await wait(400); const xEnd = num(ind().style.transform);
+    render(); await wait(60); const still = document.getAnimations().filter(a=>a.effect && a.effect.target && a.effect.target.classList && a.effect.target.classList.contains('seg-ind')).length;
+    /* staplarna: växer när värdet ändras, står still vid omritning */
+    S.agenda.push(bump({id:'mo1', kind:'week', week:iso(weekStart), who:'', text:'Rörelsetest', done:false, del:false})); save(); render(); await wait(80);
+    const fillAnims = () => document.getAnimations().filter(a=>a.effect && a.effect.target && a.effect.target.dataset && a.effect.target.dataset.fill);
+    const tk = [...document.querySelectorAll('#view .task')].find(t=>/Rörelsetest/.test(t.textContent)).querySelector('.tick');
+    tk.click(); await wait(40);
+    const fills = fillAnims().map(a=>a.effect.getTiming().duration);
+    await wait(400); render(); await wait(60); const fillsAgain = fillAnims().length;
+    /* Statistik: siffrorna står där direkt (ingen uppräkning) */
+    go('dash'); const n1 = [...document.querySelectorAll('#view .kpi b')].map(b=>b.textContent).join('|'); await wait(700);
+    const n2 = [...document.querySelectorAll('#view .kpi b')].map(b=>b.textContent).join('|');
+    /* reducerad rörelse: tonerna kvar, ingen förflyttning, entrén av */
+    let rm = '';
+    for (const sh of document.styleSheets) for (const rule of sh.cssRules) if (rule.media && /prefers-reduced-motion/.test(rule.media.mediaText)) rm += [...rule.cssRules].map(x=>x.cssText).join(' ');
+    const sh = getComputedStyle(document.getElementById('sheet'));
+    return {entered, enterNow, rises, enterAfter, twice, x0, x1, k1, d1, k2, xEnd, still, fills, fillsAgain, n1, same:n1===n2,
+      rmFade:rm.includes('.scrim, .toast { transition-duration: 0.2s !important; }'), rmToast:rm.includes('translate(-50%, 0px) !important'),
+      rmStagger:/\\.stagger > \\* \\{ animation: [^}]*none !important; \\}/.test(rm), rm:rm.slice(0, 600),
+      sheet: sh.transitionProperty + ' ' + sh.transitionDuration + ' ' + sh.transitionTimingFunction};`);
+  ok('entrén: första vyn efter inloggningen kommer i tur och ordning — en gång', r.entered==='1' && r.enterNow===true && r.rises>0 && r.enterAfter===false && r.twice===false, r);
+  ok('fliklinjen glider till den valda fliken (240 ms, från där den stod)', r.d1===240 && r.k1 && Math.round(parseFloat(r.k1[0].slice(11)))===Math.round(r.x0) && r.x1>r.x0, r);
+  const mid = r.k2 ? parseFloat(r.k2[0].slice(11)) : NaN;
+  ok('byter man igen mitt i glidningen börjar linjen där den syns — inget hopp', mid > r.x0 + 1 && mid < r.x1 - 1 && Math.abs(r.xEnd - r.x0) < 1, {mid, r});
+  ok('en omritning med samma flik rör inte linjen', r.still===0, r.still);
+  ok('staplarna växer när en uppgift bockas av (300 ms) och står still vid omritning', r.fills.length>=1 && r.fills.every(d=>d===300) && r.fillsAgain===0, r);
+  ok('Statistik: siffrorna står där direkt', r.same===true && r.n1.length>0, r);
+  ok('arket glider med lådans kurva', /^transform 0\.42s cubic-bezier\(0\.32, 0\.72, 0, 1\)$/.test(r.sheet), r.sheet);
+  ok('reducerad rörelse: arkets bakgrund och toasten tonar, toasten flyttar sig inte, entrén är av', r.rmFade && r.rmToast && r.rmStagger, r);
+  w = await boot(Object.assign(seed(), {session:null}));
+  r = await ev(w,`await new Promise(r=>setTimeout(r,1500)); const h = document.getElementById('gateTitle');
+    return {cls:h.className, vb:h.querySelector('svg').getAttribute('viewBox'), fs:+h.querySelector('text').getAttribute('font-size')};`);
+  ok('skylten passas in efter typsnittet och tänds första gången under sessionen', /\bfit\b/.test(r.cls) && /\blit\b/.test(r.cls) && r.fs > 200 && r.vb!=='0 0 1000 260', r);
+  w = await boot(Object.assign(seed(), {session:null}));
+  r = await ev(w,`await new Promise(r=>setTimeout(r,1200)); return document.getElementById('gateTitle').className;`);
+  ok('nästa gång lyser den direkt — ingen ny tändning', /\bon\b/.test(r) && !/\blit\b/.test(r), r);
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

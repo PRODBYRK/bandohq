@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8"><title>BANDOHQ · bildrutor</title>
+<style>body{background:#111;color:#eee;font:13px ui-monospace,Menlo,monospace;margin:0;display:flex}
+pre{padding:16px;margin:0;white-space:pre-wrap;flex:1;max-height:100vh;overflow:auto}
+iframe{width:390px;height:844px;border:0;flex:none;background:#000}</style>
+<pre id="out">kör…</pre><iframe id="fr"></iframe>
+<script src="../demo.js"></script>
+<script>
+/* Bildrutorna under rörelserna: arket öppnas och stängs, fliklinjen glider, schemat rullas och
+   vyerna ritas. Appen med demodata i en telefonram (390 × 844), i realtid (ingen virtuell tid).
+   Rapporterar median, 95:e percentilen och längsta bildrutan per moment, och långa uppgifter.
+   Kör: python3 test/run.py perf
+   Obs: headless Chrome ritar i mjukvara på en snabb dator — siffrorna är relativa. En riktig
+   telefon mäts med fjärrfelsökning (Safari/Chrome DevTools → Performance). */
+const out = document.getElementById('out'), fr = document.getElementById('fr');
+const lines = [], log = s => { lines.push(s); out.textContent = lines.join('\n'); };
+let pass = 0, fail = 0;
+const ok = (n, c, x) => { c ? pass++ : fail++; log((c ? 'PASS  ' : 'FAIL  ') + n + (x !== undefined ? '   ' + JSON.stringify(x) : '')); };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+function boot(){
+  return new Promise(res => {
+    localStorage.clear(); sessionStorage.clear();
+    localStorage.setItem('bandosesh_v2', JSON.stringify(bandohqDemo({who:'AZ'})));
+    localStorage.setItem('bandosesh_cloud', JSON.stringify({url:'', key:''}));
+    fr.onload = () => setTimeout(() => res(fr.contentWindow), 900);
+    fr.src = '../index.html?mock=1&cb=' + Math.random();
+  });
+}
+/* bildrutorna medan fn kör, och ms efteråt */
+async function frames(w, fn, ms){
+  const t = [], longs = []; let last = 0, run = true;
+  let po = null;
+  try { po = new w.PerformanceObserver(l => l.getEntries().forEach(e => longs.push(Math.round(e.duration)))); po.observe({entryTypes:['longtask']}); } catch(e){}
+  const tick = now => { if (last) t.push(now - last); last = now; if (run) w.requestAnimationFrame(tick); };
+  w.requestAnimationFrame(tick); await wait(50);
+  await fn(); await wait(ms); run = false; if (po) po.disconnect();
+  t.sort((a, b) => a - b);
+  const q = p => +t[Math.min(t.length - 1, Math.floor(t.length * p))].toFixed(1);
+  return {frames:t.length, med:q(.5), p95:q(.95), max:+t[t.length - 1].toFixed(1), over33:t.filter(x => x > 33.4).length, long:longs};
+}
+(async () => {
+  try {
+    const w = await boot(), d = w.document;
+    log('── bildrutorna (390 × 844, demodata, AZ) ──');
+    const sheet = await frames(w, async () => { w.openForm(); await wait(600); w.closeSheet(); }, 600);
+    ok('arket: öppna och stäng', sheet.p95 < 34 && sheet.long.every(x => x < 100), sheet);
+    w.agendaTab = 'week'; w.go('agenda'); await wait(300);
+    const seg = await frames(w, async () => {
+      for (const i of [1, 0, 1, 0]) { d.querySelector('#view .seg').querySelectorAll('button')[i].click(); await wait(320); }
+    }, 200);
+    ok('fliklinjen: fyra byten', seg.p95 < 34 && seg.long.every(x => x < 100), seg);
+    w.go('week'); await wait(300);
+    const scroll = await frames(w, async () => {
+      const s = d.scrollingElement;
+      for (let y = 0; y <= 1600; y += 26) { s.scrollTop = y; await new Promise(r => w.requestAnimationFrame(r)); }
+    }, 200);
+    ok('schemat: rulla 1 600 px', scroll.p95 < 34 && scroll.long.every(x => x < 100), scroll);
+    const views = {};
+    for (const v of ['today', 'week', 'agenda', 'beats', 'more', 'circles', 'dash', 'rewards']) {
+      const t0 = w.performance.now(); w.go(v); views[v] = Math.round(w.performance.now() - t0); await wait(150);
+    }
+    ok('vyerna ritas på under 100 ms', Object.values(views).every(x => x < 100), views);
+    log('\n══════════════════════════════');
+    log(pass + ' PASS · ' + fail + ' FAIL'); log(fail ? '✗ TRASIGT' : '✓ ALLT GRÖNT');
+  } catch(e) { log('HARNESS-KRASCH: ' + e.message + '\n' + e.stack); }
+  document.title = 'DONE';
+  try { fetch('/__result', {method:'POST', body:out.textContent}); } catch(_){}
+})();
+</script>

@@ -5,6 +5,7 @@
     python3 test/run.py test       # bara test/test.html (förhandsläget)
     python3 test/run.py cloud      # bara test/cloud.html (startar emulatorn själv)
     python3 test/run.py db         # bara node-sviterna i db/test
+    python3 test/run.py perf       # bildrutorna under rörelserna (test/perf.html) — relativa siffror
     python3 test/run.py shot 'as=AZ&tab=team' bild.png [390] [1000] [3]   # skärmdump via test/shot.html (bredd, höjd, skala)
     # App Store 6,9": shot '…' bild.png 440 956 3 → 1320×2868
 
@@ -149,5 +150,6 @@ if __name__ == '__main__':
         ok &= node('db.test.mjs'); ok &= node('notify.test.mjs')
     if what in ('all', 'test'): ok &= page('test.html')
     if what in ('all', 'cloud'): ok &= cloud()
+    if what == 'perf': ok &= page('perf.html', timeout=120)
     print('✓ ALLT GRÖNT' if ok else '✗ NÅGOT ÄR RÖTT')
     sys.exit(0 if ok else 1)

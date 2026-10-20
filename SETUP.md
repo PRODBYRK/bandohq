@@ -766,9 +766,20 @@ python3 -m http.server 8000
 molnet mot en egen emulator) i en headless Chrome och säger om något är rött. `python3 test/run.py test`
 kör bara förhandsläget, och `cloud` eller `db` en del i taget.
 
+`python3 test/run.py perf` mäter bildrutorna medan arket öppnas, fliklinjen glider och schemat
+rullas (appen med demodata i en telefonram), och hur lång tid varje vy tar att rita. Siffrorna är
+relativa — en snabb dator döljer det mesta. En riktig telefon mäts med fjärrfelsökning: iPhone
+via Safari → Utvecklare, Android via Chrome → `chrome://inspect`, sedan fliken Performance.
+
+**Rörelserna** följer en regel: bara `transform` och `opacity`, och inget av det som används hela
+dagen (flikbyten, omritningar) glider in. Det som rör sig är arken (lådans kurva), fliklinjen,
+staplarna när ett värde ändras, tryck på knappar, toasten, entrén en gång per session och
+inloggningsskylten som tänds en gång per session. Vid reducerad rörelse står allt still utom
+toasten och arkets bakgrund, som tonar.
+
 För hand:
 
-- `http://localhost:8000/test/test.html` — appen i förhandsläget, 429 testfall
+- `http://localhost:8000/test/test.html` — appen i förhandsläget, 507 testfall
 - `http://localhost:8000/test/shot.html?as=AZ` — demodata att klicka runt i
 
 Databasen och molnflödet (kräver Node):

@@ -62,7 +62,6 @@
   --safeT:env(safe-area-inset-top,0px); --safeB:env(safe-area-inset-bottom,0px);
   /* rörelsen: sajtens kurvor (ut = allt som kommer in, io = linjer, drawer = ark och paneler) */
   --ease:cubic-bezier(.23,1,.32,1); --ease-io:cubic-bezier(.77,0,.175,1); --ease-drawer:cubic-bezier(.32,.72,0,1);
-  --spring:cubic-bezier(.34,1.4,.44,1);
   --sans:"Barlow","Helvetica Neue",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   --disp:"Barlow Condensed","Arial Narrow",sans-serif;
   color-scheme:dark;
@@ -126,9 +125,16 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r-sm);
   font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
 
-/* staggrad entré */
-.stagger>*{animation:rise .5s var(--ease) both}
-@keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+/* Entrén: bara den första vyn efter inloggningen (en gång per session) — korten kommer i tur och
+   ordning. Vyer som ritas om när man trycker eller byter flik rör sig inte: de används hela dagen. */
+html.enter #view .stagger>*{animation:rise 360ms var(--ease) both}
+html.enter #view .stagger>*:nth-child(2){animation-delay:45ms}
+html.enter #view .stagger>*:nth-child(3){animation-delay:90ms}
+html.enter #view .stagger>*:nth-child(4){animation-delay:135ms}
+html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* staplar som fylls (fillBars) växer från vänster */
+[data-fill]{transform-origin:left center}
 
 /* ---------- live / idag ---------- */
 .live{position:relative;overflow:hidden;padding:17px}
@@ -172,7 +178,7 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .weeknav{display:flex;align-items:center;gap:8px;margin-bottom:13px}
 .weeknav button{width:40px;height:40px;border-radius:var(--r-sm);border:1px solid var(--line2);
   background:transparent;color:var(--txt);font-size:18px;font-weight:600;transition:transform .16s var(--ease),background-color .16s}
-.weeknav button:active{transform:scale(.93);background:var(--card2)}
+.weeknav button:active{transform:scale(.95);background:var(--card2)}
 .weeknav .wk{flex:1;text-align:center;font-size:12px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--mut)}
 .days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
 .day{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:9px 2px 8px;
@@ -238,7 +244,7 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 label.lbl,div.lbl{display:block;font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--mut);margin:var(--s5) 0 var(--s1)}
 input,textarea,select{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line2);border-radius:0;
   color:var(--txt);font:inherit;font-size:17px;padding:10px 0 11px;-webkit-appearance:none;appearance:none;
-  transition:border-color .16s,box-shadow .16s}
+  transition:border-color .16s}
 input::placeholder,textarea::placeholder{color:#6f6779}
 /* Återställningen ovan tar bort ALLT inbyggt utseende — även kryssrutans bock.
    Utan den här regeln ser en ikryssad ruta likadan ut som en tom. */
@@ -258,22 +264,25 @@ input[type=date],input[type=time]{min-height:46px}
 .two.end{align-items:end}                                  /* fälten i jämnhöjd även när en etikett bryts */
 .studiopick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .spick{border:1px solid var(--line2);background:transparent;border-radius:var(--r-sm);padding:14px 13px;
-  color:var(--txt);font:inherit;text-align:left;transition:transform .16s var(--ease),border-color .16s,box-shadow .16s}
+  color:var(--txt);font:inherit;text-align:left;transition:transform .16s var(--ease),border-color .16s}
 .spick b{display:block;font-size:13px;font-weight:600;letter-spacing:.22em;text-transform:uppercase}
 .spick span{display:block;font-size:11.5px;color:var(--mut);margin-top:4px}
 .spick.on{border-color:var(--tube);box-shadow:0 0 0 1px var(--tube) inset,0 0 22px -10px var(--glow)}
 .spick.on span{color:rgba(255,255,255,.82)}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:14px 18px;
+.btn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:14px 18px;
   border-radius:var(--r-sm);border:0;font:inherit;font-size:13px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;
   color:#fff;background:var(--btn);cursor:pointer;user-select:none;-webkit-user-select:none;
-  transition:transform .16s var(--ease),background-color .18s,box-shadow .24s,opacity .18s}
+  transition:transform .16s var(--ease),background-color .18s,opacity .18s}
+.btn::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 6px 28px -6px var(--glow);
+  opacity:0;transition:opacity .24s ease;pointer-events:none}
 .btn:active{transform:scale(.97)}
 .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.42);color:var(--txt);box-shadow:none}
 .btn.danger{background:transparent;border:1px solid rgba(251,113,133,.5);color:var(--bad2);box-shadow:none}
 .btn.slim{min-height:40px;padding:9px 14px;font-size:12px;letter-spacing:.16em}
 .btn:disabled{opacity:.45;box-shadow:none;cursor:default}
 @media (hover:hover) and (pointer:fine){
-  .btn:not(:disabled):not(.ghost):not(.danger):hover{background:var(--btn-hover);box-shadow:0 6px 28px -6px var(--glow)}
+  .btn:not(:disabled):not(.ghost):not(.danger):hover{background:var(--btn-hover)}
+  .btn:not(:disabled):not(.ghost):not(.danger):hover::after{opacity:1}
   .btn.ghost:not(:disabled):hover{background:#fff;color:var(--bg)}
   .btn.danger:not(:disabled):hover{background:rgba(251,113,133,.1)}
 }
@@ -298,14 +307,14 @@ nav button::before{content:"";position:absolute;top:-10px;left:30%;right:30%;hei
 nav button.on{color:var(--tube)}
 nav button.on::before{opacity:1}
 nav button.on svg{filter:drop-shadow(0 0 5px rgba(255,62,191,.55))}
-nav button:active{transform:scale(.92)}
+nav button:active{transform:scale(.95)}
 nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:square;stroke-linejoin:miter}
 .fab{position:fixed;right:16px;bottom:calc(90px + var(--safeB));z-index:55;width:56px;height:56px;
   border-radius:var(--r-sm);cursor:pointer;border:0;background:var(--btn);color:#fff;
   font-size:30px;font-weight:300;line-height:1;
   box-shadow:0 10px 30px -10px var(--glow);
   transition:transform .16s var(--ease),background-color .18s}
-.fab:active{transform:scale(.92)}
+.fab:active{transform:scale(.95)}
 
 /* ---------- sheet ---------- */
 .scrim{position:fixed;inset:0;z-index:60;background:rgba(5,4,8,.74);
@@ -316,7 +325,7 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;st
   background:var(--bg2);
   border-top:1px solid var(--line2);
   border-radius:var(--r) var(--r) 0 0;padding:12px 18px calc(30px + var(--safeB));
-  transform:translateY(102%);transition:transform .34s var(--spring);max-width:660px;margin:0 auto;
+  transform:translateY(102%);transition:transform .42s var(--ease-drawer);max-width:660px;margin:0 auto;
   box-shadow:0 -20px 60px -20px #000}
 .sheet.on{transform:translateY(0)}
 .grip{width:36px;height:3px;border-radius:2px;background:rgba(255,255,255,.22);margin:0 auto 16px}
@@ -332,7 +341,7 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;st
   color:var(--pur3);max-height:130px;overflow-y:auto}
 .toast{position:fixed;left:50%;bottom:calc(154px + var(--safeB));transform:translate(-50%,14px);z-index:90;
   background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 18px;border-radius:var(--r-sm);
-  font-size:13.5px;font-weight:600;opacity:0;transition:opacity .24s var(--ease),transform .24s var(--ease);pointer-events:none;
+  font-size:13.5px;font-weight:600;opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none;
   box-shadow:0 18px 40px -12px #000;max-width:88vw;text-align:center}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
@@ -342,6 +351,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
   *,*:before,*:after{animation-duration:.001ms!important;animation-iteration-count:1!important;
     transition-duration:.001ms!important}
   .sheet{transition:none}
+  /* rörelserna bort, tydligheten kvar: arkets bakgrund och toasten tonar (200 ms) i stället för att glida */
+  .scrim,.toast{transition-duration:.2s!important}
+  .toast,.toast.on{transform:translate(-50%,0)!important}
   /* Den förskjutna entrén startar osynlig och tonar in efter en fördröjning.
      Kortad längd tar inte bort fördröjningen — så stäng av den helt, annars
      kan innehåll bli kvar osynligt där animationsklockan står still. */
@@ -380,7 +392,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 
 /* ================= FILER ================= */
 .drop{border:1px dashed rgba(255,106,216,.4);border-radius:var(--r);padding:26px 18px;text-align:center;
-  background:rgba(255,62,191,.045);transition:.18s var(--ease);cursor:pointer;display:block;width:100%;
+  background:rgba(255,62,191,.045);transition:transform .18s var(--ease),border-color .18s,background-color .18s;cursor:pointer;display:block;width:100%;
   color:var(--txt);font:inherit}
 .drop.hot{border-color:var(--pur);background:rgba(255,62,191,.14);transform:scale(1.012);
   box-shadow:0 0 0 4px rgba(255,62,191,.1)}
@@ -402,13 +414,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .uprow{padding:12px 13px;border-radius:var(--r);border:1px solid var(--line2);
   background:rgba(255,62,191,.07);margin-bottom:8px}
 .upbar{height:4px;border-radius:1px;background:rgba(255,255,255,.09);margin-top:9px;overflow:hidden}
-.upbar i{display:block;height:100%;border-radius:1px;background:var(--tube);
-  box-shadow:0 0 10px var(--glow);transition:width .28s var(--ease)}
+.upbar i{display:block;width:100%;height:100%;border-radius:1px;background:var(--tube);
+  box-shadow:0 0 10px var(--glow);transform-origin:left center;transition:transform .28s linear}
 .acc{border:1px solid var(--line);border-radius:var(--r);margin-bottom:var(--s2);overflow:hidden;
   background:var(--surface)}
 .acc>summary{list-style:none;padding:13px 14px;display:flex;align-items:center;gap:12px;cursor:pointer}
 .acc>summary::-webkit-details-marker{display:none}
-.acc>summary .cx{flex:none;color:var(--mut);transition:.2s var(--ease);font-size:12px}
+.acc>summary .cx{flex:none;color:var(--mut);transition:transform .2s var(--ease);font-size:12px}
 .acc[open]>summary .cx{transform:rotate(90deg)}
 .acc .inner{padding:0 12px 12px}
 
@@ -459,13 +471,16 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .seg button{position:relative;flex:1;padding:12px 6px 11px;border-radius:0;border:0;background:none;color:var(--mut);
   font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;transition:color .18s}
 .seg button::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--tube);
-  box-shadow:0 0 10px var(--glow);transform:scaleX(0);transform-origin:left;transition:transform .3s var(--ease)}
+  box-shadow:0 0 10px var(--glow);opacity:0}
 .seg button.on{color:#fff}
-.seg button.on::after{transform:scaleX(1)}
-.skel{background:linear-gradient(90deg,rgba(255,255,255,.035),rgba(255,255,255,.08),rgba(255,255,255,.035));
-  background-size:200% 100%;animation:shim 1.3s linear infinite;border-radius:var(--r-sm);color:transparent!important}
-@keyframes shim{from{background-position:200% 0}to{background-position:-200% 0}}
-.syncdot{width:7px;height:7px;border-radius:50%;background:var(--mut2);flex:none;transition:.3s}
+.seg button.on::after{opacity:1}
+.seg{position:relative}
+.seg-ind{position:absolute;left:0;bottom:-1px;width:0;height:2px;background:var(--tube);box-shadow:0 0 10px var(--glow);
+  transform-origin:0 50%;pointer-events:none}
+.seg.has-ind button::after{display:none}
+.skel{background:rgba(255,255,255,.06);animation:skel 1.4s ease-in-out infinite;border-radius:var(--r-sm);color:transparent!important}
+@keyframes skel{50%{opacity:.45}}
+.syncdot{width:7px;height:7px;border-radius:50%;background:var(--mut2);flex:none;transition:background-color .3s}
 .syncdot.ok{background:var(--ok2);box-shadow:0 0 9px var(--ok2)}
 .syncdot.busy{background:var(--warn);animation:pulse 1s infinite}
 .syncdot.off{background:var(--mut2)}
@@ -569,7 +584,7 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .pgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
 .pcard{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border-radius:var(--r);
   border:1px solid var(--line);background:var(--surface);color:var(--txt);font:inherit;text-align:left;cursor:pointer;position:relative}
-.pcard:hover{border-color:rgba(255,255,255,.16)}
+@media (hover:hover) and (pointer:fine){ .pcard:hover{border-color:var(--line2)} }
 .pcard-n{font-weight:600;font-size:15.5px;margin-top:4px}
 .pcard-s{font-size:12.5px;color:var(--mut)}
 .pcard-l{font-size:12px;color:var(--mut2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -1839,7 +1854,7 @@ function rewardsCard(){
         <div><div class="rwpts">${fmtP(s1.available)}</div><div class="tiny muted">poäng att använda</div></div>
         ${s1.level ? `<span class="pill rwlevel">${esc(s1.level.name.toUpperCase())}</span>` : ''}</div>
       ${nx ? `<div class="tiny muted" style="margin-top:12px">${need!=null ? `${fmtP(need)} poäng till <b style="color:var(--txt)">${esc(nx.name)}</b>` : `Nästa nivå: <b style="color:var(--txt)">${esc(nx.name)}</b>`}</div>
-        ${need!=null ? `<div class="bar thin"><i style="width:${Math.min(100, s1.earned / +nx.criteria.minEarned * 100)}%"></i></div>` : ''}` : ''}
+        ${need!=null ? `<div class="bar thin"><i data-fill="rw-next" style="width:${Math.min(100, s1.earned / +nx.criteria.minEarned * 100)}%"></i></div>` : ''}` : ''}
     </div>
     ${waiting.length ? `<div class="note">Väntar på att lämnas ut: ${waiting.map(r=>esc(r.title)).join(', ')}.</div>` : ''}
     <div class="card plcard rwearn"><div class="pltitle">Så tjänar du poäng</div>
@@ -2945,6 +2960,7 @@ function fitGateTitle(){
 function showApp(){
   document.getElementById('gate').classList.remove('on');
   document.getElementById('app').style.display='';
+  enterOnce();
   if(roleView()==='full'){
     document.getElementById('nav').style.display='';
     document.getElementById('fab').style.display='';
@@ -3800,7 +3816,7 @@ function xhrUpload(url, method, headers, body, onProg){
 function paintUploads(){
   uploads.forEach(u=>{
     const el = document.getElementById('up-'+u.id);
-    if(el) el.style.width = Math.round(u.p*100)+'%';
+    if(el) el.style.transform = 'scaleX(' + (+u.p||0).toFixed(3) + ')';
   });
 }
 
@@ -3974,7 +3990,6 @@ function render(){
     view==='circles' ? (openCircle ? vCircle() : vCircles()) : vDash());
   if(view==='gallery') loadThumbs();
   paintSync();
-  if(view==='dash') countUp();
 }
 
 /* ---------- MER ---------- */
@@ -4450,7 +4465,7 @@ function weekPlanSection(mon){
     ${ss.length ? `<div class="card agcard">${people.map(c=>{ const mine = ss.filter(b=>b.who===c.n), r = mine.filter(b=>b.ran).length;
       return `<div class="agp"><div class="agp-h"><i class="sw" style="background:${c.c}"></i><b style="color:${c.g}">${esc(c.n)}</b>
         <span class="agp-n">${r}/${mine.length} körda</span></div>
-        <div class="bar thin"><i style="width:${mine.length?r/mine.length*100:0}%"></i></div>
+        <div class="bar thin"><i data-fill="plan:${esc(c.n)}" style="width:${mine.length?r/mine.length*100:0}%"></i></div>
         ${mine.map(planRow).join('')}</div>`; }).join('')}</div>`
       : `<div class="empty">Ingen plan för veckan än.${can('parseAgenda')?' Tryck <b>Skriv in veckan</b> — t.ex. <i>Mån 18-22 RKAY + ADREY med Nova</i>.':''}</div>`}`;
 }
@@ -4489,7 +4504,7 @@ function vWeekAgenda(){
     return `<div class="card" style="margin-bottom:9px">
       <div class="row"><div class="grow" style="font-weight:800;letter-spacing:.07em;color:${color}">${esc(title)}</div>
         <span class="tiny muted">${done}/${list.length}</span></div>
-      ${list.length?`<div class="bar" style="height:3px;margin:9px 0 4px"><i style="width:${done/list.length*100}%"></i></div>`:''}
+      ${list.length?`<div class="bar" style="height:3px;margin:9px 0 4px"><i data-fill="agv:${esc(title)}" style="width:${done/list.length*100}%"></i></div>`:''}
       ${list.length ? list.map(taskRow).join('') : `<div class="tiny muted" style="margin-top:8px">Inget inlagt.</div>`}
       ${(mgr || who===m.n || who==='') ? `<button class="chip" style="margin-top:10px"
         onclick="openTask('week','${esc(who)}')">+ UPPGIFT</button>`:''}
@@ -4991,13 +5006,13 @@ function vGoalsOverview(){
       const gs = goalsOf(c.id), act = gs.filter(g=>g.status!=='klar');
       const late = act.filter(g=>g.due && g.due<iso(new Date())).length;
       const pct = gs.length ? Math.round((gs.length-act.length)/gs.length*100) : 0;
-      return `<button class="member" style="animation-delay:${i*40}ms;flex-wrap:wrap;row-gap:9px" onclick="goalsWho='${c.id}';render();scrollTo(0,0)">
+      return `<button class="member" style="flex-wrap:wrap;row-gap:9px" onclick="goalsWho='${c.id}';render();scrollTo(0,0)">
         ${avatar(c)}
         <div class="grow"><div class="mname">${esc(c.n)}</div>
           <div class="mrole">${GOAL_CATS.map(([k,n])=>{ const x = act.filter(g=>goalCat(g)===k).length; return x ? x + ' ' + n.toLowerCase() : ''; }).filter(Boolean).join(' · ') || 'inget aktivt'} · ${nt(gs.length-act.length,'klar','klara')}${late?` · <span style="color:var(--bad2)">${nt(late,'försenat','försenade')}</span>`:''}${
             planOf(c.id)?'':' · ingen plan'}</div></div>
         <span style="color:var(--mut2);font-size:18px">›</span>
-        ${gs.length?`<div class="bar" style="flex:1 1 100%;margin:0;height:3px"><i style="width:${pct}%"></i></div>`:''}
+        ${gs.length?`<div class="bar" style="flex:1 1 100%;margin:0;height:3px"><i data-fill="goal:${c.id}" style="width:${pct}%"></i></div>`:''}
       </button>`;}).join('')}</div>`;
 }
 
@@ -5265,7 +5280,7 @@ function vBeatList(){
         <div class="row"><div class="grow fname">${esc(u.name)}</div>
           <span class="tiny muted nums">${u.err?'':Math.round(u.p*100)+'%'}</span></div>
         ${u.err?`<div class="tiny" style="color:var(--bad2);margin-top:5px">${esc(u.err)}</div>`
-          :`<div class="upbar"><i id="up-${u.id}" style="width:${Math.round(u.p*100)}%"></i></div>`}</div>`).join(''):''}
+          :`<div class="upbar"><i id="up-${u.id}" style="transform:scaleX(${(+u.p||0).toFixed(3)})"></i></div>`}</div>`).join(''):''}
       <div class="note"><b>Automatiskt:</b> med <b>Dropbox-appen på datorn</b> ligger mappen
         <b>BANDOHQ/Beats/${esc(m.n)}</b> i Finder. Spara beats där, så dyker de upp här av sig själva.</div>`
     : beatsSetupNote()}
@@ -5468,7 +5483,7 @@ function vGallery(){
       </button>
       ${uploads.length ? uploads.map(u=>`<div class="uprow" style="margin-top:9px"><div class="row"><div class="grow fname">${esc(u.name)}</div>
         <span class="tiny muted nums">${u.err?'':Math.round(u.p*100)+'%'}</span></div>
-        ${u.err?`<div class="tiny" style="color:var(--bad2);margin-top:5px">${esc(u.err)}</div>`:`<div class="upbar"><i id="up-${u.id}" style="width:${Math.round(u.p*100)}%"></i></div>`}</div>`).join(''):''}`
+        ${u.err?`<div class="tiny" style="color:var(--bad2);margin-top:5px">${esc(u.err)}</div>`:`<div class="upbar"><i id="up-${u.id}" style="transform:scaleX(${(+u.p||0).toFixed(3)})"></i></div>`}</div>`).join(''):''}`
       : beatsSetupNote()) : ''}
     ${total ? `<div class="chips" style="margin-top:var(--s4)">
       <button class="chip ${!galFilter&&!galOnlyNew?'on':''}" onclick="galFilter='';galOnlyNew=false;render()">ALLA</button>
@@ -5593,7 +5608,7 @@ function weekAgendaCard(){
     return `<div class="agp">
       <div class="agp-h">${av||''}<b style="color:${color}">${esc(name)}</b>
         <span class="agp-n">${ps.length?`pass ${pr}/${ps.length} · `:''}${list.length?d+'/'+list.length:'–'}</span></div>
-      ${list.length?`<div class="bar thin"><i style="width:${d/list.length*100}%"></i></div>`:''}
+      ${list.length?`<div class="bar thin"><i data-fill="ag:${esc(name)}" style="width:${d/list.length*100}%"></i></div>`:''}
       ${open.length ? open.slice(0,4).map(a=>agTask(a)).join('') + (open.length>4?`<div class="tiny muted" style="padding:4px 0 0 32px">+ ${open.length-4} till</div>`:'')
         : `<div class="tiny muted agp-e">${list.length?'Allt klart ✓':'Inget inlagt för veckan'}</div>`}
     </div>`;
@@ -5701,7 +5716,7 @@ function myAgendaPanel(){
       <svg class="myag-c" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="myag-b">
-      ${list.length?`<div class="bar thin" style="margin-top:2px"><i style="width:${d/list.length*100}%"></i></div>`:''}
+      ${list.length?`<div class="bar thin" style="margin-top:2px"><i data-fill="myag" style="width:${d/list.length*100}%"></i></div>`:''}
       ${list.length ? list.map(a=>agTask(a,{del:1})).join('') : `<div class="tiny muted" style="padding:8px 0">Inget inlagt den här veckan.</div>`}
       <button class="chip" style="margin-top:10px" onclick="agendaWeek=weekStart;openTask('week','${esc(m.n)}')">+ UPPGIFT</button>
       ${shared.length?`<div class="myag-s">FÖR ALLA</div>${shared.map(a=>agTask(a)).join('')}`:''}
@@ -6706,32 +6721,6 @@ function table(cur, prev){
     </tr>`).join('')}</tbody></table>`;
 }
 
-/* Siffrorna räknas upp när vyn ritas. Uppräkningen är ren dekor — det som
-   spelar roll är att den ALLTID landar på rätt tal. Går klockan inte framåt
-   (bakgrundsflik, fryst virtuell tid vid test) eller stryps rAF, snappar vi
-   till slutvärdet i stället för att lämna en halvfärdig siffra på skärmen. */
-function countUp(){
-  const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
-  document.querySelectorAll('.cnt').forEach(el=>{
-    const to = +el.dataset.to, dec = +el.dataset.dec;
-    const final = dec ? hh(to) : String(Math.round(to));
-    const land = () => { el.textContent = final; };
-    if(reduce || !isFinite(to) || to===0) return land();
-    const t0 = performance.now(), D = 620;
-    let frames = 0, done = false;
-    const finish = () => { if(!done){ done = true; land(); } };
-    const tick = t => {
-      if(done) return;
-      const k = Math.min(1, (t-t0)/D);
-      if(k>=1 || ++frames > 90) return finish();     /* 90 bildrutor ≈ 1,5 s */
-      const e = 1-Math.pow(1-k,3);
-      el.textContent = dec ? hh(to*e) : Math.round(to*e);
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-    setTimeout(finish, D+240);                        /* sista skyddsnätet */
-  });
-}
 
 
 /* ===================== STUDIECIRKLAR ===================== */
@@ -7299,7 +7288,7 @@ function vLeader(){
               <div class="mrole">${hh(hrs)} av ${MAX_HOURS} h${full?' · ramen nådd':''}</div>
             </div>
           </div>
-          <div class="bar thin"><i style="width:${Math.min(100,hrs/MAX_HOURS*100)}%;${full?'background:var(--warn)':''}"></i></div>
+          <div class="bar thin"><i data-fill="hrs" style="width:${Math.min(100,hrs/MAX_HOURS*100)}%;${full?'background:var(--warn)':''}"></i></div>
           <div class="contact">
             ${p.phone?`<a href="${telHref(p.phone)}"><svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>${esc(p.phone)}</a>
               <a href="sms:${String(p.phone).replace(/[^\d+]/g,'')}" aria-label="SMS till ${esc(p.n)}"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1.1-4.6A8 8 0 1121 12z"/></svg>SMS</a>`:''}
@@ -7791,6 +7780,71 @@ function toast(t){
   clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),2600);
 }
 const X = `<button class="close" onclick="closeSheet()">✕</button>`;
+
+/* ===================== RÖRELSERNA =====================
+   Bara transform och opacity. Inget av det här spelar vid reducerad rörelse. */
+const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches);
+/* kurvorna läses från CSS-tokens (--ease = stark ut, --ease-io = stark in-ut) — en enda källa */
+const curve = (n, d) => { try{ return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d; }catch(e){ return d; } };
+/* Var en glidning är just nu: en pågående animation läses av mitt i, så att nästa börjar där den syns. */
+const midway = (from, to, anim) => {
+  const k = anim && anim.playState==='running' && anim.effect ? anim.effect.getComputedTiming().progress : null;
+  return k == null ? to : from + (to - from) * k;
+};
+/* Fliksegmenten: en enda neonlinje under den valda fliken. Vyn ritas om vid varje byte, så linjen
+   minns var den stod och glider därifrån (FLIP, 240 ms). Nyckeln är flikarnas namn utan siffror. */
+const segPos = new Map(); let segNoAnim = false;
+function segIndicators(){
+  /* först alla mätningar, sedan alla skrivningar — ingen layout däremellan (linjen ligger utanför flödet) */
+  const jobs = [...document.querySelectorAll('.seg')].map(seg=>{
+    const btns = [...seg.children].filter(b=>b.tagName==='BUTTON'), on = btns.find(b=>b.classList.contains('on'));
+    return {seg, btns, on, x:on ? on.offsetLeft : 0, w:on ? on.offsetWidth : 0};
+  });
+  jobs.forEach(({seg, btns, on, x, w})=>{
+    let ind = [...seg.children].find(c=>c.classList.contains('seg-ind'));
+    if(!on || !w){ if(ind) ind.remove(); seg.classList.remove('has-ind'); return; }
+    if(!ind){ ind = document.createElement('i'); ind.className = 'seg-ind'; ind.setAttribute('aria-hidden','true'); seg.appendChild(ind); }
+    seg.classList.add('has-ind');
+    const key = btns.map(b=>b.textContent.replace(/\d+/g,'').trim()).join('|'), prev = segPos.get(key);
+    const cx = prev ? midway(prev.fx, prev.x, prev.anim) : x, cw = prev ? midway(prev.fw, prev.w, prev.anim) : w;
+    ind.style.width = w + 'px'; ind.style.transform = `translateX(${x}px)`;
+    let anim = null;
+    if(prev && (Math.abs(cx - x) > .5 || Math.abs(cw - w) > .5) && !segNoAnim && !reduceMotion() && ind.animate)
+      anim = ind.animate([{transform:`translateX(${cx.toFixed(1)}px) scaleX(${(cw / w).toFixed(4)})`}, {transform:`translateX(${x}px)`}],
+        {duration:240, easing:curve('--ease-io', 'cubic-bezier(.77,0,.175,1)')});
+    segPos.set(key, {x, w, fx:cx, fw:cw, anim});
+  });
+  segNoAnim = false;
+}
+/* Staplar som fylls (poäng, agenda, timmar): när värdet ändrats — eller första gången under
+   sessionen — växer stapeln dit från där den stod. Omritningar med samma värde står still. */
+const fillPos = new Map();
+function fillBars(){
+  document.querySelectorAll('[data-fill]').forEach(el=>{
+    const k = el.dataset.fill, v = parseFloat(el.style.width) || 0, prev = fillPos.get(k);
+    const cur = prev ? midway(prev.from, prev.v, prev.anim) : null;          /* där stapeln syns just nu */
+    if((cur != null && Math.abs(cur - v) < .05) || !v || reduceMotion() || !el.animate){ fillPos.set(k, {v, from:v, anim:null}); return; }
+    const from = cur == null ? 0 : cur;
+    const anim = el.animate([{transform:`scaleX(${Math.max(0, from / v).toFixed(4)})`}, {transform:'scaleX(1)'}],
+      {duration: cur == null ? 500 : 300, easing:curve('--ease', 'cubic-bezier(.23,1,.32,1)')});
+    fillPos.set(k, {v, from, anim});
+  });
+}
+let motionRaf = 0;
+function afterPaint(){ if(motionRaf) return; motionRaf = requestAnimationFrame(()=>{ motionRaf = 0; segIndicators(); fillBars(); }); }
+function watchMotion(){
+  if(!window.MutationObserver) return;
+  ['view','sheetBody'].forEach(id=>{ const el = document.getElementById(id); if(el) new MutationObserver(afterPaint).observe(el, {childList:true, subtree:true}); });
+  addEventListener('resize', ()=>{ segNoAnim = true; afterPaint(); });
+}
+/* Första vyn efter inloggningen kommer i tur och ordning — en gång per session. */
+function enterOnce(){
+  if(reduceMotion()) return;
+  try{ if(sessionStorage.getItem('bandohq_entered')==='1') return; sessionStorage.setItem('bandohq_entered','1'); }catch(e){ return; }
+  /* på <html>: render() skriver över #view:s className */
+  const h = document.documentElement; h.classList.add('enter'); setTimeout(()=>h.classList.remove('enter'), 900);
+}
+watchMotion();
 
 /* ---------- PROFIL ---------- */
 function openMe(){
