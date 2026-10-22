@@ -1014,6 +1014,36 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     return {friend:/Vilma Vän/.test(html) && /KLAR · \\+300/.test(html), camp:/rwcamp/.test(html) && /Dubbla poäng/.test(html)};`);
   ok('Alva ser vännen som klar och kampanjen som pågår', r.friend && r.camp, r);
 
+  /* ============ BANDO EDUCATION MOT SERVERN ============ */
+  log('\n── Bando Education mot servern ──');
+  const ecount = await sql(`select count(*)::int n from education_curricula where active`);
+  ok('katalogen ligger på servern: 200 koder', ecount[0].n===200, ecount);
+  w = await boot();
+  r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(300)}
+    for(let i=0;i<40 && syncing;i++) await new Promise(r=>setTimeout(r,100));
+    go('education'); ${wait(900)} render();
+    const rows = document.querySelectorAll('#eduBankList .member').length;
+    const sofia = accounts().find(a=>a.n==='Sofia Marks');
+    openAssign('SW01'); document.getElementById('eaL').value = sofia.id; document.getElementById('eaG').value = 'Låtskrivande – Grupp 1';
+    await saveAssign(); ${wait(200)}
+    return {rows, list:(eduList||[]).map(a=>a.code+':'+a.leader)};`);
+  ok('admin ser banken och tilldelar via servern', r.rows===200 && r.list.includes('SW01:Sofia Marks'), r);
+  w = await boot();
+  r = await ev(w,`${LOGIN('sofia@b.se','sofia1234')} ${wait(500)}
+    leaderTab='edu'; eduAt=0; render(); ${wait(900)} render();
+    const html = document.getElementById('view').innerHTML;
+    const a = (eduList||[]).find(x=>x.code==='SW01');
+    eduOpen = a && a.id; render(); openEduNote(a.id, 1);
+    document.getElementById('enL').value='Låtformer'; document.getElementById('enC').value='En vers och en refräng';
+    await saveEduNote(a.id, 1); ${wait(200)}
+    let deny = ''; try{ await sbRpc('edu_assign',{p_code:'MP01',p_leader:a.leader_id}); }catch(e){ deny = e.message; }
+    return {html:/Läroplaner/.test(html) && /Låtskrivande/.test(html), all:(eduList||[]).length, deny};`);
+  ok('ledaren ser sin läroplan efter inloggningen', r.html===true && r.all===1, r);
+  ok('och kan inte tilldela', /Bara admin/.test(r.deny), r.deny);
+  const enote = await sql(`select learned, created from education_monthly_notes where month_number=1`);
+  ok('anteckningen ligger på servern', enote.length===1 && enote[0].learned==='Låtformer' && enote[0].created==='En vers och en refräng', enote);
+  ok('ledaren fick en notis om läroplanen', (await outbox()).some(m=>m.kind==='edu' && /Ny läroplan/.test(m.subject||'')));
+
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

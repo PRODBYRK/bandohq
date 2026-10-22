@@ -1,7 +1,7 @@
 /* Uppgraderingen: dagens driftschema (projektmappen) och sedan de nya filerna ovanpå. */
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 const [oldDir, newDir] = process.argv.slice(2);
 const db = new PGlite({ extensions: { pgcrypto } });
 await db.exec(`create schema if not exists auth;
@@ -10,8 +10,8 @@ await db.exec(`create schema if not exists auth;
   create role anon nologin; create role authenticated nologin; create role service_role nologin;
   grant usage on schema public, auth to anon, authenticated;
   alter default privileges in schema public grant all on functions to anon, authenticated;`);
-const files = ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql'];
-for (const f of files) await db.exec(readFileSync(oldDir + '/' + f, 'utf8'));
+const files = ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql','06-education-katalog.sql'];
+for (const f of files) if (existsSync(oldDir + '/' + f)) await db.exec(readFileSync(oldDir + '/' + f, 'utf8'));   /* en ny fil finns inte i driften än */
 await db.exec(`insert into members(id,role,name,email) values('az','manager','AZ','az@b.se'),('rkay','producer','RKAY','r@b.se'),('k1','customer','Kund','k@b.se');
   insert into records(kind,id,data,up) values('booking','old1','{"id":"old1","studio":"A","date":"2030-01-01","start":"10:00","end":"14:00","who":"RKAY","status":""}',1);
   insert into members(id,role,name) values('lea','leader','Lea Ström'),('pa','participant','Pia Ask');

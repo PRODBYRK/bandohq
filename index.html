@@ -661,6 +661,16 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .rwfriends .kv b.ok{color:var(--ok2)}
 .rwfriends .kv b.muted{color:var(--mut)}
 .camprow{padding:10px 0;border-bottom:1px solid var(--line)}
+/* Bando Education: läroplanens text i etikett + stycke, månaderna som dagremsans rutor */
+.edk b{display:block;font-size:10.5px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--mut);margin-top:14px}
+.edk p{margin:4px 0 0;font-size:14.5px;line-height:1.6;color:var(--txt);white-space:pre-line}
+.edk p.none{color:var(--mut2)}
+.edm{margin-top:4px}
+.edm .studio-name{color:var(--tube)}
+.edmonths{margin-top:var(--s4)}
+.edmonths .dchip{flex:1 1 0;width:auto;min-width:48px}
+.edmonths .dchip i{color:var(--tube);font-weight:600;letter-spacing:.12em}
+.edcode{background:var(--deep);box-shadow:0 0 0 1px rgba(255,106,216,.45) inset;color:var(--tube);font-size:13px}
 .camprow .badge.ok{background:rgba(52,211,153,.14);color:var(--ok2)}
 .camprow .badge.off{background:rgba(255,255,255,.06);color:var(--mut)}
 .notecard{margin-bottom:9px}.notecard p{margin:4px 0 0;line-height:1.55;font-size:14px}
@@ -948,6 +958,7 @@ function blank(){
     backupCfg:{at:0, by:'', up:0},                         /* senaste säkerhetskopian */
     circleCfg:{up:0},                                      /* cirklarnas regler (setting/circles) — tomt = standard */
     rewardsCfg:{up:0},                                     /* poängtrappan m.m. (setting/rewards) — tomt = standard */
+    edu:{assignments:[], notes:[]},                        /* Bando Education i förhandsläget (på servern: education_*) */
     accessCfg:{up:0},                                      /* Access: inriktningar, förmåner, tjänstepriser (setting/access) */
     signups:[],                                            /* anmälningar — bara förhandsvisningen, annars i databasen */
     accessReqs:[],                                         /* förfrågningar om Access (crewet svarar) */
@@ -991,6 +1002,7 @@ function heal(s){
   s.backupCfg = Object.assign(blank().backupCfg, s.backupCfg||{});
   s.circleCfg = Object.assign(blank().circleCfg, s.circleCfg||{});
   s.rewardsCfg = Object.assign(blank().rewardsCfg, s.rewardsCfg||{});
+  s.edu = Object.assign({assignments:[], notes:[]}, s.edu||{});
   s.accessCfg = Object.assign(blank().accessCfg, s.accessCfg||{});
   if(!Array.isArray(s.signups)) s.signups = [];
   if(!Array.isArray(s.accessReqs)) s.accessReqs = [];
@@ -2678,6 +2690,331 @@ async function circlePlanCheck(cid, dates, start, studio){
   return sbRpc('circle_plan_check', {p_circle:cid, p_dates:dates, p_start:start, p_studio:studio||null});
 }
 
+/* ===================== BANDO EDUCATION =====================
+   200 läroplansmallar (education/laroplaner.json, oförändrad från Bando) som tilldelas
+   cirkelledare. En tilldelning = en grupps arbete med en mall i sex månader. Ledaren läser
+   månadens mål, arbete och delresultat, skriver två korta anteckningar per månad, gruppens
+   version av SV-arbetsplanen och en länk till slutprojektet. Servern (03: BANDO EDUCATION)
+   kontrollerar behörigheten; i förhandsläget spelar eduLocal samma roll. Allt som redigeras
+   öppnas i ark — vyn ritas om av synken och skulle annars tappa det man skriver. */
+let eduCatalog = null, eduCatP = null, eduList = null, eduLoading = false, eduErr = '', eduAt = 0;
+let eduTab = null, eduOpen = null, eduQ = '', eduCatF = '', eduFor = null;
+const eduMonth = {};
+const canEdu = () => { const m = me(); return !!m && (isAdminRole(m.r) || (m.perms||[]).includes('education')); };
+const SV_FIELDS = [['period','Period'],['mal','Vad är ert mål med cirkeln?'],['hur','Hur ska ni nå målet?'],
+  ['material','Studiematerial/inspirationskällor'],['delaktighet','Hur får ni alla att känna sig delaktiga?'],['utvardering','Utvärdering vid sista träffen']];
+const EDU_LEAD = [['inför_start','Inför start'],['per_manad','Varje månad'],['vid_avslut','Vid avslut']];
+const capFirst = t => { t = String(t||''); return t.charAt(0).toUpperCase() + t.slice(1); };
+function eduCat(){
+  if(eduCatalog) return Promise.resolve(eduCatalog);
+  if(!eduCatP) eduCatP = fetch('education/laroplaner.json').then(r=>{ if(!r.ok) throw new Error('Läroplansbanken gick inte att läsa'); return r.json(); })
+    .then(d=>{ eduCatalog = {meta:d, cats:d.amnesomraden, list:d.laroplaner, byCode:Object.fromEntries(d.laroplaner.map(x=>[x.kod, x]))}; return eduCatalog; })
+    .catch(e=>{ eduCatP = null; throw e; });
+  return eduCatP;
+}
+async function edu(fn, args){ return PREVIEW_LOGIN ? eduLocal[fn](args||{}) : sbRpc(fn, args||{}); }
+function eduOwner(){                    /* listan hör till den inloggade — byts kontot på enheten börjar den om */
+  const mid = (me()||{}).id || null;
+  if(eduFor !== mid){ eduFor = mid; eduList = null; eduErr = ''; eduOpen = null; eduTab = null; }
+}
+/* Varje laddning hör till den som var inloggad när den startade — ett svar som kommer efter ett
+   kontobyte slängs, så att ingen ser någon annans tilldelningar. */
+function loadEdu(force){
+  eduOwner();
+  const who = eduFor;
+  /* en minut gammal lista hämtas om i bakgrunden (admin kan ha tilldelat eller avslutat) */
+  if(eduLoading===who || (!force && (eduErr || (eduList && Date.now() - eduAt < 60000)))) return;
+  eduLoading = who; eduErr = '';
+  Promise.all([eduCat(), edu('edu_assignments', {})])
+    .then(([, l])=>{ if(eduFor===who){ eduList = l || []; eduAt = Date.now(); } })
+    .catch(e=>{ if(eduFor===who) eduErr = e.message || 'Education gick inte att läsa'; })
+    .finally(()=>{ if(eduLoading===who) eduLoading = false; if(eduFor===who) render(); });
+}
+async function reloadEdu(){ eduOwner(); const who = eduFor, l = await edu('edu_assignments', {}) || []; if(eduFor===who){ eduList = l; eduAt = Date.now(); render(); } }
+/* Var gruppen är: 0 = inte startat, 1–6 = den månaden, 7 = sex månader har gått, null = inget startdatum. */
+function eduMonthNow(a){
+  if(!a.start_date) return null;
+  const st = fromIso(String(a.start_date).slice(0,10)), t = new Date();
+  const n = (t.getFullYear()-st.getFullYear())*12 + (t.getMonth()-st.getMonth()) - (t.getDate() < st.getDate() ? 1 : 0) + 1;
+  return t < st ? 0 : Math.min(n, 7);
+}
+function eduWhen(a){
+  if(a.status==='ended') return 'Avslutad';
+  const n = eduMonthNow(a), c = eduCatalog && eduCatalog.byCode[a.code];
+  return n===null ? 'Startdatum inte satt' : n===0 ? 'Startar ' + longDate(String(a.start_date).slice(0,10)).toLowerCase()
+    : n===7 ? 'Sex månader har gått' : `Månad ${n} av 6${c ? ' · ' + c.perioder[n-1].fas : ''}`;
+}
+
+/* ---------- förhandslägets "server" (samma regler som 03: BANDO EDUCATION) ---------- */
+const eduState = () => { if(!S.edu) S.edu = {assignments:[], notes:[]}; return S.edu; };
+const eduFail = t => { throw new Error(t); };
+const eduLeaderOk = id => { const a = byId(id); return !!a && a.active!==false && !a.del && ['leader','producer','admin','manager'].includes(a.r); };
+const eduLocal = {
+  _get(id){ const a = eduState().assignments.find(x=>x.id===id); const m = me();
+    if(!a || !m || !(canEdu() || a.leader_id===m.id)) eduFail('Tilldelningen finns inte');
+    if(!(canEdu() || a.status==='active')) eduFail('Utbildningen är avslutad');
+    return a; },
+  async edu_assign({p_code, p_leader, p_label, p_start}){
+    if(!canEdu()) eduFail('Bara admin tilldelar läroplaner');
+    const c = (await eduCat()).byCode[String(p_code||'').trim().toUpperCase()]; if(!c) eduFail('Läroplanen finns inte');
+    if(!eduLeaderOk(p_leader)) eduFail('Välj en cirkelledare');
+    const id = 'ea_' + uid();
+    eduState().assignments.push({id, code:c.kod, leader_id:p_leader, group_label:String(p_label||'').trim().slice(0,80) || null,
+      start_date:p_start || null, status:'active', sv_answers:null, final_project_url:null, created_by:me().id,
+      created_at:new Date().toISOString(), ended_at:null});
+    save(); return {id};
+  },
+  edu_update({p_id, p_label, p_start, p_status}){
+    if(!canEdu()) eduFail('Bara admin ändrar tilldelningar');
+    if(!['active','ended'].includes(p_status)) eduFail('Ogiltig status');
+    const a = eduState().assignments.find(x=>x.id===p_id); if(!a) eduFail('Tilldelningen finns inte');
+    Object.assign(a, {group_label:String(p_label||'').trim().slice(0,80) || null, start_date:p_start || null, status:p_status,
+      ended_at:p_status==='ended' ? (a.ended_at || new Date().toISOString()) : null}); save();
+  },
+  async edu_assignments(){
+    const m = me(); if(!m) return [];
+    const cat = await eduCat(), admin = canEdu();
+    return eduState().assignments.filter(a=>admin || a.leader_id===m.id).map(a=>{ const c = cat.byCode[a.code] || {};
+        return Object.assign({}, a, {name:c.namn, category:c.amnesomrade, leader:(byId(a.leader_id)||{}).n || '', mine:a.leader_id===m.id,
+          notes:eduState().notes.filter(n=>n.assignment_id===a.id).map(n=>({month:n.month, learned:n.learned, created:n.created, updated_at:n.updated_at}))
+            .sort((x,y)=>x.month-y.month)}); })
+      .sort((x,y)=>x.status===y.status ? String(y.created_at).localeCompare(String(x.created_at)) : x.status==='active' ? -1 : 1);
+  },
+  edu_save_note({p_id, p_month, p_learned, p_created}){
+    const a = this._get(p_id);
+    if(!(+p_month >= 1 && +p_month <= 6)) eduFail('Månaden ska vara 1–6');
+    if(String(p_learned||'').length > 4000 || String(p_created||'').length > 4000) eduFail('Texten är för lång');
+    const ns = eduState().notes, ex = ns.find(n=>n.assignment_id===a.id && n.month===+p_month);
+    const v = {learned:String(p_learned||'').trim() || null, created:String(p_created||'').trim() || null, updated_at:new Date().toISOString()};
+    if(ex) Object.assign(ex, v); else ns.push(Object.assign({assignment_id:a.id, month:+p_month}, v));
+    save();
+  },
+  edu_save_plan({p_id, p_sv, p_url}){
+    const a = this._get(p_id);
+    if(p_sv != null){
+      Object.entries(p_sv).forEach(([k,v])=>{ if(!SV_FIELDS.some(f=>f[0]===k)) eduFail('Okänt fält i arbetsplanen: ' + k);
+        if(typeof v !== 'string' || v.length > 4000) eduFail('Fältet ' + k + ' är för långt eller felaktigt'); });
+      a.sv_answers = Object.assign({}, p_sv);
+    }
+    if(p_url != null){ const u = String(p_url).trim();
+      if(u && (!/^https?:\/\/\S+$/i.test(u) || u.length > 500)) eduFail('Länken ska börja med https://');
+      a.final_project_url = u || null; }
+    save();
+  }
+};
+
+/* ---------- vyerna ---------- */
+const eduSkel = () => eduErr ? `<div class="warn">${esc(eduErr)} <button class="linkbtn inline" onclick="eduErr='';loadEdu()">Försök igen</button></div>`
+  : '<div class="skel" style="height:160px;margin-top:12px"></div>';
+const eduCode = code => `<div class="av edcode">${esc(code)}</div>`;
+function eduRow(a, who){
+  return `<button class="member" onclick="eduOpen='${a.id}';render();scrollTo(0,0)">${eduCode(a.code)}
+    <div class="grow" style="min-width:0"><div class="mname">${esc(a.name||a.code)}</div>
+      <div class="mrole">${[who ? esc(a.leader) : '', a.group_label ? esc(a.group_label) : '', esc(eduWhen(a))].filter(Boolean).join(' · ')}</div></div>
+    ${a.status==='ended' ? '<span class="badge off">AVSLUTAD</span>' : ''}<span class="chev">›</span></button>`;
+}
+function eduMine(){
+  if(!eduList || !eduCatalog) return eduSkel();
+  const mine = eduList.filter(a=>a.mine);
+  return mine.length ? mine.map(a=>eduRow(a, false)).join('')
+    : `<div class="empty">Inga läroplaner tilldelade än. När du får en dyker den upp här — med vad gruppen ska arbeta med varje månad.</div>`;
+}
+function vEducation(){
+  loadEdu();
+  const adm = canEdu();
+  const tabs = [['mine','Mina']].concat(adm ? [['bank','Läroplansbank'],['assign','Tilldelningar']] : []);
+  if(!eduTab || !tabs.some(t=>t[0]===eduTab)) eduTab = adm ? 'bank' : 'mine';
+  if(eduOpen) return eduDetail();
+  const body = !eduList || !eduCatalog ? eduSkel() : eduTab==='bank' ? eduBank() : eduTab==='assign' ? eduAssignList() : eduMine();
+  return `<div class="h1">Education</div>
+    <div class="sub">${adm ? 'Läroplansbanken med 200 sexmånadersplaner. Tilldela en till en cirkelledare — samma plan kan användas av många grupper.'
+      : 'Dina tilldelade läroplaner. Varje plan löper över sex månader, från introduktion till ett gemensamt slutprojekt.'}</div>
+    ${tabs.length > 1 ? `<div class="seg" role="tablist">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${eduTab===k}" class="${eduTab===k?'on':''}"
+      onclick="eduTab='${k}';render()">${n}</button>`).join('')}</div>` : ''}
+    ${body}`;
+}
+function eduBank(){
+  const c = eduCatalog;
+  return `<div class="two end"><div><label class="lbl" for="edQ" style="margin-top:0">SÖK KOD ELLER NAMN</label>
+      <input id="edQ" value="${esc(eduQ)}" placeholder="t.ex. MP03 eller mixning" autocomplete="off" oninput="eduQ=this.value;paintEduBank()"></div>
+    <div><label class="lbl" for="edC" style="margin-top:0">ÄMNESOMRÅDE</label><select id="edC" onchange="eduCatF=this.value;paintEduBank()">
+      <option value="">Alla ${c.cats.length}</option>${c.cats.map(k=>`<option value="${esc(k.kod)}" ${eduCatF===k.kod?'selected':''}>${esc(k.namn)}</option>`).join('')}</select></div></div>
+    <div id="eduBankList">${eduBankList()}</div>`;
+}
+function eduBankList(){
+  const c = eduCatalog, q = eduQ.trim().toLowerCase();
+  const hit = x => (!eduCatF || x.amneskod===eduCatF) && (!q || x.kod.toLowerCase().includes(q) || x.namn.toLowerCase().includes(q));
+  const groups = c.cats.map(k=>({k, xs:c.list.filter(x=>x.amneskod===k.kod && hit(x))})).filter(g=>g.xs.length);
+  const n = groups.reduce((t,g)=>t + g.xs.length, 0);
+  return `<div class="tiny muted" style="margin-top:12px">${n} av ${c.list.length} läroplaner</div>` + (groups.length ? groups.map(g=>`
+    <div class="eyebrow">${esc(g.k.kod)} · ${esc(g.k.namn)}<span class="ln"></span><span>${g.xs.length}</span></div>
+    ${g.xs.map(x=>`<button class="member" onclick="openCurriculum('${x.kod}')">${eduCode(x.kod)}
+      <div class="grow" style="min-width:0"><div class="mname">${esc(x.namn)}</div><div class="mrole">Slutprojekt: ${esc(x.slutprojekt)}</div></div>
+      <span class="chev">›</span></button>`).join('')}`).join('') : `<div class="empty">Ingen läroplan matchar.</div>`);
+}
+function paintEduBank(){ const el = document.getElementById('eduBankList'); if(el) el.innerHTML = eduBankList(); }
+const eduPeriod = p => `<div class="card edm"><div class="studio-name">MÅNAD ${p.nummer} · ${esc(p.fas.toUpperCase())}</div>
+    <div class="edk"><b>Mål</b><p>${esc(p.mal)}</p></div><div class="edk"><b>Vad gruppen ska arbeta med</b><p>${esc(p.arbete)}</p></div>
+    <div class="edk"><b>Delresultat</b><p>${esc(p.delresultat)}</p></div>`;
+function openCurriculum(code){
+  const c = eduCatalog && eduCatalog.byCode[code]; if(!c) return;
+  openSheet(`${X}<h2>${esc(c.namn)}</h2>
+    <div class="sub">${esc(c.kod)} · ${esc(c.amnesomrade)} · sex månader · ${esc(c.status)}</div>
+    ${canEdu() ? `<button class="btn" style="margin-top:14px" onclick="openAssign('${c.kod}')">TILLDELA LÄROPLAN</button>` : ''}
+    <div class="edk"><b>Övergripande mål</b><p>${esc(c.overgripande_mal)}</p></div>
+    <div class="edk"><b>Slutprojekt — ett gemensamt lärprojekt</b><p>${esc(capFirst(c.slutprojekt))}</p></div>
+    <div class="edk"><b>Målgrupp</b><p>${esc(c.malgrupp)}</p></div>
+    <div class="edk"><b>Material</b><p>${esc(c.sv_arbetsplan_mall.material)}</p></div>
+    <div class="eyebrow">SEX MÅNADER<span class="ln"></span></div>
+    ${c.perioder.map(p=>eduPeriod(p) + '</div>').join('')}
+    <div class="eyebrow">LEDARSTÖD<span class="ln"></span></div>
+    ${EDU_LEAD.map(([k,l])=>c.ledarstod && c.ledarstod[k] ? `<div class="edk"><b>${l}</b><p>${esc(c.ledarstod[k])}</p></div>` : '').join('')}
+    <div class="eyebrow">ARBETSPLAN – SV (MALL)<span class="ln"></span></div>
+    ${SV_FIELDS.map(([k,l])=>`<div class="edk"><b>${esc(l)}</b><p>${esc(c.sv_arbetsplan_mall[k])}</p></div>`).join('')}`);
+}
+const eduLeaders = () => accounts().filter(a=>a.active!==false && !a.del && ['leader','producer','admin','manager'].includes(a.r))
+  .sort((x,y)=>(x.r==='leader' ? 0 : 1) - (y.r==='leader' ? 0 : 1) || x.n.localeCompare(y.n, 'sv'));
+function openAssign(code){
+  const c = eduCatalog; if(!c || !canEdu()) return;
+  openSheet(`${X}<h2>Tilldela läroplan</h2>
+    <div class="sub">Samma läroplan kan användas av många grupper. Originalet i banken ändras aldrig.</div>
+    <label class="lbl" for="eaC">LÄROPLAN</label><select id="eaC">${code ? '' : '<option value="">Välj läroplan …</option>'}${c.cats.map(k=>`<optgroup label="${esc(k.kod + ' · ' + k.namn)}">${
+      c.list.filter(x=>x.amneskod===k.kod).map(x=>`<option value="${x.kod}" ${x.kod===code?'selected':''}>${x.kod} · ${esc(x.namn)}</option>`).join('')}</optgroup>`).join('')}</select>
+    <label class="lbl" for="eaL">CIRKELLEDARE</label><select id="eaL"><option value="">Välj …</option>${
+      eduLeaders().map(a=>`<option value="${a.id}">${esc(a.n)} · ${esc(ROLE_NAME[a.r] || a.r)}</option>`).join('')}</select>
+    <label class="lbl" for="eaG">CIRKELNAMN ELLER GRUPP <span class="muted">(valfritt)</span></label><input id="eaG" maxlength="80" placeholder="t.ex. Produktion – Grupp Söder">
+    <label class="lbl" for="eaS">STARTDATUM <span class="muted">(valfritt)</span></label><input id="eaS" type="date">
+    <div id="eaOut"></div>
+    <button class="btn" style="margin-top:20px" onclick="saveAssign()">TILLDELA</button>`);
+}
+async function saveAssign(){
+  const v = id => (document.getElementById(id).value || '').trim(), out = t => { document.getElementById('eaOut').innerHTML = `<div class="warn" role="alert">${esc(t)}</div>`; };
+  if(!v('eaC')) return out('Välj en läroplan');
+  if(!v('eaL')) return out('Välj en cirkelledare');
+  try{
+    await edu('edu_assign', {p_code:v('eaC'), p_leader:v('eaL'), p_label:v('eaG') || null, p_start:v('eaS') || null, p_url:appUrl()});
+    closeSheet(); eduTab = 'assign'; eduOpen = null;
+    if(view!=='education' && canView('education')) go('education');
+    await reloadEdu(); toast('Tilldelad — ledaren ser den under Mina läroplaner');
+  }catch(e){ out(e.message); }
+}
+function eduAssignList(){
+  const act = eduList.filter(a=>a.status==='active'), end = eduList.filter(a=>a.status==='ended');
+  return `<button class="btn" onclick="openAssign('')">+ TILLDELA LÄROPLAN</button>
+    <div class="eyebrow">AKTIVA<span class="ln"></span><span>${act.length}</span></div>
+    ${act.length ? act.map(a=>eduRow(a, true)).join('') : '<div class="empty">Inga tilldelningar än. Välj en läroplan i banken eller tryck Tilldela.</div>'}
+    ${end.length ? `<div class="eyebrow">AVSLUTADE<span class="ln"></span><span>${end.length}</span></div>${end.map(a=>eduRow(a, true)).join('')}` : ''}`;
+}
+const eduCanWrite = a => canEdu() || (a.mine && a.status==='active');
+function eduDetail(){
+  const a = (eduList||[]).find(x=>x.id===eduOpen);
+  if(!eduList || !eduCatalog) return eduSkel();
+  if(!a){ eduOpen = null; return eduMine(); }
+  const c = eduCatalog.byCode[a.code];
+  if(!c) return `<div class="warn">Läroplanen ${esc(a.code)} finns inte längre i banken.</div>`;
+  const n = eduMonthNow(a), sel = eduMonth[a.id] || (n>=1 && n<=6 ? n : n===7 ? 6 : 1), p = c.perioder[sel-1];
+  const note = (a.notes||[]).find(x=>x.month===sel) || {}, w = eduCanWrite(a);
+  const sv = Object.assign({}, c.sv_arbetsplan_mall, a.sv_answers || {});
+  const txt = t => t ? `<p>${esc(t)}</p>` : '<p class="none">Inget skrivet än.</p>';
+  return `<button class="linkbtn" style="margin:0 0 6px;padding-left:0" onclick="eduOpen=null;render()">‹ ${a.mine ? 'Mina läroplaner' : 'Tilldelningar'}</button>
+    <div class="eyebrow" style="margin-top:0">${esc(a.code)} · ${esc(c.amnesomrade)}<span class="ln"></span></div>
+    <div class="h1" style="font-size:${c.namn.length > 28 ? '26px' : '32px'};overflow-wrap:anywhere">${esc(c.namn)}</div>
+    <div class="sub">${[a.group_label ? esc(a.group_label) : '', a.mine ? '' : 'Ledare: ' + esc(a.leader), esc(eduWhen(a))].filter(Boolean).join(' · ')}</div>
+    <div class="card"><div class="edk" style="margin-top:-14px"><b>Övergripande mål</b><p>${esc(c.overgripande_mal)}</p></div>
+      <div class="edk"><b>Slutprojekt — ett gemensamt lärprojekt</b><p>${esc(capFirst(c.slutprojekt))}</p></div></div>
+    <div class="days edmonths" role="tablist" aria-label="Månad">${c.perioder.map(x=>{ const done = (a.notes||[]).some(y=>y.month===x.nummer && (y.learned || y.created));
+      return `<button class="dchip ${x.nummer===sel?'on':''}" role="tab" aria-selected="${x.nummer===sel}" onclick="eduMonth['${a.id}']=${x.nummer};render()">
+        <span>MÅNAD</span><b>${x.nummer}</b><i>${x.nummer===n && a.status==='active' ? 'NU' : done ? '✓' : '&nbsp;'}</i></button>`; }).join('')}</div>
+    ${eduPeriod(p)}
+      <div class="eyebrow">UPPFÖLJNING<span class="ln"></span></div>
+      <div class="edk" style="margin-top:-6px"><b>Vad har gruppen lärt sig?</b>${txt(note.learned)}</div>
+      <div class="edk"><b>Vad har gruppen arbetat med eller skapat?</b>${txt(note.created)}</div>
+      ${note.updated_at ? `<div class="tiny muted" style="margin-top:8px">Sparat ${esc(new Date(note.updated_at).toLocaleDateString('sv-SE', {day:'numeric', month:'short'}))}</div>` : ''}
+      ${w ? `<button class="btn slim" style="margin-top:14px" onclick="openEduNote('${a.id}',${sel})">${note.learned || note.created ? 'ÄNDRA' : 'SKRIV'} UPPFÖLJNING · MÅNAD ${sel}</button>` : ''}
+    </div>
+    <div class="eyebrow">LÄNK TILL SLUTPROJEKT<span class="ln"></span></div>
+    ${a.final_project_url ? `<a class="btn ghost slim" href="${esc(a.final_project_url)}" target="_blank" rel="noopener">ÖPPNA SLUTPROJEKTET</a>`
+      : '<div class="tiny muted">Ingen länk än — till exempel Drive, video, ljuddemo eller portfolio.</div>'}
+    ${w ? `<button class="linkbtn" style="margin-top:6px;padding-left:0" onclick="openEduLink('${a.id}')">${a.final_project_url ? 'Ändra länken' : 'Lägg till länk'}</button>` : ''}
+    <div class="eyebrow">ARBETSPLAN – SV<span class="ln"></span><span>${a.sv_answers ? 'ER VERSION' : 'MALL'}</span></div>
+    <div class="card">
+      ${SV_FIELDS.map(([k,l])=>`<div class="edk" ${k==='period'?'style="margin-top:-14px"':''}><b>${esc(l)}</b><p>${esc(sv[k] || '')}</p>
+        <button class="linkbtn" style="margin:2px 0 0;padding-left:0;min-height:0" onclick="copySv('${a.id}','${k}')">Kopiera</button></div>`).join('')}
+      <div class="row" style="gap:8px;margin-top:14px">
+        ${w ? `<button class="btn slim" style="flex:1" onclick="openEduPlan('${a.id}')">ANPASSA</button>` : ''}
+        <button class="btn ghost slim" style="flex:1" onclick="copySv('${a.id}','')">KOPIERA ALLA</button></div>
+      <div class="note">Ett utkast som ni anpassar tillsammans med deltagarna. Det ni för in i SV:s e-tjänst ska stämma med hur gruppen
+        faktiskt arbetar. Närvaron rapporteras i SV:s system som vanligt.</div>
+    </div>
+    <div class="eyebrow">LEDARSTÖD<span class="ln"></span></div>
+    ${EDU_LEAD.map(([k,l])=>c.ledarstod && c.ledarstod[k] ? `<div class="edk"><b>${l}</b><p>${esc(c.ledarstod[k])}</p></div>` : '').join('')}
+    ${canEdu() ? `<div class="eyebrow">TILLDELNINGEN<span class="ln"></span></div>
+      <div class="kv"><span>LEDARE</span><b>${esc(a.leader)}</b></div>
+      <button class="btn ghost slim" style="margin-top:12px" onclick="openEduAdmin('${a.id}')">ÄNDRA ELLER AVSLUTA</button>` : ''}`;
+}
+function eduSvText(a, k){
+  const c = eduCatalog.byCode[a.code], sv = Object.assign({}, c.sv_arbetsplan_mall, a.sv_answers || {});
+  return k ? sv[k] || '' : SV_FIELDS.map(([f,l])=>l + '\n' + (sv[f] || '')).join('\n\n');
+}
+function copySv(id, k){ const a = (eduList||[]).find(x=>x.id===id); if(a) copy(eduSvText(a, k), k ? 'Kopierat — klistra in i SV:s arbetsplan' : 'Alla sex fält kopierade'); }
+function openEduNote(id, month){
+  const a = (eduList||[]).find(x=>x.id===id); if(!a) return;
+  const note = (a.notes||[]).find(x=>x.month===month) || {}, p = eduCatalog.byCode[a.code].perioder[month-1];
+  openSheet(`${X}<h2>Månad ${month} · ${esc(p.fas)}</h2><div class="sub">${esc(a.name)}${a.group_label ? ' · ' + esc(a.group_label) : ''}</div>
+    <label class="lbl" for="enL">VAD HAR GRUPPEN LÄRT SIG?</label><textarea id="enL" maxlength="4000" style="min-height:120px">${esc(note.learned || '')}</textarea>
+    <label class="lbl" for="enC">VAD HAR GRUPPEN ARBETAT MED ELLER SKAPAT?</label><textarea id="enC" maxlength="4000" style="min-height:120px">${esc(note.created || '')}</textarea>
+    <div id="enOut"></div><button class="btn" style="margin-top:20px" onclick="saveEduNote('${a.id}',${month})">SPARA</button>`);
+}
+async function saveEduNote(id, month){
+  try{ await edu('edu_save_note', {p_id:id, p_month:month, p_learned:document.getElementById('enL').value, p_created:document.getElementById('enC').value});
+    closeSheet(); await reloadEdu(); toast('Månad ' + month + ' sparad'); }
+  catch(e){ document.getElementById('enOut').innerHTML = `<div class="warn" role="alert">${esc(e.message)}</div>`; }
+}
+function openEduLink(id){
+  const a = (eduList||[]).find(x=>x.id===id); if(!a) return;
+  openSheet(`${X}<h2>Länk till slutprojekt</h2><div class="sub">Till exempel Drive, video, ljuddemo eller portfolio. Lämna tomt för att ta bort.</div>
+    <label class="lbl" for="enU">LÄNK</label><input id="enU" type="url" inputmode="url" autocapitalize="none" maxlength="500" placeholder="https://" value="${esc(a.final_project_url || '')}">
+    <div id="enOut"></div><button class="btn" style="margin-top:20px" onclick="saveEduLink('${a.id}')">SPARA</button>`);
+}
+async function saveEduLink(id){
+  try{ await edu('edu_save_plan', {p_id:id, p_sv:null, p_url:document.getElementById('enU').value.trim()}); closeSheet(); await reloadEdu(); toast('Länken sparad'); }
+  catch(e){ document.getElementById('enOut').innerHTML = `<div class="warn" role="alert">${esc(e.message)}</div>`; }
+}
+function openEduPlan(id){
+  const a = (eduList||[]).find(x=>x.id===id); if(!a) return;
+  const c = eduCatalog.byCode[a.code], sv = Object.assign({}, c.sv_arbetsplan_mall, a.sv_answers || {});
+  openSheet(`${X}<h2>Arbetsplan – SV</h2><div class="sub">${esc(a.name)}${a.group_label ? ' · ' + esc(a.group_label) : ''}. Förslagen kommer från läroplanen —
+      skriv om dem tillsammans med deltagarna.</div>
+    ${SV_FIELDS.map(([k,l])=>`<label class="lbl" for="sv_${k}">${esc(l.toUpperCase())}</label>
+      <textarea id="sv_${k}" maxlength="4000" style="min-height:${k==='period'?'64':'170'}px">${esc(sv[k] || '')}</textarea>
+      <button class="linkbtn" style="margin:2px 0 0;padding-left:0;min-height:0" onclick="copy(document.getElementById('sv_${k}').value,'Kopierat')">Kopiera</button>`).join('')}
+    <div id="enOut"></div>
+    <button class="btn" style="margin-top:20px" onclick="saveEduPlan('${a.id}')">SPARA ARBETSPLANEN</button>
+    <button class="btn ghost slim" style="margin-top:9px" onclick="resetEduPlan('${a.code}')">ÅTERSTÄLL TILL MALLEN</button>`);
+}
+function resetEduPlan(code){ const t = eduCatalog.byCode[code].sv_arbetsplan_mall; SV_FIELDS.forEach(([k])=>{ const el = document.getElementById('sv_' + k); if(el) el.value = t[k] || ''; }); }
+async function saveEduPlan(id){
+  const sv = Object.fromEntries(SV_FIELDS.map(([k])=>[k, document.getElementById('sv_' + k).value]));
+  try{ await edu('edu_save_plan', {p_id:id, p_sv:sv, p_url:null}); closeSheet(); await reloadEdu(); toast('Arbetsplanen sparad'); }
+  catch(e){ document.getElementById('enOut').innerHTML = `<div class="warn" role="alert">${esc(e.message)}</div>`; }
+}
+function openEduAdmin(id){
+  const a = (eduList||[]).find(x=>x.id===id); if(!a || !canEdu()) return;
+  openSheet(`${X}<h2>Tilldelningen</h2><div class="sub">${esc(a.code)} · ${esc(a.name)} · ${esc(a.leader)}</div>
+    <label class="lbl" for="eaG2">CIRKELNAMN ELLER GRUPP</label><input id="eaG2" maxlength="80" value="${esc(a.group_label || '')}">
+    <label class="lbl" for="eaS2">STARTDATUM</label><input id="eaS2" type="date" value="${esc(String(a.start_date || '').slice(0,10))}">
+    <div id="enOut"></div>
+    <button class="btn" style="margin-top:20px" onclick="saveEduAdmin('${a.id}','${a.status}')">SPARA</button>
+    <button class="btn ${a.status==='active' ? 'danger' : 'ghost'}" style="margin-top:9px" onclick="saveEduAdmin('${a.id}','${a.status==='active' ? 'ended' : 'active'}')">${
+      a.status==='active' ? 'AVSLUTA UTBILDNINGEN' : 'ÖPPNA IGEN'}</button>
+    <div class="note">Avslutad = ledaren ser planen och anteckningarna men kan inte längre ändra dem. Inget raderas.</div>`);
+}
+async function saveEduAdmin(id, status){
+  try{ await edu('edu_update', {p_id:id, p_label:document.getElementById('eaG2').value, p_start:document.getElementById('eaS2').value || null, p_status:status});
+    closeSheet(); await reloadEdu(); toast(status==='ended' ? 'Avslutad' : 'Sparat'); }
+  catch(e){ document.getElementById('enOut').innerHTML = `<div class="warn" role="alert">${esc(e.message)}</div>`; }
+}
+
 /* ===================== v5: ARBETSYTAN ===================== */
 const lartists  = () => S.artists.filter(a => !a.del && a.active !== false);
 const lreleases = () => S.releases.filter(r => !r.del);
@@ -3914,10 +4251,11 @@ const ICONS = {
   artists:'<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6"/><path d="M18 3.5l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z"/>',
   goals:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
   gallery:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
-  rewards:'<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>'
+  rewards:'<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>',
+  education:'<path d="M2.5 9L12 4.5 21.5 9 12 13.5z"/><path d="M6.5 11v5c1.5 1.4 3.4 2.2 5.5 2.2s4-.8 5.5-2.2v-5"/><path d="M21.5 9v5.5"/>'
 };
 const LABELS = {today:'IDAG', week:'SCHEMA', agenda:'AGENDA', beats:'BEATS', more:'MER',
-  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅLSÄTTNING', gallery:'GALLERI', rewards:'REWARDS'};
+  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅLSÄTTNING', gallery:'GALLERI', rewards:'REWARDS', education:'EDUCATION'};
 /* Sex flikar hade blivit tio. Fem i botten, resten bakom MER. */
 function tabs(){
   const m = me();
@@ -3930,13 +4268,14 @@ function tabs(){
 function moreViews(){
   const m = me(); if(m && m.r==='camera') return [];
   const base = can('dashboard') ? ['artists','gallery','dash','circles','team','goals'] : ['artists','gallery','circles','team','goals'];
-  return canIntel() ? base.concat('rewards') : base;
+  const withEdu = m && isCrewRole(m.r) ? base.concat('education') : base;          /* Bando Education: crewet (producenter leder grupper) */
+  return canIntel() ? withEdu.concat('rewards') : withEdu;
 }
 function canView(v){ return roleView()==='full' && (tabs().includes(v) || moreViews().includes(v)); }
 
 /* Mobilen: fem flikar i botten. Datorn: allt i sidopanelen, utan MER. */
 const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', more:'Mer',
-  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards'};
+  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards', education:'Education'};
 function buildNav(){
   const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="go('${k}')">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg><span class="nl-m">${LABELS[k]}</span></button>`;
@@ -3954,6 +4293,8 @@ function go(v){
   if(!canView(v)) v = tabs()[0];
   if(v!=='circles') openCircle = null;
   if(v!=='goals') goalsWho = null;          /* in i MÅL börjar alltid på översikten */
+  if(v!==view) eduOpen = null;               /* Education börjar på listan */
+  if(v==='education') eduAt = 0;             /* och hämtar tilldelningarna på nytt */
   view=v;
   /* En undervy bakom MER tänder MER-fliken, så man ser var man är. */
   const lit = moreViews().includes(v) ? 'more' : v;
@@ -3986,7 +4327,7 @@ function render(){
     view==='agenda'  ? vAgenda()  : view==='beats'   ? vBeats()   :
     view==='more'    ? vMore()    : view==='artists' ? vArtists() :
     view==='goals'   ? vGoals()   : view==='team'    ? vTeam()    :
-    view==='gallery' ? vGallery() : view==='rewards' ? vRewards() :
+    view==='gallery' ? vGallery() : view==='rewards' ? vRewards() : view==='education' ? vEducation() :
     view==='circles' ? (openCircle ? vCircle() : vCircles()) : vDash());
   if(view==='gallery') loadThumbs();
   paintSync();
@@ -4020,6 +4361,7 @@ function vMore(){
         <div class="grow"><div class="mname">ALLMÄN AGENDA</div><div class="mrole">Det vi tillsammans vill uppnå · ${nt(lagenda().filter(a=>a.kind==='general' && !a.done).length,'punkt','punkter')}</div></div>
         <span style="color:var(--mut2);font-size:18px">›</span></button>
       ${card('gallery','GALLERI', `${nt(lmedia().length,'bild eller film','bilder och filmer')} från kamerateamet`)}
+      ${card('education','EDUCATION', canEdu() ? '200 läroplaner · tilldela till cirkelledare' : 'Dina tilldelade läroplaner, månad för månad')}
       ${canIntel() ? card('rewards','REWARDS', 'Poäng, belöningar, nivåer och Artist Intelligence') : ''}
       ${card('team','CREW', `${teamAcc().length} personer · profiler och konton`)}
       ${card('circles','CIRKLAR', `${lcircle().length} cirklar i programmet`)}
@@ -7246,11 +7588,14 @@ const telHref = t => 'tel:' + String(t||'').replace(/[^\d+]/g,'');
 function vLeader(){
   const m = me();
   const cs = myCirclesAsLeader();
+  loadEdu();
+  if(eduOpen) return eduDetail();
   if(!cs.length) return `
     <div class="h1">Hej ${esc(m.n.split(' ')[0])}</div>
     <div class="sub">Du leder ingen cirkel än.</div>
     <div class="empty">När AZ kopplar dig till en grupp dyker den upp här — med pass att boka
-      och medlemmarnas kontaktuppgifter.</div>`;
+      och medlemmarnas kontaktuppgifter.</div>
+    <div class="eyebrow">DINA LÄROPLANER<span class="ln"></span></div>${eduMine()}`;
 
   if(!simpleCircle || !cs.some(c=>c.id===simpleCircle)) simpleCircle = cs[0].id;
   const c = circleById(simpleCircle), mem = membersOf(c.id), now = new Date();
@@ -7271,7 +7616,10 @@ function vLeader(){
         onclick="leaderTab='pass';render()">Pass${pend.length?` <span class="dot-n">${pend.length}</span>`:''}</button>
       <button role="tab" aria-selected="${leaderTab==='members'}" class="${leaderTab==='members'?'on':''}"
         onclick="leaderTab='members';render()">Medlemmar <span class="muted">${mem.length}</span></button>
+      <button role="tab" aria-selected="${leaderTab==='edu'}" class="${leaderTab==='edu'?'on':''}"
+        onclick="leaderTab='edu';eduAt=0;render()">Läroplaner${eduList ? ` <span class="muted">${eduList.filter(x=>x.mine && x.status==='active').length}</span>` : ''}</button>
     </div>`;
+  if(leaderTab==='edu') return head + eduMine();
 
   if(leaderTab==='members'){
     const mails = mem.map(p=>p.email).filter(Boolean);
@@ -8168,6 +8516,8 @@ function openAccount(id){
 
     ${a && can('manageCrew') && isCrewRole(a.r) && !isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acX" ${(a.perms||[]).includes('artist_intel')?'checked':''}>
       <span><b>Artist Intelligence</b> — ser Rewards, alla omdömen och CRM för alla artister</span></label>` : ''}
+    ${a && can('manageCrew') && isCrewRole(a.r) && !isAdminRole(a.r) ? `<label class="consent" style="margin-top:12px"><input type="checkbox" id="acE" ${(a.perms||[]).includes('education')?'checked':''}>
+      <span><b>Education</b> — ser läroplansbanken och alla tilldelningar, och tilldelar läroplaner till cirkelledare</span></label>` : ''}
     ${a && can('manageCrew') && isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acPr" ${(a.perms||[]).includes('producer')?'checked':''}>
       <span><b>Producent också</b> — tar sessions och kan väljas som producent för artister</span></label>` : ''}
     <button class="btn" style="margin-top:22px" onclick="saveAccount('${a?a.id:''}')">SPARA</button>
@@ -8223,7 +8573,7 @@ function saveAccount(id){
     /* behörigheterna: Artist Intelligence (producenter) och Producent också (admin, manager) */
     let perms = (m.perms||[]).slice();
     const flag = (id, p) => { const x = document.getElementById(id); if(x) perms = x.checked ? [...new Set(perms.concat(p))] : perms.filter(y=>y!==p); };
-    flag('acX', 'artist_intel'); flag('acPr', 'producer');
+    flag('acX', 'artist_intel'); flag('acPr', 'producer'); flag('acE', 'education');
     if(JSON.stringify([...perms].sort()) !== JSON.stringify([...(m.perms||[])].sort()))
       rw('set_member_perms', {p_member:m.id, p_perms:perms}).then(()=>{ m.perms = perms; save(); render(); }).catch(e=>toast(e.message));
   } else {

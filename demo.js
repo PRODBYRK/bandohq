@@ -17,7 +17,7 @@ window.bandohqDemo = function(o){
     A('rkay','RKAY','producer','#7c3aed','#a855f7','rkay@bandocollective.com'),
     A('adrey','ADREY','producer','#0284c7','#38bdf8','adrey@bandocollective.com'),
     A('v2k','V2K','producer','#d97706','#fbbf24','v2k@bandocollective.com'),
-    A('gio','GIOVANNI','producer','#db2777','#f472b6','gio@bandocollective.com'),
+    Object.assign(A('gio','GIOVANNI','producer','#db2777','#f472b6','gio@bandocollective.com'),{perms:['education']}),
     A('pkl','PKL','producer','#047857','#34d399','pkl@bandocollective.com'),
     A('lead1','Sofia Marks','leader','#6633b8','#9d5cf5','sofia@exempel.se','070-555 11 22'),
     ACC(A('p1','William Ek','participant','#6633b8','#9d5cf5','william@exempel.se','070-000 01'),['production','mixing'],'040212-••••'),
@@ -177,6 +177,14 @@ window.bandohqDemo = function(o){
               created:'Vers 1 och refrängen',strengths:'Melodier och röstkontroll',develop:'Detaljer i texten',next:'Mixa refrängen och spela in vers 2',other:''}],
       crm:{k1:{projects:'EP till våren',goals:'Första egna spelningen',followup:D(10),followup_note:'Boka mixpass'}}},
     rates:{currency:'SEK',default:650,per:{'Studio Nord AB':850},up:1},
+    /* Bando Education: Sofia har MP01 för sin grupp (månad 2), RKAY SW01; Giovanni tilldelar */
+    edu:{assignments:[
+        {id:'ea_demo1', code:'MP01', leader_id:'lead1', group_label:'Musikproduktion – Grupp 1', start_date:D(-40), status:'active',
+         sv_answers:null, final_project_url:null, created_by:'gio', created_at:new Date(Date.now()-41*864e5).toISOString(), ended_at:null},
+        {id:'ea_demo2', code:'SW01', leader_id:'rkay', group_label:'Låtskrivande – Grupp 2', start_date:D(-8), status:'active',
+         sv_answers:null, final_project_url:null, created_by:'az', created_at:new Date(Date.now()-9*864e5).toISOString(), ended_at:null}],
+      notes:[{assignment_id:'ea_demo1', month:1, learned:'Produktionskedjan från idé till export, och hur ljudspår och MIDI hänger ihop i DAW:en.',
+              created:'Ett gemensamt trumloop på 8 takter som alla byggt vidare på.', updated_at:new Date(Date.now()-12*864e5).toISOString()}]},
     /* en pågående kampanj (Mer → Rewards → Poäng) */
     rewardsCfg:{campaigns:[{id:'k_demo',label:'Dubbla poäng i höst',from:D(-7),to:D(21),multiplier:2}],up:1}};
     return S;

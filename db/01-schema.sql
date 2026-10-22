@@ -432,3 +432,44 @@ alter table points add constraint points_kind_check check (kind in ('earn','reve
 alter table members add column if not exists referred_by text;
 alter table invites add column if not exists referrer text;
 create index if not exists invites_referrer_idx on invites (referrer) where referrer is not null;
+
+-- ---------------------------------------------------------------------
+--  BANDO EDUCATION (2026-10)
+--  200 läroplansmallar (innehållet: education/laroplaner.json; koderna: 06-education-katalog.sql)
+--  som tilldelas cirkelledare. En tilldelning = en grupps arbete med EN mall; samma mall kan
+--  användas av många grupper och ändras aldrig. Ledaren skriver två korta anteckningar per månad
+--  och gruppens egen version av SV-arbetsplanen.
+-- ---------------------------------------------------------------------
+create table if not exists education_curricula (
+  code          text primary key check (code ~ '^[A-Z]{2}[0-9]{2}$'),
+  name          text not null,
+  category_code text not null,
+  category_name text not null,
+  sort          int  not null default 0,
+  version       text not null default '',
+  active        boolean not null default true
+);
+create table if not exists education_assignments (
+  id                text primary key,
+  curriculum_code   text not null references education_curricula(code),
+  leader_id         text not null references members(id) on delete cascade,
+  group_label       text,
+  start_date        date,
+  status            text not null default 'active' check (status in ('active','ended')),
+  sv_answers        jsonb,
+  final_project_url text,
+  created_by        text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  ended_at          timestamptz
+);
+create index if not exists education_assignments_leader_idx on education_assignments (leader_id, status);
+create table if not exists education_monthly_notes (
+  assignment_id text not null references education_assignments(id) on delete cascade,
+  month_number  int  not null check (month_number between 1 and 6),
+  learned       text,
+  created       text,
+  updated_at    timestamptz not null default now(),
+  updated_by    text,
+  primary key (assignment_id, month_number)
+);

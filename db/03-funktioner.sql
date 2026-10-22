@@ -2372,3 +2372,118 @@ grant execute on function approve_access(text, text), decline_access(text, text)
 revoke all on function invite_friend(text, text, text) from public, anon;
 grant execute on function invite_friend(text, text, text) to authenticated;
 
+
+-- =====================================================================
+--  BANDO EDUCATION — läroplaner till cirkelledare
+--  Admin, managern och den med behörigheten 'education' (Gio, Oscar) ser alla tilldelningar och
+--  tilldelar. En ledare ser och skriver bara sina egna tilldelningar och anteckningar. Inga
+--  personnummer eller andra känsliga uppgifter lämnas ut här.
+-- =====================================================================
+create or replace function bs_edu_admin() returns boolean
+language sql stable security definer set search_path = public as $$ select bs_has_perm('education') $$;
+/* Vem kan få en läroplan: aktiva cirkelledare, och crewet (producenter leder också grupper). */
+create or replace function bs_edu_leader_ok(p_member text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from members where id = p_member and active and role::text in ('leader','producer','admin','manager'))
+$$;
+/* Får jag skriva i tilldelningen: ledaren själv medan den pågår, eller en Education-admin. */
+create or replace function bs_edu_may_write(a education_assignments) returns boolean
+language sql stable security definer set search_path = public as $$
+  select bs_edu_admin() or (a.leader_id = bs_my_id() and a.status = 'active')
+$$;
+
+create or replace function edu_assign(p_code text, p_leader text, p_label text default null,
+  p_start date default null, p_url text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare c education_curricula; id text := bs_uid('ea_'); lbl text := nullif(left(trim(coalesce(p_label,'')), 80), '');
+begin
+  if not bs_edu_admin() then raise exception 'Bara admin tilldelar läroplaner'; end if;
+  select * into c from education_curricula where code = upper(trim(coalesce(p_code,''))) and active;
+  if c.code is null then raise exception 'Läroplanen finns inte'; end if;
+  if not bs_edu_leader_ok(p_leader) then raise exception 'Välj en cirkelledare'; end if;
+  insert into education_assignments(id, curriculum_code, leader_id, group_label, start_date, created_by)
+  values (id, c.code, p_leader, lbl, p_start, bs_my_id());
+  if p_leader <> coalesce(bs_my_id(), '') then
+    perform bs_notify(p_leader, null, 'Ny läroplan: ' || c.name,
+      'Du har fått läroplanen ' || c.code || ' ' || c.name || coalesce(' för ' || lbl, '') || '.' || E'\n\n'
+      || 'Öppna den i BANDOHQ under Mina läroplaner. Där ser du vad gruppen ska arbeta med varje månad, och arbetsplanen till SV.',
+      'edu', 'edu:' || id, '0', p_url);
+  end if;
+  return jsonb_build_object('id', id);
+end $$;
+
+/* Ändra en tilldelning: gruppens namn, startdatum, avsluta eller öppna igen (admin). */
+create or replace function edu_update(p_id text, p_label text, p_start date, p_status text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not bs_edu_admin() then raise exception 'Bara admin ändrar tilldelningar'; end if;
+  if p_status not in ('active','ended') then raise exception 'Ogiltig status'; end if;
+  update education_assignments set group_label = nullif(left(trim(coalesce(p_label,'')), 80), ''), start_date = p_start,
+         ended_at = case when p_status = 'ended' then coalesce(ended_at, now()) end, status = p_status, updated_at = now()
+   where id = p_id;
+  if not found then raise exception 'Tilldelningen finns inte'; end if;
+end $$;
+
+/* Tilldelningarna med anteckningar: Education-admin ser alla, en ledare sina egna. */
+create or replace function edu_assignments() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', a.id, 'code', a.curriculum_code, 'name', c.name, 'category', c.category_name,
+      'leader_id', a.leader_id, 'leader', m.name, 'group_label', a.group_label, 'start_date', a.start_date,
+      'status', a.status, 'sv_answers', a.sv_answers, 'final_project_url', a.final_project_url,
+      'created_at', a.created_at, 'ended_at', a.ended_at, 'mine', a.leader_id = bs_my_id(),
+      'notes', coalesce((select jsonb_agg(jsonb_build_object('month', n.month_number, 'learned', n.learned,
+                 'created', n.created, 'updated_at', n.updated_at) order by n.month_number)
+                 from education_monthly_notes n where n.assignment_id = a.id), '[]'::jsonb))
+    order by a.status, a.created_at desc), '[]'::jsonb)
+  from education_assignments a
+  join education_curricula c on c.code = a.curriculum_code
+  left join members m on m.id = a.leader_id
+  where bs_my_id() is not null and (bs_edu_admin() or a.leader_id = bs_my_id())
+$$;
+
+/* Månadens två frågor: vad gruppen lärt sig och vad den arbetat med eller skapat. */
+create or replace function edu_save_note(p_id text, p_month int, p_learned text, p_created text) returns void
+language plpgsql security definer set search_path = public as $$
+declare a education_assignments;
+begin
+  select * into a from education_assignments where id = p_id;
+  if a.id is null or not (bs_edu_admin() or a.leader_id = bs_my_id()) then raise exception 'Tilldelningen finns inte'; end if;
+  if not bs_edu_may_write(a) then raise exception 'Utbildningen är avslutad'; end if;
+  if p_month is null or p_month not between 1 and 6 then raise exception 'Månaden ska vara 1–6'; end if;
+  if length(coalesce(p_learned,'')) > 4000 or length(coalesce(p_created,'')) > 4000 then raise exception 'Texten är för lång'; end if;
+  insert into education_monthly_notes(assignment_id, month_number, learned, created, updated_at, updated_by)
+  values (a.id, p_month, nullif(trim(coalesce(p_learned,'')), ''), nullif(trim(coalesce(p_created,'')), ''), now(), bs_my_id())
+  on conflict (assignment_id, month_number) do update set learned = excluded.learned, created = excluded.created,
+    updated_at = now(), updated_by = excluded.updated_by;
+end $$;
+
+/* Gruppens egen version av SV-arbetsplanen (de sex fälten) och länken till slutprojektet.
+   null = lämna orört; en tom länk tar bort den. */
+create or replace function edu_save_plan(p_id text, p_sv jsonb default null, p_url text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare a education_assignments; k text; u text := trim(coalesce(p_url,''));
+begin
+  select * into a from education_assignments where id = p_id;
+  if a.id is null or not (bs_edu_admin() or a.leader_id = bs_my_id()) then raise exception 'Tilldelningen finns inte'; end if;
+  if not bs_edu_may_write(a) then raise exception 'Utbildningen är avslutad'; end if;
+  if p_sv is not null then
+    if jsonb_typeof(p_sv) <> 'object' then raise exception 'Arbetsplanen ska vara sex fält'; end if;
+    for k in select jsonb_object_keys(p_sv) loop
+      if k <> all(array['period','mal','hur','material','delaktighet','utvardering']) then raise exception 'Okänt fält i arbetsplanen: %', k; end if;
+      if jsonb_typeof(p_sv->k) <> 'string' or length(p_sv->>k) > 4000 then raise exception 'Fältet % är för långt eller felaktigt', k; end if;
+    end loop;
+  end if;
+  if p_url is not null and u <> '' and (u !~* '^https?://[^\s]+$' or length(u) > 500) then
+    raise exception 'Länken ska börja med https://';
+  end if;
+  update education_assignments set sv_answers = coalesce(p_sv, sv_answers),
+         final_project_url = case when p_url is null then final_project_url else nullif(u, '') end, updated_at = now()
+   where id = a.id;
+end $$;
+
+revoke all on function bs_edu_admin(), bs_edu_leader_ok(text), bs_edu_may_write(education_assignments) from public, anon, authenticated;
+revoke all on function edu_assign(text, text, text, date, text), edu_update(text, text, date, text), edu_assignments(),
+  edu_save_note(text, int, text, text), edu_save_plan(text, jsonb, text) from public, anon;
+grant execute on function edu_assign(text, text, text, date, text), edu_update(text, text, date, text), edu_assignments(),
+  edu_save_note(text, int, text, text), edu_save_plan(text, jsonb, text) to authenticated;

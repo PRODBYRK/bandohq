@@ -1287,6 +1287,68 @@ await as(db, U.rkay, ()=>rpc('push_records',{rows:JSON.stringify([{kind:'setting
 ok('en producent kan inte ändra bonusarna', (await one(`select bs_rcfg('bonuses') b`)).b.first===200);
 await cfg({});
 }
+/* ============ BANDO EDUCATION ============ */
+{
+head('Bando Education: läroplansbanken, tilldelningar, månadsanteckningar och SV-arbetsplanen');
+await q(`delete from outbox`);
+const fs = await import('fs');
+const bank = JSON.parse(fs.readFileSync(new URL('../../education/laroplaner.json', import.meta.url), 'utf8'));
+const cur = await q(`select code, category_code from education_curricula where active order by sort`);
+ok('importen: 200 läroplaner i 18 ämnesområden, samma koder och ordning som i JSON-filen', cur.length===200 && new Set(cur.map(r=>r.category_code)).size===18
+   && JSON.stringify(cur.map(r=>r.code))===JSON.stringify(bank.laroplaner.map(x=>x.kod)), cur.length);
+await db.exec(fs.readFileSync(new URL('../06-education-katalog.sql', import.meta.url), 'utf8'));
+ok('importen är idempotent: en körning till ger inga dubbletter', +(await one(`select count(*) n from education_curricula`)).n===200);
+ok('alla 200 har exakt sex perioder från introduktion till slutprojekt, och ett slutprojekt', bank.laroplaner.every(x=>x.perioder.length===6
+   && x.perioder[0].fas==='Introduktion' && x.perioder[5].fas==='Slutprojekt & presentation' && x.slutprojekt));
+const L1 = await user('led1@edu.se'), L2 = await user('led2@edu.se'), GI = await user('gio@edu.se');
+await q(`insert into members(id,user_id,role,name,email) values('led1',$1,'leader','Lina Ledare','led1@edu.se'),
+  ('led2',$2,'leader','Leo Ledare','led2@edu.se'),('gio1',$3,'producer','GIO','gio@edu.se')`,[L1,L2,GI]);
+const CA = fn => as(db,U.costa,fn), A1 = fn => as(db,L1,fn), A2 = fn => as(db,L2,fn), G = fn => as(db,GI,fn);
+const asg = (fn, o) => fn(()=>rpc('edu_assign', Object.assign({p_code:'MP01', p_leader:'led1', p_label:'Grupp Söder', p_start:'2026-11-02', p_url:'https://www.bandohq.se/'}, o)));
+ok('en producent utan behörighet kan inte tilldela', /Bara admin/.test(await boom(()=>asg(G,{}))||''));
+ok('en ledare kan inte tilldela', /Bara admin/.test(await boom(()=>asg(A1,{}))||''));
+await CA(()=>rpc('set_member_perms',{p_member:'gio1',p_perms:'["education"]'}));
+const a1 = await asg(G, {});
+ok('med behörigheten education tilldelar Gio en läroplan', !!(a1 && a1.id), a1);
+const a2 = await asg(CA, {p_leader:'led2', p_label:'Grupp Norr'});
+const a3 = await asg(CA, {p_leader:'led1', p_code:'mp01', p_label:'Grupp 2'});
+ok('samma läroplan till flera grupper — originalet orört', !!a2.id && !!a3.id && +(await one(`select count(*) n from education_assignments where curriculum_code='MP01'`)).n===3
+   && +(await one(`select count(*) n from education_curricula`)).n===200);
+ok('okänd läroplan och fel mottagare nekas', /finns inte/.test(await boom(()=>asg(CA,{p_code:'XX99'}))||'') && /cirkelledare/.test(await boom(()=>asg(CA,{p_leader:'kund'}))||''));
+const nt = await one(`select * from outbox where kind='edu' and member_id='led1' order by id limit 1`);
+ok('ledaren får en notis om läroplanen', nt && /Ny läroplan: Musikproduktion/.test(nt.subject), nt);
+const my1 = await A1(()=>rpc('edu_assignments',{})), my2 = await A2(()=>rpc('edu_assignments',{})), all = await G(()=>rpc('edu_assignments',{}));
+ok('ledaren ser bara sina egna tilldelningar', my1.length===2 && my1.every(x=>x.leader_id==='led1' && x.mine) && my2.length===1 && my2[0].group_label==='Grupp Norr', [my1.length, my2.length]);
+ok('Education-admin ser alla', all.length===3 && all.every(x=>x.name && x.leader), all.length);
+ok('ingen läser tabellerna direkt', (await A1(()=>q(`select * from education_assignments`))).length===0 && (await G(()=>q(`select * from education_monthly_notes`))).length===0);
+ok('en kund ser inga tilldelningar', (await as(db,U.kund,()=>rpc('edu_assignments',{}))).length===0);
+await A1(()=>rpc('edu_save_note',{p_id:a1.id,p_month:1,p_learned:'Produktionskedjan och DAW:en',p_created:'Ett första trumloop'}));
+await A1(()=>rpc('edu_save_note',{p_id:a1.id,p_month:1,p_learned:'Produktionskedjan, DAW:en och spår',p_created:'Ett första trumloop'}));
+const n1 = (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id).notes;
+ok('två frågor per månad sparas och läses igen — en rad per månad', n1.length===1 && n1[0].month===1 && n1[0].learned==='Produktionskedjan, DAW:en och spår' && n1[0].created==='Ett första trumloop', n1);
+ok('månaden är 1–6', /1–6/.test(await boom(()=>A1(()=>rpc('edu_save_note',{p_id:a1.id,p_month:7,p_learned:'x',p_created:''})))||''));
+ok('en annan ledare kan varken skriva anteckningar eller arbetsplan', /finns inte/.test(await boom(()=>A2(()=>rpc('edu_save_note',{p_id:a1.id,p_month:2,p_learned:'x',p_created:''})))||'')
+   && /finns inte/.test(await boom(()=>A2(()=>rpc('edu_save_plan',{p_id:a1.id,p_sv:'{"mal":"x"}',p_url:null})))||''));
+const sv = Object.fromEntries(Object.entries(bank.laroplaner[0].sv_arbetsplan_mall).map(([k,v])=>[k, v + ' (anpassad)']));
+await A1(()=>rpc('edu_save_plan',{p_id:a1.id,p_sv:JSON.stringify(sv),p_url:'https://drive.google.com/x'}));
+const p1 = (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id);
+ok('SV-arbetsplanens sex fält och länken till slutprojektet sparas per tilldelning', Object.keys(p1.sv_answers).length===6 && /\(anpassad\)$/.test(p1.sv_answers.mal)
+   && p1.final_project_url==='https://drive.google.com/x', p1);
+ok('de andra gruppernas planer är orörda', (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a3.id).sv_answers===null);
+ok('okända fält och konstiga länkar nekas', /Okänt fält/.test(await boom(()=>A1(()=>rpc('edu_save_plan',{p_id:a1.id,p_sv:'{"pnr":"x"}',p_url:null})))||'')
+   && /https/.test(await boom(()=>A1(()=>rpc('edu_save_plan',{p_id:a1.id,p_sv:null,p_url:'javascript:alert(1)'})))||''));
+await A1(()=>rpc('edu_save_plan',{p_id:a1.id,p_sv:null,p_url:''}));
+const p2 = (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id);
+ok('en tom länk tar bort den, arbetsplanen står kvar', p2.final_project_url===null && p2.sv_answers.mal===sv.mal, p2);
+ok('bara admin ändrar tilldelningen', /Bara admin/.test(await boom(()=>A1(()=>rpc('edu_update',{p_id:a1.id,p_label:'X',p_start:null,p_status:'ended'})))||''));
+await G(()=>rpc('edu_update',{p_id:a1.id,p_label:'Grupp Söder',p_start:'2026-11-09',p_status:'ended'}));
+const e1 = (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id);
+ok('avslutad: ledaren ser den men kan inte längre skriva', e1.status==='ended' && e1.start_date==='2026-11-09' && !!e1.ended_at
+   && /avslutad/.test(await boom(()=>A1(()=>rpc('edu_save_note',{p_id:a1.id,p_month:2,p_learned:'x',p_created:''})))||''), e1);
+await G(()=>rpc('edu_update',{p_id:a1.id,p_label:'Grupp Söder',p_start:'2026-11-09',p_status:'active'}));
+ok('och kan öppnas igen', (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id).status==='active');
+ok('inga personnummer i Education', !/pnr|personnummer/i.test(JSON.stringify(await G(()=>rpc('edu_assignments',{})))));
+}
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
 process.exit(fail?1:0);

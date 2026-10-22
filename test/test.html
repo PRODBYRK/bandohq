@@ -786,7 +786,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     return {
       pass:{book:/BOKA PASS/.test(pass), wait:/VÄNTAR PÅ DIG/.test(pass) && /Godkänn/.test(pass),
         mark:/ATT MARKERA/.test(pass) && /Genomförd/.test(pass), coming:/KOMMANDE/.test(pass),
-        noCurr:!/LÄROPLAN/i.test(pass), noStats:!/STUDIOBELÄGGNING|STATISTIK/.test(pass)},
+        noCurr:!/Aktuell läroplan|Arrangemang/i.test(pass), noStats:!/STUDIOBELÄGGNING|STATISTIK/.test(pass)},
       mem:{tel:/href="tel:0701"/.test(mem), sms:/href="sms:0701"/.test(mem), mail:/href="mailto:w@b.se"/.test(mem),
         all:/mailto:\\?bcc=/.test(mem), hours:/av 480 h/.test(mem), both:/William Ek/.test(mem)&&/Nora Lind/.test(mem)},
       nav:document.getElementById('nav').style.display, formOk, formCircle:/Boka session/.test(form)};`);
@@ -2122,6 +2122,65 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(Object.assign(seed(), {session:null}));
   r = await ev(w,`await new Promise(r=>setTimeout(r,1200)); return document.getElementById('gateTitle').className;`);
   ok('nästa gång lyser den direkt — ingen ny tändning', /\bon\b/.test(r) && !/\blit\b/.test(r), r);
+
+  /* ============ BANDO EDUCATION ============ */
+  log('\n── Bando Education: banken, tilldelning, ledarens läroplan, uppföljning och SV-arbetsplan ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wait = ms => new Promise(r=>setTimeout(r,ms));
+    S.accounts.push(bump({id:'ld1', n:'Lina Ledare', r:'leader', email:'lina@b.se', phone:'', c:'#6633b8', g:'#9d5cf5', active:true, del:false}));
+    S.accounts.push(bump({id:'ld2', n:'Leo Ledare', r:'leader', email:'leo@b.se', phone:'', c:'#6633b8', g:'#9d5cf5', active:true, del:false})); save();
+    signIn(byName('AZ')); go('education'); await wait(700); render();
+    const bank = document.getElementById('view').innerHTML;
+    const tabs = [...document.querySelectorAll('#view .seg button')].map(b=>b.textContent.trim());
+    const groups = document.querySelectorAll('#eduBankList .eyebrow').length, rows = document.querySelectorAll('#eduBankList .member').length;
+    const q = document.getElementById('edQ'); q.value = 'mp03'; q.dispatchEvent(new Event('input')); const hits = document.querySelectorAll('#eduBankList .member').length;
+    q.value = ''; q.dispatchEvent(new Event('input')); eduQ = '';
+    openCurriculum('MP03'); const sheet = document.getElementById('sheetBody').innerHTML;
+    openAssign('MP03'); document.getElementById('eaL').value = 'ld1'; document.getElementById('eaG').value = 'Grupp Söder';
+    const d = new Date(); d.setMonth(d.getMonth()-1); d.setDate(d.getDate()-2); document.getElementById('eaS').value = iso(d);
+    await saveAssign(); await wait(100);
+    openAssign(''); document.getElementById('eaC').value = 'MP03'; document.getElementById('eaL').value = 'ld2'; await saveAssign(); await wait(100);
+    const list = eduList.map(a=>a.leader + ':' + a.code + ':' + (a.group_label||'')), orig = JSON.stringify(eduCatalog.byCode.MP03.sv_arbetsplan_mall);
+    signIn(byName('RKAY')); go('education'); await wait(250); render();
+    const rk = {tabs:[...document.querySelectorAll('#view .seg button')].map(b=>b.textContent.trim()), mine:(eduList||[]).length};
+    let deny = ''; try{ await edu('edu_assign',{p_code:'MP01', p_leader:'ld1'}); }catch(e){ deny = e.message; }
+    signIn(byName('Lina Ledare')); await wait(300); leaderTab = 'edu'; render(); await wait(50);
+    const lv = document.getElementById('view').innerHTML, lina = eduList.map(a=>a.leader_id);
+    eduOpen = eduList[0].id; render(); const det = document.getElementById('view').innerHTML;
+    openEduNote(eduOpen, 2); document.getElementById('enL').value = 'Trummor och bas'; document.getElementById('enC').value = 'Ett 8-taktsloop'; await saveEduNote(eduOpen, 2);
+    openEduPlan(eduOpen); document.getElementById('sv_mal').value = 'Vårt eget mål'; await saveEduPlan(eduOpen);
+    openEduLink(eduOpen); document.getElementById('enU').value = 'javascript:x'; await saveEduLink(eduOpen); const badLink = document.getElementById('enOut').textContent;
+    document.getElementById('enU').value = 'https://drive.google.com/x'; await saveEduLink(eduOpen);
+    let copied = ''; const rc = window.copy; window.copy = t => { copied = t; }; copySv(eduOpen, 'mal'); const c1 = copied; copySv(eduOpen, ''); const c2 = copied; window.copy = rc;
+    const a = eduList[0];
+    eduList = null; loadEdu(); await wait(250);
+    const again = eduList.find(x=>x.id===a.id);
+    eduOpen = a.id; eduMonth[a.id] = 2; render(); const det2 = document.getElementById('view').innerHTML;
+    signIn(byName('AZ')); await wait(250);
+    await edu('edu_update', {p_id:a.id, p_label:'Grupp Söder', p_start:a.start_date, p_status:'ended'});
+    signIn(byName('Lina Ledare')); await wait(300); eduAt = 0; eduOpen = a.id; render(); await wait(250); render(); const ended = document.getElementById('view').innerHTML;
+    let denyEnd = ''; try{ await edu('edu_save_note',{p_id:a.id,p_month:3,p_learned:'x',p_created:''}); }catch(e){ denyEnd = e.message; }
+    return {tabs, groups, rows, hits, bank:/200 av 200 läroplaner/.test(bank),
+      sheet:(sheet.match(/MÅNAD \\d · /g)||[]).length + ':' + /TILLDELA LÄROPLAN/.test(sheet) + ':' + /Vad är ert mål med cirkeln/.test(sheet),
+      list, orig2: JSON.stringify(eduCatalog.byCode.MP03.sv_arbetsplan_mall)===orig, rk, deny, lv:/LÄROPLANER/i.test(lv) && /FL Studio/.test(lv), lina,
+      det:/Månad 2 av 6/.test(det) && /MÅNAD 2 · GRUNDER &amp; TEKNIK/.test(det) && /ARBETSPLAN – SV/.test(det) && />MALL</.test(det),
+      note: again.notes.map(n=>n.month+':'+n.learned+':'+n.created), mal:again.sv_answers && again.sv_answers.mal, url:again.final_project_url, badLink,
+      c1, c2:/^Period\\n/.test(c2) && /Utvärdering vid sista träffen/.test(c2) && c2.includes('Vårt eget mål'),
+      det2:/Trummor och bas/.test(det2) && /ER VERSION/.test(det2) && /ÖPPNA SLUTPROJEKTET/.test(det2),
+      ended:/Avslutad/.test(ended) && !/SKRIV UPPFÖLJNING|ÄNDRA UPPFÖLJNING/.test(ended) && !/>ANPASSA</.test(ended), denyEnd};`);
+  ok('banken: 200 läroplaner i 18 ämnesområden — Mina, Läroplansbank och Tilldelningar för admin', r.bank && r.groups===18 && r.rows===200 && r.tabs.join()==='Mina,Läroplansbank,Tilldelningar', r);
+  ok('sök på kod hittar läroplanen', r.hits===1, r.hits);
+  ok('läroplanen: sex månader, SV-mallen och Tilldela', r.sheet==='6:true:true', r.sheet);
+  ok('samma läroplan till två grupper — originalet orört', r.list.length===2 && r.list.includes('Lina Ledare:MP03:Grupp Söder') && r.list.includes('Leo Ledare:MP03:') && r.orig2, r.list);
+  ok('en producent utan behörighet ser bara sina egna och kan inte tilldela', r.rk.tabs.length===0 && r.rk.mine===0 && /Bara admin/.test(r.deny), r);
+  ok('ledaren ser sina läroplaner — och bara sina', r.lv && JSON.stringify(r.lina)==='["ld1"]', r);
+  ok('tilldelningen öppnar på rätt månad, med mål, arbete och arbetsplanen', r.det===true);
+  ok('uppföljningen sparas och läses igen', JSON.stringify(r.note)==='["2:Trummor och bas:Ett 8-taktsloop"]', r.note);
+  ok('arbetsplanen sparas som gruppens version, och länken kontrolleras', r.mal==='Vårt eget mål' && r.url==='https://drive.google.com/x' && /https/.test(r.badLink), r);
+  ok('kopiera ett fält eller alla sex', r.c1==='Vårt eget mål' && r.c2===true, r.c1);
+  ok('vyn visar anteckningen, gruppens version och länken', r.det2===true);
+  ok('avslutad: ledaren ser den men kan inte ändra', r.ended===true && /avslutad/.test(r.denyEnd), r.denyEnd);
 
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');

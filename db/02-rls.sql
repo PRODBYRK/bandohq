@@ -245,3 +245,8 @@ create policy history_read on record_history for select to authenticated using (
 drop policy if exists access_requests_read on access_requests;
 create policy access_requests_read on access_requests for select to authenticated using (bs_is_crew());
 
+
+-- ---------- Bando Education: inga policys — allt går via funktionerna (03: BANDO EDUCATION) ----------
+alter table education_curricula enable row level security;
+alter table education_assignments enable row level security;
+alter table education_monthly_notes enable row level security;
