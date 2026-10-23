@@ -84,7 +84,7 @@ $$;
    ligger på cirkelposten och följer cirkeln. */
 create or replace function bs_can_read(p_kind text, p_id text, p_data jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
-  select case
+  select coalesce(case
     when bs_is_crew() then
       case
         when p_kind in ('goal','plan') then bs_is_manager()
@@ -96,7 +96,7 @@ language sql stable security definer set search_path = public as $$
       /* målsättningen: kamerateamet har sin egen, som alla i teamet */
       or (p_kind = 'goal' and p_data->>'owner' = bs_my_id())
       or (p_kind = 'plan' and p_id = bs_my_id())
-    else false end
+    else false end, false)
 $$;
 /* Får jag SKRIVA posten?
    Cirklar, läroplaner och kurser: bara admin. Cirkelpass: bara admin direkt — ledarna
@@ -105,7 +105,7 @@ $$;
    sina egna galleriposter och sin egen målsättning (mål och plan). */
 create or replace function bs_can_write(p_kind text, p_id text, p_data jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
-  select case
+  select coalesce(case
     when bs_is_admin() then bs_can_read(p_kind, p_id, p_data)
     when bs_is_crew() then bs_can_read(p_kind, p_id, p_data)
          and p_kind not in ('circle','curriculum','course')
@@ -118,7 +118,7 @@ language sql stable security definer set search_path = public as $$
       or (p_kind = 'media'  and p_data->>'by' = bs_my_id())
       or (p_kind = 'goal'   and p_data->>'owner' = bs_my_id())
       or (p_kind = 'plan'   and p_id = bs_my_id())
-    else false end
+    else false end, false)
 $$;
 /* Kvar för bakåtkompatibilitet — samma som att skriva. */
 create or replace function bs_can_record(p_kind text, p_id text, p_data jsonb) returns boolean
@@ -250,3 +250,6 @@ create policy access_requests_read on access_requests for select to authenticate
 alter table education_curricula enable row level security;
 alter table education_assignments enable row level security;
 alter table education_monthly_notes enable row level security;
+
+-- ---------- studiokontrollen: inga policys — via submit_studio_check / studio_checks ----------
+alter table studio_checks enable row level security;

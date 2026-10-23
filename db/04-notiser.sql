@@ -54,6 +54,16 @@ $$;
 -- ---------------------------------------------------------------------
 --  Händelser i posterna
 -- ---------------------------------------------------------------------
+/* Studioreglerna (artisten får dem när en session bekräftas, och ser dem i sina bokningar — STUDIO_RULES i appen). */
+create or replace function bs_studio_rules_text() returns text
+language sql immutable as $$
+  select '📍 Råsundavägen 102' || E'\n\n' || 'Regler:' || E'\n'
+    || '• Håll er i rummet. Chilla inte runt i lokalen.' || E'\n'
+    || '• Ingen rökning utanför porten. Gå över gatan eller mot parken.' || E'\n'
+    || '• Ingen nedskräpning.' || E'\n'
+    || '• Kom i tid. Din tid börjar exakt när den börjar.' || E'\n'
+    || '• Max 2 extra personer.'
+$$;
 create or replace function bs_notify_record() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -112,6 +122,13 @@ begin
       end if;
       win := floor(extract(epoch from now()) / 120);
       for mid in select distinct x from unnest(ids) x where x is not null loop
+        if exists (select 1 from members where id = mid and role::text = 'customer') then
+          /* artisten: "Session bekräftad" med adressen och studioreglerna */
+          perform bs_notify(mid, null, 'Session bekräftad ✅ ' || bs_when(d),
+            'Hej ' || bs_first(mid) || '! Din session är bekräftad: ' || line || '.' || E'\n\n' || bs_studio_rules_text(),
+            'confirmed', 'confirmed:' || new.id || ':' || mid);
+          continue;
+        end if;
         perform bs_notify_append(mid, null, 'Bokningsbekräftelse: ' || bs_when(d), 'Bokningsbekräftelse: %s sessioner',
           'Hej ' || bs_first(mid) || '! Det här är bokat i BANDOHQ:', line,
           'booked', 'booked:' || mid || ':' || win, interval '2 minutes');
@@ -289,9 +306,10 @@ end $$;
    Dubbletter stoppas av dedupe-nyckeln, så det gör inget att den körs flera gånger. */
 create or replace function reminders_tick() returns int
 language plpgsql security definer set search_path = public as $$
+declare n int := studio_check_reminders();            -- studiokontrollen: varje timme, efter passet
 begin
-  if extract(hour from now() at time zone 'Europe/Stockholm') < 17 then return 0; end if;
-  return reminders();
+  if extract(hour from now() at time zone 'Europe/Stockholm') < 17 then return n; end if;
+  return n + reminders();
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -326,7 +344,7 @@ returns void language plpgsql security definer set search_path = public as $$
 declare mid text := bs_my_id();
 begin
   if mid is null then raise exception 'Logga in först'; end if;
-  if p_endpoint !~ '^https://' or length(p_p256dh) < 80 or length(p_auth) < 16 then raise exception 'Ogiltig prenumeration'; end if;
+  if coalesce(p_endpoint !~ '^https://' or length(p_p256dh) < 80 or length(p_auth) < 16, true) then raise exception 'Ogiltig prenumeration'; end if;
   insert into push_subs(member_id, endpoint, p256dh, auth, ua) values (mid, p_endpoint, p_p256dh, p_auth, left(coalesce(p_ua,''),200))
   on conflict (endpoint) do update set member_id = mid, p256dh = excluded.p256dh, auth = excluded.auth,
     ua = excluded.ua, fails = 0, created_at = now();
@@ -418,6 +436,7 @@ grant execute on function push_public_key() to anon, authenticated;
 revoke all on function reminders(date) from public, anon, authenticated;
 revoke all on function reminders_tick() from public, anon, authenticated;
 revoke all on function bs_notify_record() from public, anon, authenticated;
+revoke all on function bs_studio_rules_text() from public, anon, authenticated;
 revoke all on function bs_notify_lead() from public, anon, authenticated;
 do $$ begin
   if exists (select 1 from pg_roles where rolname = 'service_role') then

@@ -473,3 +473,23 @@ create table if not exists education_monthly_notes (
   updated_by    text,
   primary key (assignment_id, month_number)
 );
+
+-- ---------------------------------------------------------------------
+--  STUDIOKONTROLL (2026-10) — en per pass, skickas in av passets producent
+-- ---------------------------------------------------------------------
+create table if not exists studio_checks (
+  booking_id      text primary key,
+  items           jsonb not null default '[]',          -- de punkter som bockades av
+  missing         text[] not null default '{}',         -- de som inte gick (då finns en kommentar)
+  comment         text,
+  damage          boolean not null default false,
+  damage_text     text,
+  checked_by      text references members(id) on delete set null,
+  checked_by_name text not null,
+  booking_date    date,
+  booking_start   text,
+  studio          text,
+  all_ok          boolean not null default true,
+  submitted_at    timestamptz not null default now()
+);
+create index if not exists studio_checks_date_idx on studio_checks (booking_date);

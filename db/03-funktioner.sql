@@ -134,7 +134,7 @@ end $$;
    skulle en post man inte får se ge ett fel som stoppar hela synkomgången. */
 create or replace function bs_existing_writable(p_kind text, p_id text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce((select bs_can_write(kind, id, data) from records where kind = p_kind and id = p_id), true)
+  select coalesce((select coalesce(bs_can_write(kind, id, data), false) from records where kind = p_kind and id = p_id), true)
 $$;
 create or replace function push_records(rows jsonb) returns int
 language plpgsql security invoker set search_path = public as $$
@@ -426,7 +426,7 @@ declare hrs numeric := bs_len_h(d); want numeric := (bs_ccfg('sessionHours'))::t
         yr int := left(d->>'date', 4)::int; mx numeric := (bs_ccfg('leaderYearMax'))::text::numeric;
         y0 int := (bs_ccfg('leaderMaxFrom'))::text::int; u record; msg text;
 begin
-  if want > 0 and hrs <> want then raise exception 'Ett cirkelpass är % timmar', bs_fmt_h(want); end if;
+  if want > 0 and hrs is distinct from want then raise exception 'Ett cirkelpass är % timmar', bs_fmt_h(want); end if;
   msg := bs_circle_conflict(d, p_ignore);
   if msg is not null then raise exception 'Krock: %', msg; end if;
   if nullif(d->>'leaderId','') is not null and mx > 0 and yr >= y0 then
@@ -763,16 +763,16 @@ declare me members := bs_me(); c jsonb; d jsonb;
 begin
   select data into c from records where kind='circle' and id = p_circle and not del;
   if c is null then raise exception 'Cirkeln finns inte'; end if;
-  if me.role <> 'participant' or not (c->'members' ? me.id) then
+  if me.id is null or me.role is distinct from 'participant' or not coalesce(c->'members' ? me.id, false) then
     raise exception 'Du är inte med i den cirkeln';
   end if;
   d := jsonb_build_object('id', bs_uid('b'), 'studio','', 'date', p_date::text,
     'start', p_start, 'end', p_end, 'who', c->>'leader', 'title', c->>'n', 'note','',
     'circleId', p_circle, 'status','request', 'reqBy', me.id, 'hours', null,
     'present','[]'::jsonb, 'paid', false, 'with','[]'::jsonb, 'artistId','');
-  if not bs_three_hours(d) then raise exception 'Ett pass är tre timmar'; end if;
-  if bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
-  if not bs_any_free(bs_span(d), null) then raise exception 'Den tiden är fullbokad'; end if;
+  if not coalesce(bs_three_hours(d), false) then raise exception 'Ett pass är tre timmar'; end if;
+  if bs_starts(d) is null or bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
+  if not coalesce(bs_any_free(bs_span(d), null), false) then raise exception 'Den tiden är fullbokad'; end if;
   return bs_put_booking(d);
 end $$;
 
@@ -782,7 +782,7 @@ declare c jsonb; d jsonb;
 begin
   if not bs_leads(p_circle) then raise exception 'Bara cirkelns ledare kan boka'; end if;
   select data into c from records where kind='circle' and id = p_circle;
-  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if p_studio is null or p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
   if p_start = p_end then raise exception 'Start och slut är samma tid'; end if;
   d := jsonb_build_object('id', bs_uid('b'), 'studio', p_studio, 'date', p_date::text, 'start', p_start,
     'end', p_end, 'who', c->>'leader', 'title', c->>'n', 'note','', 'circleId', p_circle, 'status','',
@@ -803,14 +803,14 @@ begin
      eller, om hen inte valt någon, artistens producenter. */
   if coalesce(d->>'circleId','') <> '' then
     if not bs_leads(d->>'circleId') then raise exception 'Bara cirkelns ledare kan svara'; end if;
-  elsif not (bs_is_admin()
+  elsif bs_my_id() is null or not coalesce(bs_is_admin()
        or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) > 0 and coalesce(d->'with','[]'::jsonb) ? (bs_me()).name)
        or (jsonb_array_length(coalesce(d->'with','[]'::jsonb)) = 0 and exists (select 1 from members where id = d->>'reqBy'
-             and (producer = bs_my_id() or bs_my_id() = any(producers))))) then
+             and (producer = bs_my_id() or bs_my_id() = any(producers)))), false) then
     raise exception 'Bara admin och artistens producenter kan svara';
   end if;
-  if not p_approve then return bs_put_booking(d || '{"status":"declined"}'); end if;
-  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if not coalesce(p_approve, false) then return bs_put_booking(d || '{"status":"declined"}'); end if;
+  if p_studio is null or p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
   /* kollas här, inte bara i appen — någon kan ha bokat tiden under tiden */
   if bs_clash(p_studio, bs_span(d), p_booking) then raise exception 'Studion hann bli upptagen'; end if;
   if coalesce(d->>'circleId','') <> '' then perform bs_check_circle_session(d || jsonb_build_object('studio', p_studio), p_booking); end if;
@@ -860,8 +860,8 @@ begin
   if bs_locked(p_booking) then raise exception 'Passet är kontrollerat — admin måste låsa upp det först'; end if;
   if d->>'status' = 'done' then raise exception 'Passet är redan genomfört — ångra det först'; end if;
   if coalesce(d->>'status','') in ('request','declined') then raise exception 'Passet är inte bokat'; end if;
-  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
-  if p_start !~ '^\d\d:\d\d$' then raise exception 'Välj en starttid'; end if;
+  if p_studio is null or p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if p_start is null or p_start !~ '^\d\d:\d\d$' then raise exception 'Välj en starttid'; end if;
   n := d || jsonb_build_object('date', p_date::text, 'start', p_start, 'studio', p_studio,
     'end', to_char(p_start::time + make_interval(mins => (want * 60)::int), 'HH24:MI'));
   if bs_clash(p_studio, bs_span(n), p_booking) then raise exception 'Studion är upptagen den tiden'; end if;
@@ -900,7 +900,7 @@ begin
     begin
       if p_studio in ('A','B') then
         if bs_clash(p_studio, bs_span(d), null) then raise exception 'Studion är upptagen'; end if;
-      elsif not bs_any_free(bs_span(d), null) then raise exception 'Båda studiorna är upptagna';
+      elsif not coalesce(bs_any_free(bs_span(d), null), false) then raise exception 'Båda studiorna är upptagna';
       end if;
       perform bs_check_circle_session(d, null, coalesce((extra->>yr)::numeric, 0));
       extra := extra || jsonb_build_object(yr, coalesce((extra->>yr)::numeric, 0) + hrs);
@@ -1005,7 +1005,7 @@ language plpgsql security definer set search_path = public as $$
 declare me members := bs_me(); d jsonb;
 begin
   if not bs_is_crew() then raise exception 'Skicka en förfrågan — crewet bekräftar tiden'; end if;
-  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if p_studio is null or p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
   if p_start = p_end then raise exception 'Start och slut är samma tid'; end if;
   d := jsonb_build_object('id', bs_uid('b'), 'studio', p_studio, 'date', p_date::text, 'start', p_start,
     'end', p_end, 'who', me.name, 'title','Studiotid', 'note','', 'circleId','', 'status','',
@@ -1042,7 +1042,7 @@ language plpgsql security definer set search_path = public as $$
 declare me members := bs_me(); d jsonb; allowed text[]; asked text[]; chosen text[]; bad text; nm text;
 begin
   if me.role is distinct from 'customer' then raise exception 'Bara kunder skickar förfrågningar här'; end if;
-  if p_date < current_date then raise exception 'Välj en dag framåt i tiden'; end if;
+  if p_date is null or p_date < current_date then raise exception 'Välj en dag framåt i tiden'; end if;
   if (select count(*) from records where kind='booking' and not del and data->>'status'='request'
         and data->>'reqBy' = me.id) >= 5 then
     raise exception 'Du har redan fem obesvarade förfrågningar';
@@ -1064,9 +1064,9 @@ begin
     'end', p_end, 'who', me.name, 'title','Studiotid', 'note', left(coalesce(p_note,''),200), 'circleId','',
     'status','request', 'reqBy', me.id, 'hours', null, 'present','[]'::jsonb, 'paid', true,
     'with', coalesce((select jsonb_agg(name order by name) from members where id = any(chosen)), '[]'::jsonb), 'artistId','');
-  if not bs_three_hours(d) then raise exception 'Ett pass är tre timmar'; end if;
-  if bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
-  if not bs_any_free(bs_span(d), null) then raise exception 'Den tiden är fullbokad'; end if;
+  if not coalesce(bs_three_hours(d), false) then raise exception 'Ett pass är tre timmar'; end if;
+  if bs_starts(d) is null or bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
+  if not coalesce(bs_any_free(bs_span(d), null), false) then raise exception 'Den tiden är fullbokad'; end if;
   for nm in select name from members where id = any(chosen) order by name loop
     if bs_person_busy(nm, bs_span(d), null) then raise exception '% är upptagen den tiden — välj en annan tid', nm; end if;
   end loop;
@@ -1128,7 +1128,7 @@ begin
   if not bs_is_admin() then raise exception 'Bara admin och manager svarar på nya kunder'; end if;
   select * into l from leads where id = p_lead for update;
   if l.id is null or l.status <> 'new' then raise exception 'Förfrågan finns inte längre'; end if;
-  if p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
+  if p_studio is null or p_studio not in ('A','B') then raise exception 'Välj studio'; end if;
   d := jsonb_build_object('id', bs_uid('b'), 'studio', p_studio, 'date', l.date::text, 'start', l.start_t,
     'end', l.end_t, 'who', l.name, 'title','Studiotid', 'note', coalesce(l.message,''), 'circleId','',
     'status','', 'hours', null, 'present','[]'::jsonb, 'paid', true, 'with','[]'::jsonb, 'artistId','',
@@ -1452,16 +1452,20 @@ $$;
 /* Får jag avsluta passet och skriva omdöme? Admin, kundens producent eller en producent som var med. */
 create or replace function bs_may_close(d jsonb, cu members) returns boolean
 language sql stable security definer set search_path = public as $$
-  select bs_is_admin() or (bs_is_crew() and (cu.producer = bs_my_id() or bs_my_id() = any(cu.producers)
+  /* coalesce: en jämförelse med ett tomt fält blir NULL, och "if not NULL" släpper igenom */
+  select coalesce(bs_is_admin() or (bs_is_crew() and (cu.producer = bs_my_id() or bs_my_id() = any(cu.producers)
                                             or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
-                                            or d->>'closedBy' = (bs_me()).name))
+                                            or d->>'closedBy' = (bs_me()).name)), false)
 $$;
 
 /* Efter passet: genomfört och betalt → poäng (en gång per pass; avmarkeras betalt dras de
    tillbaka). Pågår en kampanj på passets datum gångras poängen med kampanjens faktor.
    Bonusarna (första sessionen, återkommande, värva en vän) ges en gång var. Ett omdöme kan
    skrivas samtidigt. */
-create or replace function close_session(p_booking text, p_paid boolean, p_note jsonb default null) returns jsonb
+drop function if exists close_session(text, boolean, jsonb);
+/* p_package: passet ingår i ett köpt paket (Paket BS) i stället för en enskild session (Vanlig BS) —
+   statistiken räknar det automatiskt. null = som förra gången för samma artist. */
+create or replace function close_session(p_booking text, p_paid boolean, p_note jsonb default null, p_package boolean default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare d jsonb; cu members; pts int; net int; diff int; me members := bs_me(); cmp jsonb; note text; dd date;
         bonus int := 0; rc int; rf members; rp int;
@@ -1490,6 +1494,10 @@ begin
     values (cu.id, p_booking, case when diff > 0 then 'earn' else 'reversal' end, diff, note, me.id);
   end if;
   perform bs_put_booking(d || jsonb_build_object('closed', true, 'paid', p_paid,
+    'pkg', p_paid and coalesce(p_package, (d->>'pkg')::boolean,
+             (select (r.data->>'pkg')::boolean from records r where r.kind = 'booking' and not r.del and r.id <> p_booking
+                and lower(r.data->>'who') = lower(cu.name) and (r.data->>'closed')::boolean and (r.data->>'paid')::boolean
+              order by (r.data->>'closedAt')::bigint desc nulls last limit 1), false),
     'closedBy', coalesce(d->>'closedBy', me.name), 'closedAt', now_ms()));
   if p_note is not null and bs_note_text(p_note) <> '' then
     insert into artist_notes(member_id, booking_id, author_id, went, created, strengths, develop, next, other)
@@ -1574,7 +1582,7 @@ create or replace function points_summary(p_member text default null) returns js
 language plpgsql stable security definer set search_path = public as $$
 declare mid text := coalesce(p_member, bs_my_id()); b record; lv levels; nx levels; st jsonb;
 begin
-  if mid is null or not (mid = bs_my_id() or bs_has_perm('artist_intel')) then raise exception 'Inte behörig'; end if;
+  if mid is null or not coalesce(mid = bs_my_id() or bs_has_perm('artist_intel'), false) then raise exception 'Inte behörig'; end if;
   select * into b from bs_balance(mid);
   lv := bs_member_level(mid); st := bs_level_stats(mid);
   select * into nx from levels where active and rank > coalesce(lv.rank, -1) order by rank limit 1;
@@ -1601,7 +1609,7 @@ language plpgsql security definer set search_path = public as $$
 declare me members := bs_me(); mid text; w rewards; bal int; rid bigint; cname text; adm members;
 begin
   if p_member is null then
-    if me.role::text <> 'customer' then raise exception 'Bara kunder löser in poäng'; end if;
+    if me.id is null or me.role::text is distinct from 'customer' then raise exception 'Bara kunder löser in poäng'; end if;
     mid := me.id;
   else
     if not bs_is_admin() then raise exception 'Bara admin löser in åt en kund'; end if;
@@ -1764,11 +1772,11 @@ revoke all on function bs_update_level(text) from public, anon, authenticated;
 revoke all on function bs_note_text(jsonb) from public, anon, authenticated;
 revoke all on function bs_may_close(jsonb, members) from public, anon, authenticated;
 revoke all on function bs_has_perm(text) from public, anon, authenticated;
-revoke all on function close_session(text, boolean, jsonb), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
+revoke all on function close_session(text, boolean, jsonb, boolean), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
   points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
   save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
   set_member_perms(text, jsonb), artist_intel() from public, anon;
-grant execute on function close_session(text, boolean, jsonb), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
+grant execute on function close_session(text, boolean, jsonb, boolean), add_artist_note(text, jsonb), artist_notes_for(text), rewards_catalog(),
   points_summary(text), redeem_reward(text, text), handle_redemption(bigint, text), pending_redemptions(), adjust_points(text, int, text),
   save_reward(jsonb), delete_reward(text), save_level(jsonb), delete_level(text), save_artist_crm(text, jsonb),
   set_member_perms(text, jsonb), artist_intel() to authenticated;
@@ -2389,7 +2397,7 @@ $$;
 /* Får jag skriva i tilldelningen: ledaren själv medan den pågår, eller en Education-admin. */
 create or replace function bs_edu_may_write(a education_assignments) returns boolean
 language sql stable security definer set search_path = public as $$
-  select bs_edu_admin() or (a.leader_id = bs_my_id() and a.status = 'active')
+  select coalesce(bs_edu_admin() or (a.leader_id = bs_my_id() and a.status = 'active'), false)
 $$;
 
 create or replace function edu_assign(p_code text, p_leader text, p_label text default null,
@@ -2417,7 +2425,7 @@ create or replace function edu_update(p_id text, p_label text, p_start date, p_s
 language plpgsql security definer set search_path = public as $$
 begin
   if not bs_edu_admin() then raise exception 'Bara admin ändrar tilldelningar'; end if;
-  if p_status not in ('active','ended') then raise exception 'Ogiltig status'; end if;
+  if p_status is null or p_status not in ('active','ended') then raise exception 'Ogiltig status'; end if;
   update education_assignments set group_label = nullif(left(trim(coalesce(p_label,'')), 80), ''), start_date = p_start,
          ended_at = case when p_status = 'ended' then coalesce(ended_at, now()) end, status = p_status, updated_at = now()
    where id = p_id;
@@ -2448,7 +2456,7 @@ language plpgsql security definer set search_path = public as $$
 declare a education_assignments;
 begin
   select * into a from education_assignments where id = p_id;
-  if a.id is null or not (bs_edu_admin() or a.leader_id = bs_my_id()) then raise exception 'Tilldelningen finns inte'; end if;
+  if a.id is null or not coalesce(bs_edu_admin() or a.leader_id = bs_my_id(), false) then raise exception 'Tilldelningen finns inte'; end if;
   if not bs_edu_may_write(a) then raise exception 'Utbildningen är avslutad'; end if;
   if p_month is null or p_month not between 1 and 6 then raise exception 'Månaden ska vara 1–6'; end if;
   if length(coalesce(p_learned,'')) > 4000 or length(coalesce(p_created,'')) > 4000 then raise exception 'Texten är för lång'; end if;
@@ -2465,7 +2473,7 @@ language plpgsql security definer set search_path = public as $$
 declare a education_assignments; k text; u text := trim(coalesce(p_url,''));
 begin
   select * into a from education_assignments where id = p_id;
-  if a.id is null or not (bs_edu_admin() or a.leader_id = bs_my_id()) then raise exception 'Tilldelningen finns inte'; end if;
+  if a.id is null or not coalesce(bs_edu_admin() or a.leader_id = bs_my_id(), false) then raise exception 'Tilldelningen finns inte'; end if;
   if not bs_edu_may_write(a) then raise exception 'Utbildningen är avslutad'; end if;
   if p_sv is not null then
     if jsonb_typeof(p_sv) <> 'object' then raise exception 'Arbetsplanen ska vara sex fält'; end if;
@@ -2487,3 +2495,125 @@ revoke all on function edu_assign(text, text, text, date, text), edu_update(text
   edu_save_note(text, int, text, text), edu_save_plan(text, jsonb, text) from public, anon;
 grant execute on function edu_assign(text, text, text, date, text), edu_update(text, text, date, text), edu_assignments(),
   edu_save_note(text, int, text, text), edu_save_plan(text, jsonb, text) to authenticated;
+
+
+-- =====================================================================
+--  STUDIOKONTROLL — obligatorisk checklista efter varje genomförd session
+--  Den ansvariga producenten (eller någon annan i passet, eller admin) bockar av de elva
+--  punkterna och skickar in. En punkt som inte gick kräver en kommentar (avvikelse); en
+--  skada kräver en beskrivning och går till admins. Admin ser vilka pass som har och saknar
+--  kontroll. Påminnelse till den ansvariga när passet slutat (reminders_tick).
+-- =====================================================================
+create or replace function bs_ends(d jsonb) returns timestamptz
+language sql stable as $$ select upper(bs_span(d)) at time zone 'Europe/Stockholm' $$;
+create or replace function bs_check_items() returns text[]
+language sql immutable as $$ select array['pant','bord','soffor','meck','spill','sladdar','platser','sopor','soppase','dorrar','skador'] $$;
+/* Vem som är ansvarig för studiokontrollen: cirkelpassets ledare, crewets eget pass, eller för
+   ett kundpass den första producenten i passet (annars den som avslutade, annars kundens producent). */
+create or replace function bs_check_responsible(d jsonb) returns text
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return coalesce(
+    case when coalesce(d->>'circleId','') <> '' then coalesce(nullif(d->>'leaderId',''),
+      bs_member_by_name((select data->>'leader' from records where kind = 'circle' and id = d->>'circleId'))) end,
+    (select id from members where lower(name) = lower(d->>'who') and role::text in ('producer','admin','manager') limit 1),
+    bs_member_by_name(d->'with'->>0),
+    bs_member_by_name(d->>'closedBy'),
+    (select producer from members where role::text = 'customer' and lower(name) = lower(d->>'who') limit 1));
+end $$;
+/* Får jag skicka in kontrollen: admin, den ansvariga, eller crew som var med i passet. */
+create or replace function bs_check_may(d jsonb) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(bs_is_admin() or (bs_is_crew() and (bs_check_responsible(d) = bs_my_id()
+    or lower(d->>'who') = lower((bs_me()).name) or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
+    or d->>'closedBy' = (bs_me()).name)), false)
+$$;
+/* Pass som ska ha studiokontroll: bokade pass i en studio som har börjat. */
+create or replace function bs_check_needed(d jsonb) returns boolean
+language sql stable as $$
+  select coalesce(d->>'status','') in ('', 'done') and coalesce(d->>'studio','') <> '' and coalesce(d->>'busy','') = ''
+     and coalesce(d->>'date','') ~ '^\d{4}-\d\d-\d\d$'
+$$;
+
+create or replace function submit_studio_check(p_booking text, p_items jsonb, p_comment text default null,
+  p_damage boolean default false, p_damage_text text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare d jsonb; me members := bs_me(); k text; done text[] := '{}'; missing text[]; ok boolean; cmt text := nullif(trim(coalesce(p_comment,'')), '');
+        dmg text := nullif(trim(coalesce(p_damage_text,'')), ''); a record;
+begin
+  select data into d from records where kind = 'booking' and id = p_booking and not del;
+  if d is null or not bs_check_needed(d) then raise exception 'Passet finns inte'; end if;
+  if not bs_check_may(d) then raise exception 'Bara passets producent eller admin skickar in studiokontrollen'; end if;
+  if bs_starts(d) > now() then raise exception 'Passet har inte börjat än'; end if;
+  if jsonb_typeof(coalesce(p_items,'null'::jsonb)) <> 'object' then raise exception 'Bocka av punkterna'; end if;
+  for k in select jsonb_object_keys(p_items) loop
+    if k <> all(bs_check_items()) then raise exception 'Okänd punkt: %', k; end if;
+    if (p_items->>k)::boolean then done := done || k; end if;
+  end loop;
+  missing := array(select x from unnest(bs_check_items()) x where x <> all(done));
+  if cardinality(missing) > 0 and cmt is null then raise exception 'Skriv en kommentar om det som inte gick att bocka av'; end if;
+  if coalesce(p_damage, false) and dmg is null then raise exception 'Beskriv skadan eller felet'; end if;
+  if length(coalesce(cmt,'')) > 2000 or length(coalesce(dmg,'')) > 2000 then raise exception 'Texten är för lång'; end if;
+  ok := cardinality(missing) = 0 and not coalesce(p_damage, false);
+  insert into studio_checks(booking_id, items, missing, comment, damage, damage_text, checked_by, checked_by_name,
+                            booking_date, booking_start, studio, all_ok, submitted_at)
+  values (p_booking, to_jsonb(done), missing, cmt, coalesce(p_damage, false), dmg, me.id, me.name,
+          (d->>'date')::date, d->>'start', d->>'studio', ok, now())
+  on conflict (booking_id) do update set items = excluded.items, missing = excluded.missing, comment = excluded.comment,
+    damage = excluded.damage, damage_text = excluded.damage_text, checked_by = excluded.checked_by,
+    checked_by_name = excluded.checked_by_name, all_ok = excluded.all_ok, submitted_at = now();
+  if not ok then
+    for a in select id from members where active and role::text in ('manager','admin') loop
+      perform bs_notify(a.id, null, case when coalesce(p_damage,false) then 'Skada rapporterad: ' else 'Avvikelse i studiokontrollen: ' end || bs_when(d),
+        me.name || ' skickade in studiokontrollen för ' || bs_when(d) || ' · ' || bs_studio(d->>'studio') || '.'
+        || case when cardinality(missing) > 0 then E'\n\n' || 'Inte avbockat: ' || array_length(missing,1) || ' punkt(er).' else '' end
+        || coalesce(E'\n\n' || 'Kommentar: ' || cmt, '') || coalesce(E'\n\n' || 'Skada eller fel: ' || dmg, ''),
+        'check', 'check:' || p_booking || ':' || a.id || ':' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSUS'));
+    end loop;
+  end if;
+  return jsonb_build_object('ok', true, 'all_ok', ok);
+end $$;
+
+/* Studiokontrollerna: admin ser alla, crewet sina egna pass (som ansvarig eller med i passet). */
+create or replace function studio_checks(p_from date default null, p_to date default null) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('booking', c.booking_id, 'by', c.checked_by_name, 'at', c.submitted_at,
+      'all_ok', c.all_ok, 'missing', to_jsonb(c.missing), 'comment', c.comment, 'damage', c.damage, 'damage_text', c.damage_text,
+      'date', c.booking_date, 'start', c.booking_start, 'studio', c.studio) order by c.booking_date desc, c.booking_start desc), '[]'::jsonb)
+  from studio_checks c left join records r on r.kind = 'booking' and r.id = c.booking_id
+  where bs_is_crew() and (p_from is null or c.booking_date >= p_from) and (p_to is null or c.booking_date <= p_to)
+    and (bs_is_admin() or c.checked_by = bs_my_id() or (r.data is not null and bs_check_may(r.data)))
+$$;
+
+/* Påminnelse till den ansvariga en kvart efter passet, om kontrollen saknas (en gång per pass). */
+create or replace function studio_check_reminders() returns int
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0; mid text;
+begin
+  for r in select id, data from records
+            where kind = 'booking' and not del and bs_check_needed(data)
+              and (data->>'date')::date between current_date - 2 and current_date
+              and not exists (select 1 from studio_checks c where c.booking_id = records.id) loop
+    if bs_ends(r.data) > now() - interval '15 minutes' or bs_ends(r.data) < now() - interval '36 hours' then continue; end if;
+    mid := bs_check_responsible(r.data);
+    if mid is null then continue; end if;
+    perform bs_notify(mid, null, 'Studiokontroll: ' || bs_when(r.data),
+      'Passet ' || bs_when(r.data) || ' · ' || bs_studio(r.data->>'studio') || ' är slut. Fyll i studiokontrollen i BANDOHQ — den är obligatorisk efter varje session.',
+      'check', 'check-rem:' || r.id);
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+revoke all on function bs_ends(jsonb), bs_check_items(), bs_check_responsible(jsonb), bs_check_may(jsonb), bs_check_needed(jsonb),
+  studio_check_reminders() from public, anon, authenticated;
+revoke all on function submit_studio_check(text, jsonb, text, boolean, text), studio_checks(date, date) from public, anon;
+grant execute on function submit_studio_check(text, jsonb, text, boolean, text), studio_checks(date, date) to authenticated;
+
+-- ---------------------------------------------------------------------
+--  Rättigheter för funktioner som saknade dem (säkerhetsgranskningen 2026-10-23): bara inloggade.
+-- ---------------------------------------------------------------------
+revoke all on function request_session(text, date, text, text), book_circle_session(text, date, text, text, text),
+  answer_request(text, boolean, text), complete_session(text, numeric, jsonb, text) from public, anon;
+grant execute on function request_session(text, date, text, text), book_circle_session(text, date, text, text, text),
+  answer_request(text, boolean, text), complete_session(text, numeric, jsonb, text) to authenticated;

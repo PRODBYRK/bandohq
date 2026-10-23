@@ -383,8 +383,11 @@ ok('kundens vy visar producenten', (await as(db,U.kund,()=>rpc('my_view',{}))).p
 ok('och förfrågan', (await as(db,U.kund,()=>rpc('my_view',{}))).bookings.some(b=>b.id===kr.id && b.status==='request'));
 ok('kunden kan inte svara själv', /Bara admin och artistens producenter/.test(await boom(()=>as(db,U.kund,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'})))||''));
 await as(db,U.rkay,()=>rpc('answer_request',{p_booking:kr.id,p_approve:true,p_studio:'B'}));
-const kbk = await q(`select * from outbox where kind='booked' and member_id='kund'`);
-ok('producenten godkänner → kunden får orderbekräftelsen', kbk.length===1 && /tor 10 dec 12:00-15:00 · THE BOOTH/.test(kbk[0].body), kbk);
+const kbk = await q(`select * from outbox where kind='confirmed' and member_id='kund'`);
+ok('producenten godkänner → kunden får "Session bekräftad" med adressen och studioreglerna', kbk.length===1 && /tor 10 dec 12:00-15:00 · THE BOOTH/.test(kbk[0].body)
+   && /^Session bekräftad ✅/.test(kbk[0].subject) && /Råsundavägen 102/.test(kbk[0].body) && /Max 2 extra personer/.test(kbk[0].body)
+   && /Chilla inte runt i lokalen/.test(kbk[0].body) && /Ingen rökning utanför porten/.test(kbk[0].body), kbk);
+ok('och ingen vanlig orderbekräftelse till kunden ovanpå', (await q(`select 1 from outbox where kind='booked' and member_id='kund'`)).length===0);
 const st = await C(()=>rpc('notify_stats',{}));
 ok('admin ser notisstatistik för månaden', st.queued>0 && 'mail' in st && 'push' in st && !('cost' in st), st);
 const cl = await q(`select * from outbox_claim(2)`);
@@ -1062,7 +1065,7 @@ ok('förfrågan går till admins och den valda producenten — inte till den and
 ok('en producent artisten inte valt kan inte svara', /artistens producenter/.test(await boom(()=>as(db,pz,()=>rpc('answer_request',{p_booking:r1.id,p_approve:true,p_studio:'B'})))||''));
 const ans = await as(db,pu,()=>rpc('answer_request',{p_booking:r1.id,p_approve:true,p_studio:'B'}));
 ok('den valda producenten godkänner', ans.status==='' && ans.studio==='B', ans);
-const bk = (await q(`select member_id from outbox where kind='booked'`)).map(x=>x.member_id);
+const bk = (await q(`select member_id from outbox where kind in ('booked','confirmed')`)).map(x=>x.member_id);
 ok('bekräftelsen går till artisten och producenten', bk.includes('ar7') && bk.includes('pa1'), bk);
 await q(`update records set data = data || '{"date":"2026-10-01","start":"10:00","end":"13:00"}'::jsonb where id=$1`, [r1.id]);
 ok('producenten artisten bokat med får avsluta passet', (await as(db,pu,()=>rpc('close_session',{p_booking:r1.id,p_paid:true,p_note:null}))).points===100);
@@ -1348,6 +1351,82 @@ ok('avslutad: ledaren ser den men kan inte längre skriva', e1.status==='ended' 
 await G(()=>rpc('edu_update',{p_id:a1.id,p_label:'Grupp Söder',p_start:'2026-11-09',p_status:'active'}));
 ok('och kan öppnas igen', (await A1(()=>rpc('edu_assignments',{}))).find(x=>x.id===a1.id).status==='active');
 ok('inga personnummer i Education', !/pnr|personnummer/i.test(JSON.stringify(await G(()=>rpc('edu_assignments',{})))));
+}
+/* ============ STUDIOKONTROLL OCH SESSIONSTYPER ============ */
+{
+head('Studiokontroll efter varje session, och Vanlig/Paket BS vid avslut');
+await q(`delete from outbox`);
+const SC = (id, o) => R('booking', id, Object.assign({id, studio:'A', date:'2026-10-01', start:'10:00', end:'13:00', who:'RKAY', title:'Session', circleId:'', status:'', with:[]}, o));
+await SC('sc1'); await SC('sc2', {who:'Kim Kund', with:['PR2']}); await SC('scF', {date:'2027-02-01'});
+const ALL = {pant:true,bord:true,soffor:true,meck:true,spill:true,sladdar:true,platser:true,sopor:true,soppase:true,dorrar:true,skador:true};
+const sub = (u, id, items, o) => as(db,u,()=>rpc('submit_studio_check', Object.assign({p_booking:id, p_items:JSON.stringify(items), p_comment:null, p_damage:false, p_damage_text:null}, o)));
+ok('ansvarig: crewets eget pass → den som bokat; kundpass → producenten i passet', (await one(`select bs_check_responsible(data) r from records where id='sc1'`)).r==='rkay'
+   && (await one(`select bs_check_responsible(data) r from records where id='sc2'`)).r==='pr2');
+const notMe = await boom(()=>sub(U.pr2,'sc1',ALL));
+ok('någon som inte var med kan inte skicka in', /Bara passets producent/.test(notMe||''), notMe);
+/* NULL-säkra behörigheter: ett tomt fält i passet får aldrig släppa igenom någon */
+await R('booking','nc1',{id:'nc1', studio:'A', date:'2026-10-02', start:'10:00', end:'13:00', who:'Kim Kund', title:'Studiotid', circleId:'', status:'', with:[]});
+await q(`update members set producer=null, producers='{}' where id='ku1'`);
+ok('en producent kan inte avsluta ett okänt kundpass bara för att fälten är tomma', /Bara kundens producent/.test(await boom(()=>as(db,U.pr2,()=>rpc('close_session',{p_booking:'nc1',p_paid:true,p_note:null,p_package:null})))||''));
+await q(`update members set producer='rkay', producers='{rkay}' where id='ku1'`);
+const ghost = await user('ghost@edu.se');
+const ea = await one(`select id from education_assignments limit 1`);
+ok('en inloggning utan konto kan inte skriva i en tilldelning', /finns inte/.test(await boom(()=>as(db,ghost,()=>rpc('edu_save_note',{p_id:ea.id,p_month:1,p_learned:'x',p_created:''})))||'')
+   && /finns inte/.test(await boom(()=>as(db,ghost,()=>rpc('edu_save_plan',{p_id:ea.id,p_sv:'{"mal":"x"}',p_url:null})))||''));
+ok('ett pass som inte börjat kan inte kontrolleras', /inte börjat/.test(await boom(()=>sub(U.rkay,'scF',ALL))||''));
+ok('okända punkter nekas', /Okänd punkt/.test(await boom(()=>sub(U.rkay,'sc1',Object.assign({rokat:true},ALL)))||''));
+const s1 = await sub(U.rkay, 'sc1', ALL);
+ok('producenten bockar av alla elva och skickar in', s1.ok && s1.all_ok, s1);
+const adm = await as(db,U.costa,()=>rpc('studio_checks',{p_from:null,p_to:null}));
+ok('admin ser kontrollen med producentens namn, pass och tidpunkt', adm.some(c=>c.booking==='sc1' && c.by==='RKAY' && c.at && c.date==='2026-10-01' && c.start==='10:00'), adm);
+ok('inga notiser när allt är i ordning', (await q(`select 1 from outbox where kind='check'`)).length===0);
+const half = Object.assign({}, ALL, {spill:false});
+ok('en punkt som inte gick kräver en kommentar', /kommentar/.test(await boom(()=>sub(U.pr2,'sc2',half))||''));
+const s2 = await sub(U.pr2, 'sc2', half, {p_comment:'Spill på mattan, kunde inte få bort allt'});
+ok('med kommentar: avvikelse registrerad, admins får veta', s2.ok && !s2.all_ok && (await q(`select member_id from outbox where kind='check'`)).some(r=>r.member_id==='costa'), s2);
+ok('en skada kräver en beskrivning', /Beskriv skadan/.test(await boom(()=>sub(U.pr2,'sc2',ALL,{p_damage:true}))||''));
+await sub(U.pr2, 'sc2', ALL, {p_damage:true, p_damage_text:'Sladd till monitor A trasig'});
+ok('skadan rapporteras till admins', !!(await one(`select 1 from outbox where kind='check' and subject like 'Skada rapporterad%' and member_id='az'`)));
+ok('en producent ser sina egna kontroller — inte andras', (await as(db,U.pr2,()=>rpc('studio_checks',{p_from:null,p_to:null}))).map(c=>c.booking).join()==='sc2');
+ok('ingen läser tabellen direkt', (await as(db,U.rkay,()=>q(`select * from studio_checks`))).length===0);
+/* påminnelsen en kvart efter passet */
+const t = await one(`select ((now() at time zone 'Europe/Stockholm') - interval '2 hours')::date d, to_char((now() at time zone 'Europe/Stockholm') - interval '2 hours','HH24:MI') s, to_char((now() at time zone 'Europe/Stockholm') - interval '30 minutes','HH24:MI') e`);
+await SC('scR', {date:t.d instanceof Date ? t.d.toISOString().slice(0,10) : String(t.d).slice(0,10), start:t.s, end:t.e});
+await one(`select studio_check_reminders() n`); await one(`select studio_check_reminders() n`);
+const rem = await q(`select member_id from outbox where dedupe_key='check-rem:scR'`);
+ok('den ansvariga påminns när passet slutat — en gång', t.e < t.s || (rem.length===1 && rem[0].member_id==='rkay'), rem);
+ok('inte för pass som redan är kontrollerade', (await q(`select 1 from outbox where dedupe_key='check-rem:sc1'`)).length===0);
+/* Vanlig BS eller Paket BS: sätts när passet avslutas, nästa pass ärver */
+const KP = (id, d) => R('booking', id, {id, studio:'B', date:d, start:'10:00', end:'13:00', who:'Kim Kund', title:'Studiotid', circleId:'', status:'', with:[]});
+await KP('pk1','2026-09-02'); await KP('pk2','2026-09-09'); await KP('pk3','2026-09-16');
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'pk1',p_paid:true,p_note:null,p_package:true}));
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'pk2',p_paid:true,p_note:null,p_package:null}));
+await as(db,U.rkay,()=>rpc('close_session',{p_booking:'pk3',p_paid:false,p_note:null,p_package:null}));
+const pk = Object.fromEntries((await q(`select id, data->>'pkg' p from records where id in ('pk1','pk2','pk3')`)).map(r=>[r.id, r.p]));
+ok('Paket BS registreras vid avslut, nästa pass ärver det, obetalt räknas inte som BS', pk.pk1==='true' && pk.pk2==='true' && pk.pk3==='false', pk);
+}
+/* ============ SÄKERHETSGRANSKNINGEN 2026-10-23: NULL får aldrig släppa igenom ============ */
+{
+head('Behörigheter: anrop utan konto eller med tomma fält släpps aldrig igenom');
+const nobody = await user('nobody@sec.se');
+await R('booking','sx1',{id:'sx1', studio:'', date:'2027-03-01', start:'12:00', end:'15:00', who:'Kim Kund', title:'Studiotid', circleId:'', status:'request', with:['PR2'], reqBy:'ku1'});
+await R('booking','sx2',{id:'sx2', studio:'', date:'2027-03-02', start:'12:00', end:'15:00', who:'Kim Kund', title:'Studiotid', circleId:'', status:'request', with:['PR2'], reqBy:'ku1'});
+const anonAns = await boom(()=>asAnon(db,()=>rpc('answer_request',{p_booking:'sx1',p_approve:true,p_studio:'A'})));
+ok('anonym kan inte godkänna en förfrågan', !!anonAns && (await one(`select data->>'status' s from records where id='sx1'`)).s==='request', anonAns);
+const noAcc = await boom(()=>as(db,nobody,()=>rpc('answer_request',{p_booking:'sx2',p_approve:false,p_studio:null})));
+ok('en inloggning utan konto kan inte avböja en förfrågan', /Bara admin/.test(noAcc||'') && (await one(`select data->>'status' s from records where id='sx2'`)).s==='request', noAcc);
+ok('godkänna utan studio nekas', /Välj studio/.test(await boom(()=>as(db,U.pr2,()=>rpc('answer_request',{p_booking:'sx1',p_approve:true,p_studio:null})))||''));
+ok('anonym kan inte föreslå cirkelpass', !!(await boom(()=>asAnon(db,()=>rpc('request_session',{p_circle:'c1',p_date:'2027-03-01',p_start:'18:00',p_end:'21:00'})))));
+ok('en inloggning utan konto kan inte föreslå cirkelpass', /inte med i den cirkeln/.test(await boom(()=>as(db,nobody,()=>rpc('request_session',{p_circle:'c1',p_date:'2027-03-01',p_start:'18:00',p_end:'21:00'})))||''));
+await R('circle','cNo',{id:'cNo', n:'Utan lista', leader:'Sofia Marks'});
+ok('en deltagare kan inte föreslå pass i en cirkel utan medlemslista', /inte med i den cirkeln/.test(await boom(()=>as(db,U.will,()=>rpc('request_session',{p_circle:'cNo',p_date:'2027-03-01',p_start:'18:00',p_end:'21:00'})))||''));
+ok('en inloggning utan konto ser ingen artists poäng', /Inte behörig/.test(await boom(()=>as(db,nobody,()=>rpc('points_summary',{p_member:'ku1'})))||''));
+const nd = await boom(()=>as(db,U.ku1,()=>rpc('request_customer_slot',{p_date:null,p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:'[]'})));
+ok('en kundförfrågan utan datum nekas', /dag framåt/.test(nd||''), nd);
+ok('en inloggning utan konto kan inte lösa in', /Bara kunder/.test(await boom(()=>as(db,nobody,()=>rpc('redeem_reward',{p_reward:'x',p_member:null})))||''));
+const fn = await q(`select p.proname, has_function_privilege('anon', p.oid, 'execute') a from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public' and p.proname in ('answer_request','request_session','book_circle_session','complete_session')`);
+ok('funktionerna är stängda för anonyma', fn.length===4 && fn.every(f=>!f.a), fn);
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

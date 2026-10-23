@@ -297,9 +297,10 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   box = await outbox();
   const vera = box.find(m=>m.kind==='lead-ok' && m.email==='vera@x.se');
   const costa = box.find(m=>m.kind==='invite' && m.email==='costa@b.se');
-  const ans = box.find(m=>m.kind==='booked' && m.email==='kund@b.se');
+  const ans = box.find(m=>m.kind==='confirmed' && m.email==='kund@b.se');
   ok('kunden får bokningsbekräftelsen med länken till Access-sidan på mejlen', vera && /^Bokningsbekräftelse/.test(vera.subject) && /access\.html\?inbjudan=/.test(vera.link), vera);
-  ok('kunden med konto får en orderbekräftelse när förfrågan godkänns', !!ans && /THE BOOTH/.test(ans.body), box.filter(m=>m.kind==='booked').map(m=>m.email+' '+m.body));
+  ok('kunden med konto får "Session bekräftad" med adress och studioregler när förfrågan godkänns', !!ans && /THE BOOTH/.test(ans.body)
+     && /^Session bekräftad/.test(ans.subject) && /Råsundavägen 102/.test(ans.body) && /Max 2 extra personer/.test(ans.body), box.filter(m=>/booked|confirmed/.test(m.kind)).map(m=>m.email+' '+m.subject));
   ok('Costa får sin inbjudan på mejlen, som admin', costa && /som admin/.test(costa.body) && /#join=/.test(costa.link), costa);
   const tokV = new URL(vera.link).searchParams.get('inbjudan'), tokC = costa.link.split('#join=')[1];
 
