@@ -1,0 +1,6 @@
+# Bara webbappen publiceras: inte iPhone-projektet, testerna eller databasens testmiljö
+app/ios
+app/store
+node_modules
+db/test
+.playwright-mcp
