@@ -1389,6 +1389,14 @@ await sub(U.pr2, 'sc2', ALL, {p_damage:true, p_damage_text:'Sladd till monitor A
 ok('skadan rapporteras till admins', !!(await one(`select 1 from outbox where kind='check' and subject like 'Skada rapporterad%' and member_id='az'`)));
 ok('en producent ser sina egna kontroller — inte andras', (await as(db,U.pr2,()=>rpc('studio_checks',{p_from:null,p_to:null}))).map(c=>c.booking).join()==='sc2');
 ok('ingen läser tabellen direkt', (await as(db,U.rkay,()=>q(`select * from studio_checks`))).length===0);
+/* cirkelpass: ledaren är ansvarig och fyller i kontrollen själv, fast rollen inte är crew */
+await SC('scC', {who:'Sofia Marks', circleId:'c1', status:'done'});
+ok('cirkelledaren är ansvarig för sitt cirkelpass', (await one(`select bs_check_responsible(data) r from records where id='scC'`)).r==='sofia');
+ok('en annan ledare kan inte skicka in den', /Bara passets producent/.test(await boom(()=>sub(U.lea,'scC',ALL))||''));
+const sC = await sub(U.sofia, 'scC', ALL);
+ok('ledaren skickar in kontrollen för sitt cirkelpass och ser den', sC.ok && sC.all_ok
+   && (await as(db,U.sofia,()=>rpc('studio_checks',{p_from:null,p_to:null}))).some(c=>c.booking==='scC'), sC);
+ok('en inloggning utan konto ser inga studiokontroller', (await as(db,ghost,()=>rpc('studio_checks',{p_from:null,p_to:null}))).length===0);
 /* påminnelsen en kvart efter passet */
 const t = await one(`select ((now() at time zone 'Europe/Stockholm') - interval '2 hours')::date d, to_char((now() at time zone 'Europe/Stockholm') - interval '2 hours','HH24:MI') s, to_char((now() at time zone 'Europe/Stockholm') - interval '30 minutes','HH24:MI') e`);
 await SC('scR', {date:t.d instanceof Date ? t.d.toISOString().slice(0,10) : String(t.d).slice(0,10), start:t.s, end:t.e});

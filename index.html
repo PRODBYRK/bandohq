@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="sv">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b090e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -60,6 +60,7 @@
   --sA:#7c3aed; --sB:#0284c7;
 
   --safeT:env(safe-area-inset-top,0px); --safeB:env(safe-area-inset-bottom,0px);
+  --safeL:env(safe-area-inset-left,0px); --safeR:env(safe-area-inset-right,0px);
   /* rörelsen: sajtens kurvor (ut = allt som kommer in, io = linjer, drawer = ark och paneler) */
   --ease:cubic-bezier(.23,1,.32,1); --ease-io:cubic-bezier(.77,0,.175,1); --ease-drawer:cubic-bezier(.32,.72,0,1);
   --sans:"Barlow","Helvetica Neue",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
@@ -70,7 +71,7 @@ html,body{background:var(--bg);color:var(--txt);font-family:var(--sans);
   font-size:16px;line-height:1.5;overscroll-behavior-y:none;-webkit-font-smoothing:antialiased}
 ::selection{background:var(--btn);color:#fff}
 input,textarea{caret-color:var(--pink)}
-body{min-height:100vh;padding-bottom:calc(88px + var(--safeB))}
+body{min-height:100vh;min-height:100dvh;padding-bottom:calc(88px + var(--safeB))}
 
 /* ---------- bakgrunden: natt, ett svagt sken från skylten upptill och deep purple nedtill ----------
    Stilla (ingen oskärpa, ingen rörelse): billigt att rita och lugnt att läsa i. */
@@ -83,8 +84,9 @@ body{min-height:100vh;padding-bottom:calc(88px + var(--safeB))}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
 #app{position:relative;z-index:2}
 
+html,body{font-synthesis:none}
 /* ---------- header ---------- */
-header{position:sticky;top:0;z-index:40;padding:calc(12px + var(--safeT)) 16px 12px;
+header{position:sticky;top:0;z-index:40;padding:calc(12px + var(--safeT)) calc(16px + var(--safeR)) 12px calc(16px + var(--safeL));
   background:var(--bg);border-bottom:1px solid var(--line);
   display:flex;align-items:center;gap:12px}
 .logo{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
@@ -94,19 +96,29 @@ header{position:sticky;top:0;z-index:40;padding:calc(12px + var(--safeT)) 16px 1
   filter:drop-shadow(0 0 6px var(--glow))}
 /* "BANDO HQ" i skyltens typsnitt — HQ lyser som neonröret */
 .wordmark{font-family:var(--disp);font-size:21px;font-weight:800;letter-spacing:.12em;white-space:nowrap;line-height:1}
+.wordmark{transition:opacity .2s}
+header.titled .wordmark{opacity:0}
+/* vyns rubrik i headern när den rullat ut ur bild (telefon) */
+.htitle{position:absolute;left:96px;right:96px;top:var(--safeT);bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none;
+  font-family:var(--disp);font-weight:800;font-size:17px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;
+  opacity:0;transform:translateY(6px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+header.titled .htitle{opacity:1;transform:none}
+@media (min-width:1024px){ .htitle{display:none} }
 .wordmark span{color:var(--tube);margin-left:.28em;text-shadow:0 0 14px rgba(255,62,191,.55)}
 .hbtn{flex:none;height:36px;padding:0 4px;border-radius:var(--r-sm);border:1px solid var(--line2);
-  background:transparent;color:var(--txt);font:inherit;font-size:12px;font-weight:600;
+  background:transparent;color:var(--txt);font:inherit;font-family:var(--disp);font-size:13px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;gap:8px;transition:transform .16s var(--ease)}
 .hbtn:active{transform:scale(.96)}
 .hbtn .av{width:26px;height:26px;border-radius:var(--r-sm);font-size:11px}
 .hbtn b{padding-right:8px;font-weight:600}
 
 /* ---------- generiskt ---------- */
-main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
+main{padding:6px calc(16px + var(--safeR)) 24px calc(16px + var(--safeL));max-width:660px;margin:0 auto}
 /* rubriken i skyltens typsnitt: Barlow Condensed ExtraBold i versaler */
-.h1{font-family:var(--disp);font-size:34px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;
-  margin:var(--s2) 0 var(--s1);line-height:1.08;color:#fff}
+.h1{font-family:var(--disp);font-size:clamp(34px,10.5vw,44px);font-weight:800;letter-spacing:.02em;text-transform:uppercase;
+  margin:var(--s2) 0 var(--s1);line-height:1;color:#fff}
+/* dagens datum i neonrörets kontur */
+.h1 .dnum{font-weight:800;color:transparent;-webkit-text-stroke:1.5px var(--tube);filter:drop-shadow(0 0 8px rgba(255,62,191,.55))}
 .sub{color:var(--mut);font-size:14px;margin-bottom:var(--s5);line-height:1.5}
 /* sektionsetiketten som i prislistan: glest spärrade versaler och en tunn linje */
 .eyebrow{font-size:11px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--mut);margin:var(--s6) 0 var(--s3);
@@ -120,8 +132,13 @@ main{padding:6px 16px 24px;max-width:660px;margin:0 auto}
 .muted{color:var(--mut)}
 .tiny{font-size:12px}
 .nums{font-variant-numeric:tabular-nums}
-.empty{color:var(--mut);font-size:13.5px;padding:var(--s5) var(--s4);text-align:center;line-height:1.55;
-  border:1px dashed var(--line2);border-radius:var(--r)}
+/* tomt läge: ett släckt neonhus, ingen streckad låda */
+.empty{color:var(--mut);padding:32px 16px 24px;text-align:center;line-height:1.4;border:0;border-top:1px solid var(--line);border-radius:0;
+  font-family:var(--disp);font-size:17px;font-weight:600;letter-spacing:.04em}
+.empty::before{content:"";display:block;width:44px;height:38px;margin:0 auto 14px;background:url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 56%22 fill=%22none%22 stroke=%22rgba(255,150,230,.28)%22 stroke-width=%223.4%22 stroke-linejoin=%22miter%22 stroke-linecap=%22square%22%3E%3Cpath d=%22M5 27 32 6l27 21%22/%3E%3Cpath d=%22M45 16V8h6v12.6%22/%3E%3Cpath d=%22M13 21v29h38V21%22/%3E%3Cpath d=%22M21 50V29h22v21%22/%3E%3Cpath d=%22M25 35h14M25 40h14M25 45h14%22/%3E%3C/svg%3E") center/contain no-repeat}
+.empty .linkbtn.inline{display:inline-block;margin-top:8px}
+.card .empty,.flags .empty{border-top:0;padding:18px 8px}
+.card .empty::before{display:none}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r-sm);
   font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
 
@@ -143,15 +160,23 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
 .studio-name{font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--mut)}
 .live-title{font-family:var(--disp);font-size:24px;font-weight:600;margin-top:6px;letter-spacing:.01em;line-height:1.15}
 .live-meta{font-size:13.5px;color:var(--mut);margin-top:4px}
+/* studionamnet är skylten: neonrörets kontur, tänd när någon är i studion */
+.live .studio-name.sign{font-family:var(--disp);font-weight:800;font-size:30px;letter-spacing:.06em;line-height:1;color:transparent;
+  -webkit-text-stroke:1.3px rgba(255,150,230,.42);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.live .studio-name.sign:before{align-self:center;flex:none}
+.live.on .studio-name.sign{-webkit-text-stroke-color:var(--tube);filter:drop-shadow(0 0 2px rgba(255,62,191,.9)) drop-shadow(0 0 12px rgba(255,62,191,.45))}
+html.enter .live.on .studio-name.sign{animation:ignite 1000ms steps(1,end) 220ms both}
+.live:not(.on){padding:13px 15px}
+.live:not(.on) .live-title{font-size:18px;color:var(--txt);margin-top:8px}
 .bar{height:4px;border-radius:1px;background:rgba(255,255,255,.08);margin-top:13px;overflow:hidden}
 .bar i{display:block;height:100%;border-radius:1px;background:var(--tube)}
 .live.on .bar i{box-shadow:0 0 10px var(--glow)}
 /* equalizer istället för en statisk prick */
 .eq{display:inline-flex;align-items:flex-end;gap:2px;height:11px}
-.eq i{width:2.5px;border-radius:1px;background:var(--ok2);animation:eq .9s ease-in-out infinite alternate}
+.eq i{width:2.5px;border-radius:1px;background:var(--ok2);transform-origin:50% 100%;animation:eq .9s cubic-bezier(.45,0,.55,1) infinite alternate}
 .eq i:nth-child(1){height:40%;animation-delay:0s}
-.eq i:nth-child(2){height:90%;animation-delay:.18s}
-.eq i:nth-child(3){height:60%;animation-delay:.36s}
+.eq i:nth-child(2){height:90%;animation-delay:.18s;animation-duration:.7s}
+.eq i:nth-child(3){height:60%;animation-delay:.36s;animation-duration:1.1s}
 .eq i:nth-child(4){height:100%;animation-delay:.1s}
 @keyframes eq{from{transform:scaleY(.35)}to{transform:scaleY(1)}}
 
@@ -164,10 +189,14 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
 .bk:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
   background:var(--k,var(--pink))}
 .bk:active{transform:scale(.988);background:var(--card2)}
-.bk.past{opacity:.5}
+/* passerat pass: släckt yta, men namnen och pillren står kvar i full färg */
+.bk.past{background:transparent;border-color:var(--line3)}
+.bk.past .bk-time b,.bk.past .bk-title{color:var(--mut)}
+.bk.past .bk-time span,.bk.past .bk-note{color:var(--mut2)}
+.bk.past:before{opacity:.45}
 .bk.mine{border-color:rgba(255,62,191,.3)}
 .bk-time{flex:none;width:54px}
-.bk-time b{display:block;font-family:var(--disp);font-size:20px;font-weight:600;letter-spacing:.01em;line-height:1.1;font-variant-numeric:tabular-nums}
+.bk-time b{display:block;font-family:var(--disp);font-size:22px;font-weight:800;letter-spacing:.01em;line-height:1.1;font-variant-numeric:tabular-nums}
 .bk-time span{display:block;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
 .bk-title{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bk-sub{font-size:12px;color:var(--mut);margin-top:4px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
@@ -179,15 +208,18 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
 .weeknav button{width:40px;height:40px;border-radius:var(--r-sm);border:1px solid var(--line2);
   background:transparent;color:var(--txt);font-size:18px;font-weight:600;transition:transform .16s var(--ease),background-color .16s}
 .weeknav button:active{transform:scale(.95);background:var(--card2)}
-.weeknav .wk{flex:1;text-align:center;font-size:12px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--mut)}
+.weeknav .wk{flex:1;text-align:center;font-family:var(--disp);font-size:26px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;color:#fff;line-height:1}
+.weeknav .wk small{font:600 11px var(--sans);letter-spacing:.24em;color:var(--mut);margin-left:8px;vertical-align:middle}
 .days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
 .day{border:1px solid var(--line);background:var(--surface);border-radius:var(--r-sm);padding:9px 2px 8px;
   text-align:center;color:var(--txt);font:inherit;transition:transform .16s var(--ease),background-color .16s,border-color .16s}
-.day.today{border-color:rgba(255,106,216,.55)}
-.day.sel{background:var(--btn);border-color:var(--btn);box-shadow:0 6px 20px -8px var(--glow)}
+.day.today{border-color:var(--line)}
+.day.today em{color:var(--tube)}
+.day.today b{text-decoration:underline;text-decoration-color:var(--tube);text-decoration-thickness:2px;text-underline-offset:4px}
+.day.sel{background:rgba(255,62,191,.08);border-color:var(--tube);box-shadow:0 0 0 1px var(--tube) inset,0 0 22px -10px var(--glow)}
 .day em{display:block;font-style:normal;font-size:9.5px;letter-spacing:.18em;color:var(--mut);font-weight:600}
-.day.sel em{color:rgba(255,255,255,.9)}
-.day b{display:block;font-family:var(--disp);font-size:19px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.day.sel em{color:var(--tube)}
+.day b{display:block;font-family:var(--disp);font-size:19px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
 .day .dots{display:flex;justify-content:center;gap:3px;height:5px;margin-top:5px}
 .day .dots i{width:4px;height:4px;border-radius:50%}
 .daygroup{margin-top:18px}
@@ -217,9 +249,13 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
 .accon input{width:auto;flex:none}
 .chips{display:flex;gap:7px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;-ms-overflow-style:none}
 .chips::-webkit-scrollbar{display:none}
+.chips:not(.wrap),.seg.many{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 32px),transparent)}
+.chips.at-end,.seg.many.at-end{-webkit-mask-image:none;mask-image:none}
+#view>.chips:not(.wrap),.wk-main>.chips:not(.wrap){margin-inline:-16px;padding-inline:16px;scroll-padding-inline:16px}
+#sheetBody>.chips:not(.wrap){margin-inline:-18px;padding-inline:18px;scroll-padding-inline:18px}
 /* chips som på Access-sidan: rak ram, spärrade versaler, valt = neonröret runt om */
 .chip{flex:none;min-height:38px;padding:8px 13px;border-radius:var(--r-sm);border:1px solid rgba(255,255,255,.22);
-  background:transparent;color:var(--txt);font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  background:transparent;color:var(--txt);font:inherit;font-family:var(--disp);font-size:13.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
   transition:transform .14s var(--ease),border-color .16s,background-color .16s,color .16s;display:inline-flex;align-items:center;gap:7px}
 .chip:active{transform:scale(.96)}
 .chip.on{background:rgba(255,62,191,.08);border-color:var(--tube);color:#fff;box-shadow:0 0 0 1px var(--tube) inset}
@@ -230,6 +266,16 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
   border:1px solid var(--line);background:var(--surface);
   margin-bottom:var(--s2);width:100%;color:var(--txt);font:inherit;text-align:left;transition:transform .16s var(--ease),background-color .16s,border-color .16s}
 .member:active{transform:scale(.99);background:var(--card2)}
+/* Mer: numrerat register som på Access-sidan */
+.mrow{display:flex;align-items:baseline;gap:14px;width:100%;padding:16px 2px 15px;border:0;border-bottom:1px solid var(--line);
+  background:none;color:var(--txt);font:inherit;text-align:left;transition:transform .16s var(--ease)}
+.mrow:first-child{border-top:1px solid var(--line)}
+.mrow i{font-style:normal;font-family:var(--disp);font-size:13px;font-weight:600;letter-spacing:.14em;color:var(--tube);width:22px;flex:none}
+.mrow b{display:block;font-family:var(--disp);font-weight:800;font-size:28px;line-height:1;letter-spacing:.02em}
+.mrow em{display:block;font-style:normal;font-size:13px;color:var(--mut);margin-top:5px}
+.mrow .chev{color:var(--mut2);font-size:20px}
+.mrow:active{transform:translateX(3px)}
+@media (hover:hover) and (pointer:fine){ .mrow:hover b{color:var(--tube)} }
 .av{width:42px;height:42px;flex:none;border-radius:var(--r-sm);display:grid;place-items:center;
   font-family:var(--disp);font-size:16px;font-weight:800;letter-spacing:.04em;color:#fff;
   position:relative;box-shadow:0 0 0 1px rgba(255,255,255,.1) inset}
@@ -237,7 +283,7 @@ html.enter #view .stagger>*:nth-child(n+5){animation-delay:180ms}
 .mname{font-size:15.5px;font-weight:600;letter-spacing:.01em}
 .mrole{font-size:13px;color:var(--mut);margin-top:2px}
 .mstat{text-align:right;flex:none}
-.mstat b{display:block;font-family:var(--disp);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums}
+.mstat b{display:block;font-family:var(--disp);font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
 .mstat span{font-size:10px;color:var(--mut);letter-spacing:.18em;text-transform:uppercase;font-weight:600}
 
 /* ---------- formulär ---------- */
@@ -263,22 +309,23 @@ input[type=date],input[type=time]{min-height:46px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .two.end{align-items:end}                                  /* fälten i jämnhöjd även när en etikett bryts */
 .studiopick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.spick{border:1px solid var(--line2);background:transparent;border-radius:var(--r-sm);padding:14px 13px;
+.spick{position:relative;overflow:hidden;border:1px solid var(--line2);background:transparent;border-radius:var(--r-sm);padding:14px 13px 14px 17px;
   color:var(--txt);font:inherit;text-align:left;transition:transform .16s var(--ease),border-color .16s}
+.spick::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--s,transparent)}
 .spick b{display:block;font-size:13px;font-weight:600;letter-spacing:.22em;text-transform:uppercase}
 .spick span{display:block;font-size:11.5px;color:var(--mut);margin-top:4px}
 .spick.on{border-color:var(--tube);box-shadow:0 0 0 1px var(--tube) inset,0 0 22px -10px var(--glow)}
 .spick.on span{color:rgba(255,255,255,.82)}
 .btn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:14px 18px;
-  border-radius:var(--r-sm);border:0;font:inherit;font-size:13px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;
+  border-radius:var(--r-sm);border:0;font:inherit;font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
   color:#fff;background:var(--btn);cursor:pointer;user-select:none;-webkit-user-select:none;
   transition:transform .16s var(--ease),background-color .18s,opacity .18s}
 .btn::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 6px 28px -6px var(--glow);
   opacity:0;transition:opacity .24s ease;pointer-events:none}
 .btn:active{transform:scale(.97)}
-.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.42);color:var(--txt);box-shadow:none}
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.28);color:var(--txt);box-shadow:none}
 .btn.danger{background:transparent;border:1px solid rgba(251,113,133,.5);color:var(--bad2);box-shadow:none}
-.btn.slim{min-height:40px;padding:9px 14px;font-size:12px;letter-spacing:.16em}
+.btn.slim{min-height:40px;padding:9px 14px;font-size:14px;letter-spacing:.14em;white-space:nowrap}
 .btn:disabled{opacity:.45;box-shadow:none;cursor:default}
 @media (hover:hover) and (pointer:fine){
   .btn:not(:disabled):not(.ghost):not(.danger):hover{background:var(--btn-hover)}
@@ -296,41 +343,67 @@ input[type=date],input[type=time]{min-height:46px}
 
 /* ---------- nav + fab ---------- */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;justify-content:center;
-  padding:9px 6px calc(9px + var(--safeB));background:var(--bg);border-top:1px solid var(--line)}
-nav .inner{display:flex;width:100%;max-width:660px}
-nav button{position:relative;flex:1;background:none;border:0;color:var(--mut2);font:inherit;font-size:10px;font-weight:600;
+  padding:9px calc(6px + var(--safeR)) calc(9px + var(--safeB)) calc(6px + var(--safeL));background:var(--bg);border-top:1px solid var(--line)}
+nav .inner{position:relative;display:flex;width:100%;max-width:660px}
+nav button{position:relative;flex:1;background:none;border:0;color:var(--mut);font:inherit;font-size:10px;font-weight:600;
   letter-spacing:.16em;text-transform:uppercase;cursor:pointer;padding:5px 0;display:flex;flex-direction:column;align-items:center;gap:6px;
   transition:color .18s,transform .16s var(--ease)}
 /* aktiv flik: neonröret ovanför, som pelarnavigeringen på sajten */
 nav button::before{content:"";position:absolute;top:-10px;left:30%;right:30%;height:2px;background:var(--tube);
   box-shadow:0 0 10px var(--glow);opacity:0;transition:opacity .2s}
-nav button.on{color:var(--tube)}
+nav button.on{color:#fff}
 nav button.on::before{opacity:1}
-nav button.on svg{filter:drop-shadow(0 0 5px rgba(255,62,191,.55))}
+nav button.on svg{stroke:var(--tube);filter:drop-shadow(0 0 5px rgba(255,62,191,.55))}
+.nav-ind{position:absolute;left:0;top:-10px;height:2px;width:0;background:var(--tube);box-shadow:0 0 10px var(--glow);
+  pointer-events:none;transition:transform .24s var(--ease-io)}
+nav.has-ind button::before{display:none}
 nav button:active{transform:scale(.95)}
 nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:square;stroke-linejoin:miter}
-.fab{position:fixed;right:16px;bottom:calc(90px + var(--safeB));z-index:55;width:56px;height:56px;
+.fab{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(90px + var(--safeB));z-index:55;width:56px;height:56px;
   border-radius:var(--r-sm);cursor:pointer;border:0;background:var(--btn);color:#fff;
   font-size:30px;font-weight:300;line-height:1;
   box-shadow:0 10px 30px -10px var(--glow);
   transition:transform .16s var(--ease),background-color .18s}
 .fab:active{transform:scale(.95)}
+body.fab-on main{padding-bottom:96px}
+body.fab-on.np-on main{padding-bottom:164px}
+#hBook{width:auto}
+/* allt som går att trycka på svarar */
+.day:active,.dchip:active,.spick:active,.seg button:active,.sheet .close:active,.iconbtn:not(:disabled):active,.rankmove button:active,
+.flink:active,.np-x:active,.task-x:active{transform:scale(.95)}
+.pcard:active,.mtile:active,button.live:active,.myag-h:active{transform:scale(.985)}
+.pcard,.mtile,.seg button,.sheet .close,.iconbtn,.rankmove button,.flink,.np-x,.live{transition:transform .16s var(--ease),border-color .16s,background-color .16s,color .18s}
+@media (hover:hover) and (pointer:fine){
+  .chip:hover,.day:hover,.dchip:hover,.spick:hover,.weeknav button:hover,.hbtn:hover,.sheet .close:hover,.iconbtn:hover,.rankmove button:hover{border-color:rgba(255,255,255,.6);color:#fff}
+  .chip.on:hover,.dchip.on:hover,.spick.on:hover,.day.sel:hover{border-color:var(--tube)}
+  .member:hover,.bk:hover,.srow:hover{border-color:var(--line2)}
+}
+/* långtryck markerar inte text och öppnar ingen meny på kontroller; inget dubbeltryckszoom */
+button,[role=button],nav,.chip,.bk,.day,.dchip,.member,.seg button,.pcard,.mtile,.spick,.mrow{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button,a,[role=button],input,select,textarea,label,summary{touch-action:manipulation}
+@media (max-width:1023px){ #hBook{display:none!important} }
 
 /* ---------- sheet ---------- */
 .scrim{position:fixed;inset:0;z-index:60;background:rgba(5,4,8,.74);
-  opacity:0;pointer-events:none;transition:opacity .24s}
-.scrim.on{opacity:1;pointer-events:auto}
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:70;max-height:92vh;overflow-y:auto;
+  opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto;transition-duration:.28s}
+/* arket öppnar på 420 ms och stänger på 280 — det som försvinner ska inte dröja */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:70;max-height:92vh;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
-  background:var(--bg2);
-  border-top:1px solid var(--line2);
-  border-radius:var(--r) var(--r) 0 0;padding:12px 18px calc(30px + var(--safeB));
-  transform:translateY(102%);transition:transform .42s var(--ease-drawer);max-width:660px;margin:0 auto;
+  background:radial-gradient(120% 170px at 50% 0,rgba(58,15,88,.55),transparent 72%) no-repeat local,var(--bg2);
+  border-top:1px solid rgba(255,106,216,.38);
+  border-radius:var(--r) var(--r) 0 0;padding:12px calc(18px + var(--safeR)) calc(30px + var(--safeB)) calc(18px + var(--safeL));
+  transform:translateY(102%);transition:transform .28s var(--ease-drawer);max-width:660px;margin:0 auto;
   box-shadow:0 -20px 60px -20px #000}
-.sheet.on{transform:translateY(0)}
-.grip{width:36px;height:3px;border-radius:2px;background:rgba(255,255,255,.22);margin:0 auto 16px}
+.sheet.on{transform:translateY(0);transition-duration:.42s}
+html.sheet-open,html.sheet-open body{overflow:hidden}
+.sheet:focus{outline:none}
+/* greppet: 44 px att ta tag i, fast bara 3 px syns */
+.grip{position:relative;width:36px;height:3px;border-radius:2px;background:rgba(255,106,216,.45);margin:0 auto 16px;touch-action:none}
+.grip::before{content:"";position:absolute;inset:-14px -40px}
+.sheet.dragging .grip{background:var(--tube);box-shadow:0 0 10px var(--glow)}
 .sheet h2{font-family:var(--disp);font-size:27px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;line-height:1.08;margin-bottom:4px;padding-right:40px;color:#fff}
-.sheet .close{position:absolute;right:16px;top:16px;width:34px;height:34px;border-radius:var(--r-sm);
+.sheet .close{position:absolute;right:12px;top:10px;width:44px;height:44px;border-radius:var(--r-sm);
   border:1px solid var(--line2);background:transparent;color:var(--mut);font-size:16px;line-height:1}
 .stack{display:flex;flex-direction:column;gap:9px;margin-top:20px}
 .kv{display:flex;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -339,18 +412,20 @@ nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;st
 .code{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.55;
   word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px;
   color:var(--pur3);max-height:130px;overflow-y:auto}
-.toast{position:fixed;left:50%;bottom:calc(154px + var(--safeB));transform:translate(-50%,14px);z-index:90;
-  background:var(--card2);border:1px solid var(--line2);color:var(--txt);padding:12px 18px;border-radius:var(--r-sm);
-  font-size:13.5px;font-weight:600;opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none;
+.toast{position:fixed;left:50%;bottom:calc(154px + var(--safeB));transform:translate(-50%,8px);z-index:90;
+  background:var(--card2);border:1px solid var(--line2);border-left:2px solid var(--tube);color:var(--txt);padding:12px 18px;border-radius:var(--r-sm);
+  font-size:13.5px;font-weight:600;opacity:0;transition:opacity .16s ease-out,transform .16s ease-out;pointer-events:none;
   box-shadow:0 18px 40px -12px #000;max-width:88vw;text-align:center}
-.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.on{opacity:1;transform:translate(-50%,0);transition:opacity .2s var(--ease),transform .26s var(--ease)}
 
 button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{
   outline:2px solid var(--tube);outline-offset:3px}
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.001ms!important;animation-iteration-count:1!important;
     transition-duration:.001ms!important}
-  .sheet{transition:none}
+  /* arket står på plats direkt i stället för att glida; stängt går det inte att nå med tabb */
+  .sheet{transform:none!important;visibility:hidden;transition:none!important}
+  .sheet.on{visibility:visible}
   /* rörelserna bort, tydligheten kvar: arkets bakgrund och toasten tonar (200 ms) i stället för att glida */
   .scrim,.toast{transition-duration:.2s!important}
   .toast,.toast.on{transform:translate(-50%,0)!important}
@@ -387,7 +462,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .gate-title.on .tube-on text{opacity:1}
 .gate-title.lit .tube-on text{animation:ignite 1000ms steps(1,end) 120ms both}
 @keyframes ignite{0%{opacity:0}10%{opacity:.9}16%{opacity:.1}28%{opacity:1}36%{opacity:.35}46%,100%{opacity:1}}
-@media (prefers-reduced-motion:reduce){ .gate-title.lit .tube-on text{animation:none!important;opacity:1} }
+#gate:has(.gate-title.lit) .gate-mark{animation:ignite 1000ms steps(1,end) 60ms both}
+.gate-title.lit+.gate-rule{transform-origin:center;animation:rule-draw 520ms var(--ease) 640ms both}
+@keyframes rule-draw{from{opacity:0;transform:scaleX(0)}to{opacity:.9;transform:scaleX(1)}}
+@media (prefers-reduced-motion:reduce){ .gate-title.lit .tube-on text{animation:none!important;opacity:1}
+  .gate-title.lit+.gate-rule,#gate .gate-mark{animation:none!important;opacity:.9} }
 .gate-body{width:100%;max-width:400px;margin:0 auto}
 
 /* ================= FILER ================= */
@@ -399,14 +478,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .drop .ic{width:46px;height:46px;border-radius:var(--r-sm);margin:0 auto 13px;display:grid;place-items:center;
   background:transparent;border:1px solid rgba(255,106,216,.45)}
 .drop .ic svg{width:22px;height:22px;stroke:var(--pur3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.drop b{display:block;font-size:15px;font-weight:700;margin-bottom:5px}
+.drop b{display:block;font-size:15px;font-weight:600;margin-bottom:5px}
 .drop span{font-size:12px;color:var(--mut);line-height:1.5}
 .fileitem{display:flex;align-items:center;gap:12px;padding:12px 13px;border-radius:var(--r);
   border:1px solid var(--line);background:var(--surface);margin-bottom:var(--s2)}
 .fileitem .ft{width:38px;height:38px;flex:none;border-radius:var(--r-sm);display:grid;place-items:center;
-  font-size:9px;font-weight:800;letter-spacing:.05em;background:rgba(255,62,191,.13);
+  font-size:9px;font-weight:600;letter-spacing:.05em;background:rgba(255,62,191,.13);
   border:1px solid var(--line);color:var(--pur3)}
-.fname{font-size:13.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fname{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fmeta{font-size:11.5px;color:var(--mut);margin-top:3px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
 .flink{flex:none;width:34px;height:34px;border-radius:var(--r-sm);border:1px solid var(--line2);cursor:pointer;
   background:var(--surface2);display:grid;place-items:center;color:var(--pur3)}
@@ -427,12 +506,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 /* ================= DASHBOARD ================= */
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .kpi{position:relative;padding:14px;border-radius:var(--r);border:1px solid var(--line);overflow:hidden;
-  background:var(--surface)}
+  background:linear-gradient(180deg,rgba(58,15,88,.22),transparent 70%),var(--surface)}
 .kpi em{display:block;font-style:normal;font-size:10.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--mut)}
-.kpi b{display:block;font-family:var(--disp);font-size:32px;font-weight:600;letter-spacing:.01em;
-  margin-top:8px;line-height:1;font-variant-numeric:tabular-nums}
-.kpi b u{text-decoration:none;font-size:14px;color:var(--mut);margin-left:2px;font-weight:500}
-.kpi .dlt{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-size:11px;font-weight:800;
+.kpi b{display:block;font-family:var(--disp);font-size:44px;font-weight:800;letter-spacing:0;
+  margin-top:10px;line-height:.92;font-variant-numeric:tabular-nums}
+.kpi b u{text-decoration:none;font-size:15px;color:var(--mut);margin-left:4px;font-weight:600}
+rect[data-fill]{transform-origin:left center;transform-box:fill-box}
+.kpi .dlt{display:inline-flex;align-items:center;gap:4px;margin-top:8px;font-size:11px;font-weight:600;
   letter-spacing:.03em}
 .kpi .spark{position:absolute;right:0;bottom:0;opacity:.5;pointer-events:none}
 .dlt.up{color:var(--ok2)} .dlt.down{color:var(--bad2)} .dlt.flat{color:var(--mut2)}
@@ -449,7 +529,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .legend i{width:9px;height:9px;border-radius:1px;display:inline-block;margin-right:6px;vertical-align:-1px}
 .hm{display:grid;gap:2px}
 .hm-cell{border-radius:3px;aspect-ratio:1}
-.hm-scale{display:flex;align-items:center;gap:5px;margin-top:11px;font-size:10.5px;color:var(--mut2);font-weight:700}
+.hm-scale{display:flex;align-items:center;gap:5px;margin-top:11px;font-size:10.5px;color:var(--mut2);font-weight:600}
 .hm-scale i{width:15px;height:9px;border-radius:2px}
 /* Kolumnerna får aldrig gå ihop — då läses "3 filer" + "8500 kr" som 38500 kr.
    Fast minsta bredd + nowrap, och kortet runt om scrollar i sidled. */
@@ -468,8 +548,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .tbl .who i{width:9px;height:9px;border-radius:3px;flex:none}
 .seg{display:flex;gap:0;padding:0;border-radius:0;background:transparent;
   border:0;border-bottom:1px solid var(--line);margin-bottom:16px}
-.seg button{position:relative;flex:1;padding:12px 6px 11px;border-radius:0;border:0;background:none;color:var(--mut);
-  font:inherit;font-size:11.5px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;transition:color .18s}
+.seg button{position:relative;flex:1;padding:12px 8px 11px;border-radius:0;border:0;background:none;color:var(--mut);
+  font:inherit;font-family:var(--disp);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;transition:color .18s}
 .seg button::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--tube);
   box-shadow:0 0 10px var(--glow);opacity:0}
 .seg button.on{color:#fff}
@@ -491,7 +571,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .badge.warn{background:rgba(250,178,25,.14);color:var(--warn);border:0;margin:0}
 /* textlänk: etikettypografi utan ram, neonrörets färg */
 .linkbtn{display:block;margin:var(--s4) auto 0;background:none;border:0;color:var(--tube);font:inherit;
-  font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;padding:10px 6px;min-height:40px}
+  font-family:var(--disp);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;padding:10px 6px;min-height:40px}
 @media (hover:hover) and (pointer:fine){ .linkbtn:hover{color:#fff} }
 .gate-form{margin-top:4px}
 .linkbtn.danger{color:var(--bad2)}
@@ -500,7 +580,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .hint{font-size:12px;line-height:1.45;margin-top:6px;color:var(--mut)}
 .hint.good{color:var(--ok2)} .hint.bad{color:var(--warn)}
 .codein{letter-spacing:.32em;font-size:24px;text-align:center;font-variant-numeric:tabular-nums}
-.invrow .grow{min-width:0} .invrow .mrole{overflow-wrap:anywhere}
+.invrow .grow{min-width:0}
+.mmail{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mut2);font-size:12px}
+.card .member{background:transparent;border:0;border-top:1px solid var(--line3);border-radius:0;margin:0;padding:12px 0}
+.card .member:first-child{border-top:0}
 .gate-foot b{color:var(--txt)}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--pur3)}
 .chev{color:var(--mut2);font-size:18px;flex:none}
@@ -528,7 +611,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .srow.req{border-color:rgba(250,178,25,.32)}
 .srow.done{opacity:.72}
 .srow-d{flex:none;width:44px;text-align:center;border-right:1px solid var(--line);padding-right:10px}
-.srow-d b{display:block;font-family:var(--disp);font-size:23px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.srow-d b{display:block;font-family:var(--disp);font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
 .srow-d span{display:block;font-size:10px;color:var(--mut);letter-spacing:.16em;margin-top:3px;text-transform:uppercase}
 .srow-t{font-size:15px;font-weight:600}
 .srow-m{font-size:12.5px;color:var(--mut);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -570,7 +653,7 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .srow-s{display:grid;grid-template-columns:12px 110px minmax(0,1fr);gap:10px;align-items:baseline;padding:9px 0;
   border-bottom:1px solid var(--line3);font-size:13px}
 .srow-s:last-child{border-bottom:0}
-.srow-s b{font-weight:650}
+.srow-s b{font-weight:600}
 .srow-s span{color:var(--mut)}
 .srow-s i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .sdot-ok{background:var(--ok2)} .sdot-warn{background:var(--warn)} .sdot-err{background:var(--bad2)}
@@ -597,16 +680,16 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .mtile img{width:100%;height:100%;object-fit:cover;display:block}
 .mtile img:not([src]){visibility:hidden}
 .mtile.nothumb::after{content:"♪";position:absolute;inset:0;display:grid;place-items:center;color:var(--mut2)}
-.mbadge{position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:5px;font-size:9.5px;font-weight:800;
-  letter-spacing:.05em;background:rgba(0,0,0,.62);color:#fff}
+.mbadge{position:absolute;top:6px;left:6px;padding:2px 6px;border-radius:var(--r-sm);font-size:9.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;background:rgba(0,0,0,.62);color:#fff}
 .mbadge.ok{left:auto;right:6px;background:rgba(5,150,105,.85)}
-.mcred{position:absolute;left:0;right:0;bottom:0;padding:14px 7px 5px;font-size:10.5px;font-weight:700;text-align:left;
+.mcred{position:absolute;left:0;right:0;bottom:0;padding:14px 7px 5px;font-size:10.5px;font-weight:600;text-align:left;
   color:#fff;background:linear-gradient(0deg,rgba(0,0,0,.7),transparent)}
 .mview{margin-top:var(--s3);border-radius:var(--r);overflow:hidden;background:#000}
 .mview img,.mview video{width:100%;max-height:60vh;object-fit:contain;display:block}
 /* veckoplan */
 .plan-t{background:none;border:0;color:var(--txt);font:inherit;text-align:left;cursor:pointer;padding:0}
-.plan-t b{font-weight:650}
+.plan-t b{font-weight:600}
 .rankempty{min-height:52px}
 .chip.slot{color:var(--txt);border-color:rgba(255,255,255,.14);font-variant-numeric:tabular-nums}
 .chip.slot.on{border-color:var(--tube);background:rgba(255,62,191,.1)}
@@ -620,10 +703,10 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
   background:var(--surface);color:var(--txt);text-align:center;font:inherit;cursor:pointer;transition:transform .16s var(--ease),border-color .16s,background-color .16s}
 .dchip:active{transform:scale(.95)}
 .dchip span{display:block;font-size:10px;font-weight:600;letter-spacing:.18em;color:var(--mut)}
-.dchip b{display:block;font-family:var(--disp);font-size:24px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.dchip b{display:block;font-family:var(--disp);font-size:24px;font-weight:800;line-height:1.15;font-variant-numeric:tabular-nums}
 .dchip i{display:block;font-style:normal;font-size:10px;color:var(--mut2);margin-top:1px}
 .dchip.full b,.dchip.past b{color:var(--mut)}
-.dchip.full i{color:var(--warn);font-weight:650}
+.dchip.full i{color:var(--warn);font-weight:600}
 .dchip.on{background:rgba(255,62,191,.08);border-color:var(--tube);box-shadow:0 0 0 1px var(--tube) inset}
 .dchip.on span{color:var(--tube)}
 .tl{margin-top:2px}
@@ -683,6 +766,9 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .lesson .lsub{font-size:10.5px;font-weight:600;letter-spacing:.2em;color:var(--mut);margin-top:12px;text-transform:uppercase}
 .lessonrow{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line3)}
 .lessonbtn{background:none;border:0;color:var(--txt);font:inherit;text-align:left;padding:6px 0;cursor:pointer}
+svg.ic{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:square;vertical-align:middle}
+.sheet .close{display:grid;place-items:center}
+.weeknav button{display:grid;place-items:center}
 .iconbtn{width:34px;height:34px;border-radius:var(--r-sm);border:1px solid var(--line2);background:transparent;color:var(--mut);font:inherit;cursor:pointer}
 .iconbtn:disabled{opacity:.35;cursor:default}
 .seg.many{overflow-x:auto;scrollbar-width:none}
@@ -696,18 +782,23 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .s-reported{background:#34d399}.s-checked{background:#2ba57a}.s-done{background:#38bdf8}.s-planned{background:rgba(255,255,255,.24)}.s-none{background:transparent}
 .weekstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .weekstats div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 6px;text-align:center}
-.weekstats b{display:block;font-family:var(--disp);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.weekstats b{display:block;font-family:var(--disp);font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
 .weekstats span{display:block;font-size:10px;color:var(--mut);letter-spacing:.12em;text-transform:uppercase;margin-top:2px}
 .wkcard{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:12px 14px;margin-bottom:9px}
 .wkcard.err{border-color:rgba(251,113,133,.45)}
 .wkcard.warnc{border-color:rgba(250,178,25,.32)}
 .flags{list-style:none;margin:10px 0 0;padding:0;font-size:13px;line-height:1.45}
 .flags.card{padding:12px 14px}
-.flags li{padding:4px 0 4px 18px;position:relative}
-.flags li::before{content:'';position:absolute;left:2px;top:10px;width:7px;height:7px;border-radius:50%}
-.flags li.f-err{color:#fecdd3}.flags li.f-err::before{background:var(--bad2)}
-.flags li.f-warn{color:#fde68a}.flags li.f-warn::before{background:var(--warn)}
-.linkbtn.inline{display:inline;margin:0 0 0 4px;padding:0;min-height:0;font-size:11px;letter-spacing:.14em;text-decoration:underline;text-underline-offset:3px}
+/* varningar markerar med punkten, texten står kvar i läsfärg */
+.flags li{padding:9px 0 9px 18px;position:relative;border-top:1px solid var(--line3)}
+.flags li:first-child{border-top:0}
+.flags li::before{content:'';position:absolute;left:2px;top:15px;width:7px;height:7px;border-radius:50%}
+.flags li.f-err,.flags li.f-warn{color:var(--txt)}
+.flags li.f-err::before{background:var(--bad2)}
+.flags li.f-warn::before{background:var(--warn)}
+.flags li b{color:var(--warn)}
+.linkbtn.inline{display:inline;margin:-6px 0 -6px 4px;padding:6px 2px;min-height:0;font-size:12px;letter-spacing:.16em;text-decoration:none}
+.linkbtn.inline::after{content:' ›'}
 .bankhead{display:flex;align-items:center;gap:9px;margin-top:12px}
 .bankhead:first-child{margin-top:0}
 .bankhead b{font-size:14px}
@@ -720,13 +811,17 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .calday.today .calday-h{color:var(--pur3)}
 .distrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line3)}
 .distrow select{flex:none;width:52%;padding:9px 10px;font-size:13px}
+/* under 16 px zoomar iOS in när fältet får fokus */
+@media (pointer:coarse){ .calfilters select,.distrow select,#impT{font-size:16px!important} }
+.mview img,.mview video{max-height:60svh}
+input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
 .slot-end{display:flex;align-items:center;font-size:14px;color:var(--mut);padding-left:2px}
 .slot-end b{color:var(--txt);margin:0 4px;font-variant-numeric:tabular-nums}
 /* samarbeten */
 .ctop-r{display:grid;grid-template-columns:18px minmax(0,1fr) 70px 24px 38px;gap:8px;align-items:center;padding:6px 0;
   border-bottom:1px solid var(--line3);font-size:13.5px}
 .ctop-i{color:var(--mut2);font-size:12px}
-.ctop-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:650}
+.ctop-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
 .ctop-b{height:4px;border-radius:1px;background:rgba(255,255,255,.06);overflow:hidden}
 .ctop-b i{display:block;height:100%;background:var(--tube)}
 .ctop-d{font-size:11px;font-weight:600;text-align:right}
@@ -737,10 +832,14 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 /* agenda */
 .task{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line3)}
 .task:first-child{border-top:0}
-.task .tick{flex:none;width:21px;height:21px;border-radius:var(--r-sm);margin-top:1px;border:1px solid rgba(255,255,255,.35);
-  background:transparent;color:#05130d;font-size:12px;font-weight:900;line-height:1;cursor:pointer}
+.task .tick{position:relative;display:grid;place-items:center;flex:none;width:21px;height:21px;border-radius:var(--r-sm);margin-top:1px;
+  border:1px solid rgba(255,255,255,.35);background:transparent;color:#05130d;font-size:12px;font-weight:600;line-height:1;cursor:pointer;
+  transition:transform .12s var(--ease),background-color .16s,border-color .16s}
+.task .tick::before{content:"";position:absolute;inset:-11px -12px}          /* 45 px träffyta */
+.task .tick:not(:disabled):active{transform:scale(.88)}
 .task .tick:disabled{cursor:default;opacity:.6}
-.task.done .tick{border-color:transparent;background:var(--ok2)}
+.task.done .tick{border-color:transparent;background:var(--ok2);box-shadow:0 0 10px -2px var(--ok2)}
+.task.done .tick::after{content:"";width:6px;height:11px;border:solid #05130d;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
 .task-t{font-size:14px;line-height:1.45}
 .task.done .task-t{color:var(--mut2);text-decoration:line-through}
 .task-w{font-size:11.5px;color:var(--mut2);margin-left:6px;white-space:nowrap}
@@ -748,7 +847,7 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .ga-note{display:block;font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.5}
 .ga-meta{display:block;font-size:11.5px;color:var(--mut2);margin-top:4px}
 .task.done .ga-note,.task.done .ga-meta{text-decoration:none}
-.task-x{flex:none;background:none;border:0;color:var(--mut2);font-size:14px;cursor:pointer;padding:2px 4px}
+.task-x{flex:none;background:none;border:0;color:var(--mut2);font-size:14px;cursor:pointer;padding:10px;margin:-8px -8px -8px 0;display:grid;place-items:center}
 .agcard{padding:var(--s2) var(--s4) var(--s3)}
 .agp{padding:var(--s3) 0;border-bottom:1px solid var(--line3)}
 .agp:last-of-type{border-bottom:0}
@@ -756,13 +855,37 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .agp-h b{font-weight:600;letter-spacing:.02em}
 .agp-h .sw{width:8px;height:8px;border-radius:50%}
 .agp-n{margin-left:auto;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.agp-h .iconbtn{width:32px;height:32px;margin:-6px -4px -6px 0;display:grid;place-items:center}
+.agp-empty{border-bottom:0}
+/* studiokontrollen: checklistan, och skylten när den är inskickad */
+.ckl{margin-top:6px}
+.ckl .task{align-items:center;padding:9px 0}
+.ckl .task .tick{margin-top:0}
+.ckl .task.done .task-t{text-decoration:none;color:var(--txt)}
+.ckl .task-t{font-size:14.5px;line-height:1.4}
+.ckdone span{display:block;margin-top:6px;font-size:13px}
+.ck-sign{display:block;font-family:var(--disp);font-weight:800;font-size:24px;letter-spacing:.04em;line-height:1.05;color:#fff}
+.ck-sign.lit{animation:ignite 1000ms steps(1,end) 120ms both}
+.ckst{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:10.5px;font-weight:600;letter-spacing:.14em;color:var(--mut)}
+.ckst i{width:7px;height:7px;border-radius:50%;flex:none}
+/* bekräftelsen i kundvyn: rubriken tänds en gång, reglerna som ett numrerat register */
+.conf{margin-top:var(--s3)}
+.conf-h{font-family:var(--disp);font-weight:800;font-size:26px;letter-spacing:.02em;line-height:1;color:#fff}
+.conf-h.lit{animation:ignite 1000ms steps(1,end) 160ms both}
+.rrow{display:flex;gap:14px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line3);
+  font-family:var(--disp);font-weight:600;font-size:17px;letter-spacing:.01em;line-height:1.25}
+.rrow:first-child{border-top:0}
+.rrow i{font-style:normal;font-size:13px;letter-spacing:.14em;color:var(--tube);width:22px;flex:none}
+.kpis.ses-kpis{grid-template-columns:1fr 1fr}
+@media (min-width:640px){ .kpis.ses-kpis{grid-template-columns:repeat(3,1fr)} }
 .agp .bar.thin{margin:var(--s2) 0 var(--s1)}
 .agp .task{padding:6px 0;border:0}
 .agp-e{padding:6px 0 0}
 .myag{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:var(--s4)}
 .myag-h{display:flex;align-items:center;gap:10px;width:100%;padding:13px var(--s4);background:none;border:0;
   color:var(--txt);font:inherit;font-size:14.5px;text-align:left;cursor:pointer}
-.myag-c{width:16px;height:16px;stroke:var(--mut);fill:none;stroke-width:2;transition:transform .2s}
+.myag-c{width:16px;height:16px;stroke:var(--mut);fill:none;stroke-width:2;transition:transform .2s var(--ease)}
+.myag.open .myag-b,.acc[open] .inner{animation:rise 220ms var(--ease)}
 .myag.open .myag-c{transform:rotate(180deg)}
 .myag-b{display:none;padding:0 var(--s4) var(--s4)}
 .myag.open .myag-b{display:block}
@@ -772,8 +895,13 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 #np{position:fixed;left:12px;right:12px;bottom:calc(84px + var(--safeB));z-index:58;display:none;
   align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r);
   background:var(--card2);border:1px solid rgba(255,106,216,.4);box-shadow:0 18px 40px -12px #000;max-width:640px;margin:0 auto}
-#np.on{display:flex}
-body.np-on .fab{bottom:calc(158px + var(--safeB))}
+#np.on{display:flex;animation:np-in .26s var(--ease)}
+@keyframes np-in{from{opacity:0;transform:translateY(16px)}}
+#np.paused .eq i{animation-play-state:paused}
+.np-ic .eq,.flink .eq{height:15px;gap:2.5px}
+.np-ic .eq i,.flink.on .eq i{background:currentColor;width:3px}
+.fab{transition:transform .16s var(--ease),translate .26s var(--ease),background-color .18s}
+body.np-on .fab{translate:0 -68px}
 body.np-on{padding-bottom:calc(160px + var(--safeB))}
 .np-ic{flex:none;width:36px;height:36px;border-radius:var(--r-sm);display:grid;place-items:center;font-size:17px;
   background:rgba(255,255,255,.05);border:1px solid var(--line)}
@@ -792,6 +920,10 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
   .live-pair>.card{margin-bottom:0!important}
   .kpis{grid-template-columns:repeat(4,1fr)}
 }
+@media (min-width:1024px){
+  #view .chips{flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}
+  #view>.chips:not(.wrap),.wk-main>.chips:not(.wrap){margin-inline:0;padding-inline:0}
+}
 
 /* ================= DATOR (≥ 1024 px) =================
    Navigeringen blir en sidopanel, innehållet får bredd, och schemat och
@@ -800,9 +932,17 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
   body{padding-bottom:40px}
   #app{padding-left:var(--navW)}
   body.simple #app{padding-left:0}
-  header{padding:18px 32px 14px}
-  body:not(.simple) header .logo{visibility:hidden}
-  main{max-width:780px;padding:4px 32px 48px}
+  /* crewets datorvy: ingen tom headerlist — profil och Boka svävar uppe till höger */
+  header{position:fixed;top:0;right:0;left:var(--navW);padding:20px 32px;background:transparent;border-bottom:0;
+    justify-content:flex-end;pointer-events:none}
+  header>*{pointer-events:auto}
+  header .hbtn{background:var(--bg)}
+  body:not(.simple) header .logo{display:none}
+  body.simple header{position:sticky;left:auto;padding:18px 32px 14px;background:var(--bg);border-bottom:1px solid var(--line);
+    justify-content:flex-start;pointer-events:auto}
+  .fab{display:none!important}
+  main{max-width:780px;padding:28px 32px 48px}
+  body.simple main{padding-top:4px}
   main.wide{max-width:1180px}
   nav{top:0;bottom:0;right:auto;width:var(--navW);padding:22px 14px;flex-direction:column;justify-content:flex-start;
     border-top:0;border-right:1px solid var(--line);background:var(--bg)}
@@ -813,30 +953,32 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
   nav .nav-sep{display:block;font-size:10.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--mut2);padding:20px 12px 8px}
   nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;padding:10px 12px;border-radius:var(--r-sm);
     font-size:12px;font-weight:600;letter-spacing:.18em;color:var(--mut)}
-  nav button:hover{background:rgba(255,255,255,.04);color:var(--txt)}
+  @media (hover:hover) and (pointer:fine){ nav button:hover{background:rgba(255,255,255,.04);color:var(--txt)} }
   nav button::before{top:8px;bottom:8px;left:0;right:auto;width:2px;height:auto}
+  .nav-ind{top:0;width:2px}
   nav button.on{background:rgba(255,255,255,.035);color:#fff}
   nav button.on svg{filter:none;stroke:var(--tube)}
   nav button:active{transform:none}
   nav svg{width:19px;height:19px}
   .fab{right:32px;bottom:32px}
-  body.np-on .fab{bottom:104px}
   #np{left:calc(var(--navW) + 32px);right:32px;bottom:24px;max-width:none}
   body.simple #np{left:32px}
-  .toast{bottom:40px}
+  .toast{bottom:40px;left:calc(50% + var(--navW)/2)}
+  body.simple .toast{left:50%}
   .sheet{left:auto;right:0;top:0;bottom:0;width:500px;max-width:none;max-height:none;margin:0;border-radius:0;
-    border-top:0;border-left:1px solid var(--line2);padding:28px 30px 40px;transform:translateX(104%);
-    transition:transform .3s var(--ease-drawer)}
+    border-top:0;border-left:1px solid rgba(255,106,216,.3);padding:28px 30px 40px;transform:translateX(104%);
+    background:radial-gradient(120% 170px at 0 0,rgba(58,15,88,.55),transparent 72%) no-repeat local,var(--bg2);
+    transition:transform .24s var(--ease-drawer)}
+  .sheet.on{transition-duration:.34s}
   .sheet .grip{display:none}
   .sheet .close{top:22px;right:22px}
   .today-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--s6);align-items:start}
   .today-grid>section>.eyebrow:first-child{margin-top:var(--s6)}
   .wk-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:var(--s6);align-items:start}
-  .myag{position:sticky;top:84px;margin:0}
+  .myag{position:sticky;top:24px;margin:0}
   .myag .myag-b{display:block}
   .myag-h{cursor:default}
   .myag-c{display:none}
-  .member:hover,.bk:hover,.srow:hover{border-color:var(--line2)}
   #gate .gate-body{max-width:420px}
   .dash-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:var(--s5);align-items:start}
   .dsec.full{grid-column:1/-1}
@@ -880,6 +1022,8 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
       <div class="mark"></div>
       <div class="wordmark">BANDO<span>HQ</span></div>
     </div>
+    <div class="htitle" id="hTitle" aria-hidden="true"></div>
+    <button class="btn slim" id="hBook" style="display:none" onclick="openForm()">+ Boka studio</button>
     <button class="hbtn" onclick="openMe()" id="meBtn"></button>
   </header>
   <main id="view"></main>
@@ -890,8 +1034,8 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
 <nav id="nav" style="display:none"><div class="inner" id="navInner"></div></nav>
 
 <div class="scrim" id="scrim" onclick="closeSheet()"></div>
-<div class="sheet" id="sheet"><div class="grip"></div><div id="sheetBody"></div></div>
-<div class="toast" id="toast"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1"><div class="grip"></div><div id="sheetBody"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="filepick" multiple style="display:none">
 <input type="file" id="mediapick" multiple accept="image/*,video/*" style="display:none">
 <input type="file" id="folderpick" webkitdirectory directory multiple style="display:none">
@@ -1337,7 +1481,7 @@ function vCircleWeek(){
   return `
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="adminWeek=addDays(adminWeek,-7);render()" aria-label="Förra veckan">‹</button>
-      <div class="grow" style="text-align:center;font-weight:650">Vecka ${weekNo(adminWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
+      <div class="grow" style="text-align:center;font-weight:600">Vecka ${weekNo(adminWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
       <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="adminWeek=addDays(adminWeek,7);render()" aria-label="Nästa vecka">›</button>
     </div>
     <div class="weekstats">
@@ -1644,6 +1788,9 @@ const MONTH_SV = ['januari','februari','mars','april','maj','juni','juli','augus
 const NOTE_FIELDS = [['went','Hur sessionen gick'],['created','Vad som skapades eller blev klart'],['strengths','Artistens styrkor'],
   ['develop','Utvecklingsområden'],['next','Rekommendation till nästa session'],['other','Övrigt']];
 const fmtP = n => Math.round(+n||0).toLocaleString('sv-SE');
+/* Paket eller inte: samma som kundens senast avslutade betalda pass (close_session gör likadant). */
+const lastPkg = (cu, not) => { if(!cu) return null; const l = live().filter(x=>x.id!==not && !x.circleId && x.who===cu.n && x.closed && x.paid)
+  .sort((a,b)=>(b.closedAt||0)-(a.closedAt||0))[0]; return l ? !!l.pkg : null; };
 const customerOf = b => b && !b.circleId ? accounts().find(a=>a.r==='customer' && a.n.toLowerCase()===String(b.who||'').toLowerCase()) || null : null;
 /* Får jag avsluta passet och skriva omdöme? Samma regel som bs_may_close. */
 function mayClose(b){
@@ -1679,7 +1826,26 @@ const rwLocal = {
     if((prev ? prev.level_id : '') === (lv ? lv.id : '')) return;
     S2.levelHist.push({member_id:mid, level_id:lv ? lv.id : '', level_name:lv ? lv.name : '', rank:lv ? lv.rank : null, at:new Date().toISOString()}); },
   _add(row){ rwState().points.push(Object.assign({id:rwState().seq++, at:new Date().toISOString()}, row)); },
-  close_session({p_booking, p_paid, p_note}){
+  submit_studio_check({p_booking, p_items, p_comment, p_damage, p_damage_text}){
+    const b = S.bookings.find(x=>x.id===p_booking && !x.del);
+    if(!b || !checkable(b)) rwFail('Passet finns inte');
+    if(!mayCheck(b)) rwFail('Bara passets producent eller admin skickar in studiokontrollen');
+    if(startAt(b) > new Date()) rwFail('Passet har inte börjat än');
+    const keys = CHECK_ITEMS.map(([k])=>k), done = keys.filter(k=>p_items && p_items[k]===true), missing = keys.filter(k=>!done.includes(k));
+    const cmt = String(p_comment||'').trim(), dmg = String(p_damage_text||'').trim();
+    if(missing.length && !cmt) rwFail('Skriv en kommentar om det som inte gick att bocka av');
+    if(p_damage && !dmg) rwFail('Beskriv skadan eller felet');
+    const st = rwState(), ok = !missing.length && !p_damage;
+    st.checks = (st.checks||[]).filter(c=>c.booking!==b.id).concat({booking:b.id, by:me().n, at:new Date().toISOString(), all_ok:ok, missing,
+      comment:cmt||null, damage:!!p_damage, damage_text:dmg||null, date:b.date, start:b.start, studio:b.studio});
+    save(); return {ok:true, all_ok:ok};
+  },
+  studio_checks({p_from, p_to}){
+    const m = me(); if(!m || !(isCrewRole(m.r) || m.r==='leader')) return [];
+    return (rwState().checks||[]).filter(c=>(!p_from || c.date>=p_from) && (!p_to || c.date<=p_to))
+      .filter(c=>{ const b = S.bookings.find(x=>x.id===c.booking); return isAdminRole(m.r) || c.by===m.n || (b && mayCheck(b)); });
+  },
+  close_session({p_booking, p_paid, p_note, p_package}){
     const b = S.bookings.find(x=>x.id===p_booking && !x.del) || rwFail('Passet finns inte');
     if(b.circleId) rwFail('Cirkelpass avslutas med närvaron');
     if(b.status) rwFail('Passet är inte bokat');
@@ -1691,7 +1857,8 @@ const rwLocal = {
     if(cmp){ pts = Math.round(pts * cmp.multiplier); note += ` · ${cmp.label} ${multText(cmp.multiplier)}`; }
     const net = rwState().points.filter(p=>p.booking_id===b.id && ['earn','reversal'].includes(p.kind)).reduce((a,p)=>a+p.points,0);
     if(pts - net) this._add({member_id:cu.id, booking_id:b.id, kind:pts-net>0?'earn':'reversal', points:pts-net, note, by_id:me().id});
-    Object.assign(b, {closed:true, paid:!!p_paid, closedBy:b.closedBy||me().n, closedAt:Date.now()}); bump(b);
+    const pkg = !!p_paid && !!(p_package ?? b.pkg ?? lastPkg(cu, b.id) ?? false);
+    Object.assign(b, {closed:true, paid:!!p_paid, pkg, closedBy:b.closedBy||me().n, closedAt:Date.now()}); bump(b);
     if(p_note && NOTE_FIELDS.some(([k])=>String(p_note[k]||'').trim())) this.add_artist_note({p_booking, p_note, _ok:true});
     let bonus = 0;
     if(p_paid){
@@ -1825,11 +1992,15 @@ function openClose(id){
   const cu = customerOf(b), paid = b.closed ? !!b.paid : true;
   const cmp = campaignOn(b.date), base = pointsFor(dur(b)), eff = cmp && base ? Math.round(base * cmp.multiplier) : base;
   const ptsTxt = `${fmtP(eff)} poäng${cmp && base ? ` (${cmp.label} ${multText(cmp.multiplier)})` : ''}`;
+  const pkg = b.closed ? !!b.pkg : !!lastPkg(cu, b.id);
   openSheet(`${X}<h2>${b.closed ? 'Avslutat pass' : 'Avsluta passet'}</h2>
     <div class="sub">${esc(cu.n)} · ${esc(longDate(b.date))} ${b.start}–${b.end} · ${fmtH(dur(b))} h</div>
     <label class="consent" style="margin-top:16px"><input type="checkbox" id="clP" ${paid?'checked':''} data-on="${esc(ptsTxt)}"
-      onchange="document.getElementById('clPts').textContent=this.checked?this.dataset.on:'inga poäng'">
+      onchange="document.getElementById('clPts').textContent=this.checked?this.dataset.on:'inga poäng';document.getElementById('clKW').style.display=this.checked?'':'none';afterPaint()">
       <span>Genomfört och <b>betalt</b> — ger <b id="clPts">${paid?esc(ptsTxt):'inga poäng'}</b></span></label>
+    <div id="clKW" style="${paid?'':'display:none'}"><div class="seg" id="clK" style="margin:14px 0 0">${[['0','VANLIG BS'],['1','PAKET BS']].map(([v,l])=>
+      `<button type="button" class="${(pkg?'1':'0')===v?'on':''}" data-v="${v}" onclick="this.parentNode.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===this));afterPaint()">${l}</button>`).join('')}</div>
+      <div class="tiny muted" style="margin-top:6px">Paket BS: passet ingår i ett paket kunden köpt. Räknas för sig i Studio → Sessioner.</div></div>
     <div class="eyebrow">OMDÖME <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— internt, artisten ser det aldrig</span><span class="ln"></span></div>
     ${NOTE_FIELDS.map(([k,l])=>`<label class="lbl" for="cl_${k}">${l.toUpperCase()}</label><textarea id="cl_${k}" style="min-height:56px"></textarea>`).join('')}
     <button class="btn" style="margin-top:20px" onclick="saveClose('${b.id}')">${b.closed ? 'SPARA' : 'AVSLUTA PASSET'}</button>`);
@@ -1837,11 +2008,250 @@ function openClose(id){
 async function saveClose(id){
   const note = Object.fromEntries(NOTE_FIELDS.map(([k])=>[k, (document.getElementById('cl_'+k)||{value:''}).value.trim()]));
   try{
-    const r = await rw('close_session', {p_booking:id, p_paid:document.getElementById('clP').checked, p_note:note});
+    const paid = document.getElementById('clP').checked, k = document.querySelector('#clK button.on');
+    const r = await rw('close_session', {p_booking:id, p_paid:paid, p_note:note, p_package:paid ? !!(k && k.dataset.v==='1') : false});
     if(!PREVIEW_LOGIN){ if(remoteRole()) await cloudView(); else await cloudPull(); }
     closeSheet(); render();
     toast(r.points || r.bonus ? `Avslutat · ${fmtP(r.points)} poäng${r.bonus ? ' + ' + fmtP(r.bonus) + ' i bonus' : ''} till artisten` : 'Avslutat');
   }catch(e){ toast(e.message); }
+}
+
+/* ---------- STUDIOKONTROLL ----------
+   Obligatorisk checklista efter varje genomförd session (submit_studio_check). Ansvarig är
+   cirkelpassets ledare, crewets eget pass, annars passets första producent — samma regel som
+   bs_check_responsible. Räknas från dagen kontrollen infördes, så äldre pass inte står som saknade. */
+let CHECK_FROM = '2026-10-23';
+const CHECK_ITEMS = [['pant','Flaskor och burkar i pantkärlet'], ['bord','Bord och arbetsytor rena och avtorkade'],
+  ['soffor','Soffor och andra ytor fria från skräp'], ['meck','Inget meck eller andra rester kvar'], ['spill','Eventuellt spill upptorkat'],
+  ['sladdar','Sladdar organiserade'], ['platser','All utrustning och alla saker tillbaka på sina platser'], ['sopor','Soporna tömda vid behov'],
+  ['soppase','Soppåsen ordentligt knuten och försiktigt lagd i den gröna containern på baksidan'],
+  ['dorrar','Dörrarna låsta och nycklarna tillbaka i sin säkra förvaring'], ['skador','Eventuella skador eller fel rapporterade']];
+let checks = null, checksAt = 0, checksFor = '', ckSet = null;
+const ckEl = id => document.getElementById(id);
+const checkOf = id => (checks||[]).find(c=>c.booking===id) || null;
+/* pass som ska ha en kontroll (bs_check_needed): bokade pass i en studio */
+const checkable = b => !b.del && ['', 'done'].includes(b.status||'') && !!b.studio && !b.busy && /^\d{4}-\d\d-\d\d$/.test(b.date||'');
+const needsCheck = b => checkable(b) && b.date >= CHECK_FROM && endAt(b) <= new Date();
+function checkResponsible(b){
+  if(b.circleId){ const c = S.circles.find(x=>x.id===b.circleId); return (b.leaderId && byId(b.leaderId)) || (c && byName(c.leader)) || null; }
+  const w = accounts().find(a=>a.n.toLowerCase()===String(b.who||'').toLowerCase() && isCrewRole(a.r));
+  if(w) return w;
+  const f = (b.with||[]).map(byName).find(Boolean); if(f) return f;
+  if(b.closedBy && byName(b.closedBy)) return byName(b.closedBy);
+  const cu = customerOf(b); return cu && cu.producer ? byId(cu.producer) : null;
+}
+/* får jag fylla i kontrollen (bs_check_may): admin, den ansvariga, eller crew som var med */
+function mayCheck(b){
+  const m = me(); if(!m || !b) return false;
+  const r = checkResponsible(b);
+  return isAdminRole(m.r) || (r && r.id===m.id) || (isCrewRole(m.r) && (b.who===m.n || (b.with||[]).includes(m.n) || b.closedBy===m.n));
+}
+function loadChecks(force){
+  const m = me(); if(!m || !(isCrewRole(m.r) || m.r==='leader')) return;
+  if(!force && checksFor===m.id && Date.now() - checksAt < 60000) return;
+  checksAt = Date.now(); const who = m.id;
+  rw('studio_checks', {p_from:CHECK_FROM}).then(r=>{
+    if((me()||{}).id!==who) return;
+    checks = Array.isArray(r) ? r : []; checksFor = who;
+    if(['today','studio','more'].includes(view) || roleView()==='leader') render();
+  }).catch(()=>{});
+}
+/* mina pass utan kontroll (som ansvarig) — och för admin hela studions */
+const missingChecks = all => checksFor===(me()||{}).id ? booked().filter(b=>needsCheck(b) && !checkOf(b.id) && (all || (checkResponsible(b)||{}).id===me().id))
+  .sort((a,b)=>startAt(b)-startAt(a)) : [];
+function checkBanner(){
+  loadChecks();
+  const m = me(), mine = missingChecks(false), all = isAdminRole(m.r) ? missingChecks(true) : [];
+  if(!mine.length && !all.length) return '';
+  const b = mine[0];
+  return `<div class="pushban denied" role="status"><div class="grow"><b>Studiokontroll saknas${mine.length ? ' · ' + nt(mine.length, 'pass', 'pass') : ''}.</b>
+      ${mine.length ? `Obligatorisk efter varje session — ${esc(dayName(b.date).toLowerCase())} ${b.start}, ${esc(S.studios[b.studio]||'')}.` : ''}
+      ${all.length > mine.length ? `${nt(all.length, 'pass', 'pass')} i studion saknar kontroll.` : ''}</div>
+    ${mine.length ? `<button class="btn slim" style="width:auto;flex:none" onclick="openCheck('${b.id}')">FYLL I</button>`
+      : `<button class="btn ghost slim" style="width:auto;flex:none" onclick="ckTab='missing';stTab='check';tabPos.studio=0;go('studio')">VISA</button>`}</div>`;
+}
+const ckWhen = b => `${esc(b.title||'Session')} · ${esc(S.studios[b.studio]||'')} · ${esc(longDate(b.date))} ${b.start}–${b.end}`;
+const fmtAt = t => { const d = new Date(t); return isNaN(d) ? '' : `${d.getDate()} ${MON[d.getMonth()].toLowerCase()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+function openCheck(id, edit){
+  const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  const c = checkOf(id);
+  if(c && !edit) return openCheckDone(b, c, false);
+  if(!mayCheck(b)) return toast('Bara passets producent eller admin fyller i studiokontrollen');
+  if(startAt(b) > new Date()) return toast('Studiokontrollen fylls i när passet har börjat');
+  ckSet = new Set(c ? CHECK_ITEMS.map(([k])=>k).filter(k=>!(c.missing||[]).includes(k)) : []);
+  openSheet(`${X}<h2>Studiokontroll</h2>
+    <div class="sub">${ckWhen(b)}</div>
+    <div class="row" style="margin-top:14px"><span class="tiny muted grow">Obligatorisk efter varje session</span><span class="agp-n" id="ckN"></span></div>
+    <div class="bar thin"><i id="ckBar" data-fill="sk:${b.id}" style="width:0%"></i></div>
+    <div class="ckl">${CHECK_ITEMS.map(([k,l])=>`<div class="task" data-k="${k}">
+      <button class="tick" role="checkbox" aria-checked="false" aria-label="${esc(l)}" data-tick="ck-${k}" onclick="ckToggle('${k}')"></button>
+      <button type="button" class="grow task-t plan-t" onclick="ckToggle('${k}')">${esc(l)}</button></div>`).join('')}</div>
+    <label class="lbl" for="ckC">AVVIKELSER</label>
+    <textarea id="ckC" maxlength="2000" placeholder="Det som inte gick att bocka av, och varför" oninput="ckPaint()">${esc(c && c.comment || '')}</textarea>
+    <label class="consent" style="margin-top:14px"><input type="checkbox" id="ckD" ${c && c.damage ? 'checked' : ''} onchange="ckPaint()">
+      <span>Något är <b>skadat eller trasigt</b> — admin får en rapport direkt</span></label>
+    <div id="ckDW"><label class="lbl" for="ckDT">SKADA ELLER FEL</label>
+      <textarea id="ckDT" maxlength="2000" placeholder="Vad, var och hur det hände" oninput="ckPaint()">${esc(c && c.damage_text || '')}</textarea></div>
+    <button class="btn" id="ckGo" style="margin-top:20px" onclick="sendCheck('${b.id}')">SKICKA IN</button>
+    <div class="tiny muted" id="ckHint" style="margin-top:8px;text-align:center"></div>`);
+  ckPaint(true);
+}
+function ckToggle(k){
+  if(!ckSet) return;
+  ckSet.has(k) ? ckSet.delete(k) : ckSet.add(k);
+  const row = document.querySelector(`.ckl .task[data-k="${k}"]`);
+  if(row && ckSet.has(k)){ popTick = 'ck-' + k; }
+  ckPaint();
+}
+function ckPaint(first){
+  if(!ckSet) return;
+  document.querySelectorAll('.ckl .task').forEach(t=>{ const on = ckSet.has(t.dataset.k);
+    t.classList.toggle('done', on); t.querySelector('.tick').setAttribute('aria-checked', String(on)); });
+  const n = ckSet.size, all = CHECK_ITEMS.length, cmt = (ckEl('ckC')||{value:''}).value.trim();
+  const dmg = !!(ckEl('ckD')||{}).checked, dtxt = (ckEl('ckDT')||{value:''}).value.trim();
+  ckEl('ckN').textContent = n + '/' + all;
+  ckEl('ckBar').style.width = (n/all*100) + '%';
+  ckEl('ckDW').style.display = dmg ? '' : 'none';
+  const ok = (n===all || !!cmt) && (!dmg || !!dtxt), go = ckEl('ckGo');
+  go.disabled = !ok;
+  go.textContent = n===all && !dmg ? 'SKICKA IN' : 'SKICKA IN MED AVVIKELSE';
+  ckEl('ckHint').textContent = ok ? '' : dmg && !dtxt ? 'Beskriv skadan eller felet.' : `Bocka av alla ${all} punkter — eller skriv vad som avviker.`;
+  if(!first) afterPaint();
+}
+async function sendCheck(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b || !ckSet) return;
+  const go = ckEl('ckGo'); go.disabled = true;
+  const args = {p_booking:id, p_items:Object.fromEntries(CHECK_ITEMS.map(([k])=>[k, ckSet.has(k)])),
+    p_comment:ckEl('ckC').value.trim() || null, p_damage:ckEl('ckD').checked, p_damage_text:ckEl('ckD').checked ? ckEl('ckDT').value.trim() || null : null};
+  try{
+    const r = await rw('submit_studio_check', args);
+    const missing = CHECK_ITEMS.map(([k])=>k).filter(k=>!ckSet.has(k));
+    const row = {booking:id, by:me().n, at:new Date().toISOString(), all_ok:!!(r && r.all_ok), missing, comment:args.p_comment,
+      damage:args.p_damage, damage_text:args.p_damage_text, date:b.date, start:b.start, studio:b.studio};
+    checks = (checks||[]).filter(c=>c.booking!==id).concat(row); checksFor = me().id;
+    ckSet = null; openCheckDone(b, row, true); render(); loadChecks(true);
+  }catch(e){ toast(e.message); go.disabled = false; }
+}
+function openCheckDone(b, c, fresh){
+  const lbl = k => (CHECK_ITEMS.find(x=>x[0]===k)||[,k])[1];
+  openSheet(`${X}<h2>Studiokontroll</h2>
+    <div class="sub">${ckWhen(b)}</div>
+    <div class="${c.all_ok ? 'okbox' : 'note'} ckdone"><b class="ck-sign ${fresh ? 'lit' : ''}">STUDIOKONTROLL INSKICKAD</b>
+      <span>${esc(c.by||'')} · ${fmtAt(c.at)}${c.all_ok ? ' · allt avbockat' : ''}</span></div>
+    ${(c.missing||[]).length ? `<div class="eyebrow">INTE AVBOCKAT<span class="ln"></span><span style="color:var(--warn)">${c.missing.length}</span></div>
+      <ul class="flags">${c.missing.map(k=>`<li class="f-warn">${esc(lbl(k))}</li>`).join('')}</ul>` : ''}
+    ${c.comment ? `<div class="kv"><span>AVVIKELSER</span><b style="font-weight:500">${esc(c.comment)}</b></div>` : ''}
+    ${c.damage ? `<div class="warn"><b>Skada eller fel.</b> ${esc(c.damage_text||'')}</div>` : ''}
+    ${mayCheck(b) ? `<button class="btn ghost" style="margin-top:20px" onclick="openCheck('${b.id}',true)">ÄNDRA KONTROLLEN</button>` : ''}`);
+}
+
+/* ---------- STUDIOREGLER (samma text som bekräftelsen, bs_studio_rules_text) ---------- */
+const STUDIO_ADDR = 'Råsundavägen 102';
+const STUDIO_RULES = ['Håll er i rummet. Chilla inte runt i lokalen.', 'Ingen rökning utanför porten. Gå över gatan eller mot parken.',
+  'Ingen nedskräpning.', 'Kom i tid. Din tid börjar exakt när den börjar.', 'Max 2 extra personer.'];
+function confirmedCard(b){
+  if(!b) return '';
+  let first = false;
+  try{ const k = 'bandohq_conf_' + b.id; first = localStorage.getItem(k) !== '1'; if(first) localStorage.setItem(k, '1'); }catch(e){}
+  const d = fromIso(b.date);
+  return `<div class="card conf">
+    <div class="conf-h ${first ? 'lit' : ''}">SESSION BEKRÄFTAD ✅</div>
+    <div class="sub" style="margin:6px 0 0">${esc(dayName(b.date))} ${d.getDate()} ${MON[d.getMonth()].toLowerCase()} · ${b.start}–${b.end}${b.studio ? ' · ' + esc(S.studios[b.studio]||'') : ''}</div>
+    <div class="kv" style="margin-top:8px"><span>ADRESS</span><b>📍 ${STUDIO_ADDR}</b></div>
+    <div class="eyebrow">STUDIOREGLER<span class="ln"></span></div>
+    <div class="rules">${STUDIO_RULES.map((r,i)=>`<div class="rrow"><i>${String(i+1).padStart(2,'0')}</i><span>${esc(r)}</span></div>`).join('')}</div>
+  </div>`;
+}
+
+/* ---------- STUDIO (admin): sessionsstatistik och studiokontroller ----------
+   Ett pass räknas när det registrerats som genomfört: avslutat (kundpass), "Kört" (veckoplanen)
+   eller genomfört (cirkelpass). Vanlig BS = betalt kundpass, Paket BS = betalt kundpass i ett paket,
+   Artist Session (%) = pass med en procentartist ur rostern. Allt annat är Övriga. */
+let stTab = 'stats', stPer = 'week', stOff = 0, stProd = null, ckTab = 'missing';
+const SES_KIND = [['bs','VANLIG BS'], ['pkg','PAKET BS'], ['artist','ARTIST SESSION (%)'], ['other','ÖVRIGA']];
+const sesDone = b => !b.busy && (b.closed || b.ran || b.status==='done');
+function sesKind(b){
+  if(customerOf(b) && b.paid) return b.pkg ? 'pkg' : 'bs';
+  const a = b.artistId ? artistById(b.artistId) : null;
+  return a && a.pct !== false ? 'artist' : 'other';
+}
+function stRange(off){
+  const now = new Date();
+  if(stPer==='week'){ const from = addDays(monday(now), off*7); return {from, to:addDays(from,7), label:'VECKA ' + weekNo(from)}; }
+  const from = new Date(now.getFullYear(), now.getMonth() + off, 1);
+  return {from, to:new Date(from.getFullYear(), from.getMonth()+1, 1), label:MONTH_SV[from.getMonth()].toUpperCase() + (from.getFullYear()!==now.getFullYear() ? ' ' + from.getFullYear() : '')};
+}
+const sesWith = b => crewOn(b).concat(b.closedBy ? [b.closedBy] : []);
+function sesStats(off){
+  const r = stRange(off);
+  const list = booked().filter(b=>sesDone(b) && inRange(b, r) && (!stProd || sesWith(b).includes(stProd))).sort((a,b)=>startAt(b)-startAt(a));
+  const n = {bs:0, pkg:0, artist:0, other:0}; list.forEach(b=>n[sesKind(b)]++);
+  return {r, list, n, total:list.length, bsAll:n.bs + n.pkg};
+}
+function vStudio(){
+  loadChecks();
+  const miss = missingChecks(true);
+  const tabs = `<div class="seg" role="tablist">
+      <button role="tab" aria-selected="${stTab==='stats'}" class="${stTab==='stats'?'on':''}" onclick="stTab='stats';render()">Sessioner</button>
+      <button role="tab" aria-selected="${stTab==='check'}" class="${stTab==='check'?'on':''}" onclick="stTab='check';render()">Studiokontroll${miss.length ? ` <span class="dot-n">${miss.length}</span>` : ''}</button></div>`;
+  const head = `<div class="h1">Studio</div>
+    <div class="sub">Sessionerna räknas av sig själva när de registreras som genomförda — ingen inmatning för hand.</div>${tabs}`;
+  return head + (stTab==='check' ? studioChecks(miss) : studioStats());
+}
+function studioStats(){
+  const s = sesStats(stOff), p = sesStats(stOff - 1);
+  const prodChips = crew().filter(c=>isProducer(c));
+  const KL = Object.fromEntries(SES_KIND);
+  return `<div class="seg">${[['week','VECKA'],['month','MÅNAD']].map(([k,l])=>
+      `<button class="${stPer===k?'on':''}" onclick="stPer='${k}';stOff=0;render()">${l}</button>`).join('')}</div>
+    <div class="weeknav">
+      <button onclick="stOff--;render()" aria-label="Föregående">${IC.l}</button>
+      <div class="wk">${s.r.label}${stOff===0 ? `<small>${stPer==='week' ? 'DENNA' : 'DENNA MÅNAD'}</small>` : ''}</div>
+      <button onclick="stOff++;render()" aria-label="Nästa" ${stOff>=0?'disabled style="opacity:.35"':''}>${IC.r}</button>
+    </div>
+    <div class="chips" style="margin-top:12px">
+      <button class="chip ${!stProd?'on':''}" onclick="stProd=null;render()">ALLA</button>
+      ${prodChips.map(c=>`<button class="chip ${stProd===c.n?'on':''}" onclick="stProd=stProd==='${esc(c.n)}'?null:'${esc(c.n)}';render()"><i class="sw" style="background:${c.c}"></i>${esc(c.n)}</button>`).join('')}
+    </div>
+    <div class="kpis ses-kpis" style="margin-top:6px">
+      ${kpi('GENOMFÖRDA', s.total, p.total, '', 0)}
+      ${kpi('BS TOTALT', s.bsAll, p.bsAll, '', 0)}
+      ${kpi('VANLIG BS', s.n.bs, p.n.bs, '', 0)}
+      ${kpi('PAKET BS', s.n.pkg, p.n.pkg, '', 0)}
+      ${kpi('ARTIST SESSION (%)', s.n.artist, p.n.artist, '', 0)}
+      ${kpi('ÖVRIGA', s.n.other, p.n.other, '', 0)}
+    </div>
+    <div class="eyebrow">FÖRDELNING<span class="ln"></span><span style="color:var(--mut2)">${s.total} pass</span></div>
+    <div class="card">${SES_KIND.map(([k,l])=>`<div class="agp"><div class="agp-h"><b>${l}</b><span class="agp-n">${s.n[k]}${s.total ? ' · ' + Math.round(s.n[k]/s.total*100) + ' %' : ''}</span></div>
+      <div class="bar thin"><i data-fill="ses:${k}" style="width:${s.total ? s.n[k]/s.total*100 : 0}%"></i></div></div>`).join('')}</div>
+    <div class="eyebrow">GENOMFÖRDA PASS<span class="ln"></span></div>
+    ${s.list.length ? s.list.slice(0, 40).map(b=>`<button class="srow" style="width:100%;text-align:left;font:inherit;color:inherit" onclick="openDetail('${b.id}')">
+        <div class="srow-d"><b>${fromIso(b.date).getDate()}</b><span>${MON[fromIso(b.date).getMonth()]}</span></div>
+        <div class="grow" style="min-width:0"><div class="srow-t">${esc(b.title||'Session')} · ${b.start}–${b.end}</div>
+          <div class="srow-m"><span style="color:${glow(b.who)}">${esc(b.who)}</span>${(b.with||[]).length ? ' · med ' + b.with.map(esc).join(', ') : ''}</div></div>
+        <span class="pill" style="box-shadow:inset 0 0 0 1px var(--line2);color:${sesKind(b)==='other'?'var(--mut)':'var(--txt)'}">${KL[sesKind(b)].replace(' (%)','')}</span></button>`).join('')
+        + (s.list.length > 40 ? `<div class="tiny muted" style="margin-top:6px">+ ${s.list.length - 40} till</div>` : '')
+      : `<div class="empty">Inga genomförda pass ${stPer==='week' ? 'den veckan' : 'den månaden'}${stProd ? ' med ' + esc(stProd) : ''}.</div>`}
+    <div class="tiny muted" style="margin-top:12px;line-height:1.55">Paket BS väljs när passet avslutas. Artist Session (%) är pass kopplade till
+      en artist i rostern som är markerad som procentartist (Artister → Ändra artist).</div>`;
+}
+function studioChecks(miss){
+  const all = booked().filter(b=>needsCheck(b)).sort((a,b)=>startAt(b)-startAt(a));
+  const dev = all.filter(b=>{ const c = checkOf(b.id); return c && !c.all_ok; });
+  const rows = ckTab==='missing' ? miss : ckTab==='dev' ? dev : all;
+  const lbl = {missing:'SAKNAS', dev:'AVVIKELSER', all:'ALLA'};
+  return `<div class="chips">${['missing','dev','all'].map(k=>`<button class="chip ${ckTab===k?'on':''}" onclick="ckTab='${k}';render()">${lbl[k]}
+      <span class="muted">${(k==='missing'?miss:k==='dev'?dev:all).length}</span></button>`).join('')}</div>
+    ${checksFor!==(me()||{}).id ? `<div class="empty">Hämtar studiokontrollerna…</div>` : rows.length ? rows.slice(0, 60).map(b=>{
+      const c = checkOf(b.id), r = checkResponsible(b), d = fromIso(b.date);
+      const st = !c ? `<i class="sdot-warn"></i>SAKNAS${r ? ' · ' + esc(r.n) : ''}` : c.all_ok ? `<i class="sdot-ok"></i>GENOMFÖRD · ${esc(c.by||'')} ${fmtAt(c.at)}`
+        : `<i class="sdot-err"></i>${c.damage ? 'SKADA' : 'AVVIKELSE'} · ${esc(c.by||'')} ${fmtAt(c.at)}`;
+      return `<button class="srow" style="width:100%;text-align:left;font:inherit;color:inherit" onclick="openCheck('${b.id}')">
+        <div class="srow-d"><b>${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
+        <div class="grow" style="min-width:0"><div class="srow-t">${b.start}–${b.end} · ${esc(S.studios[b.studio]||'')}</div>
+          <div class="srow-m"><span style="color:${glow(b.who)}">${esc(b.who)}</span> · ${esc(b.title||'Session')}</div>
+          <div class="srow-s ckst">${st}</div></div></button>`; }).join('')
+      : `<div class="empty">${ckTab==='missing' ? 'Alla pass har sin studiokontroll.' : ckTab==='dev' ? 'Inga avvikelser.' : 'Inga pass sedan kontrollen infördes.'}</div>`}`;
 }
 
 /* ---------- kundens egen vy: poäng, nivå, belöningar ---------- */
@@ -2479,7 +2889,7 @@ function profilePanel(a, bs){
     <div class="eyebrow">STUDIOCIRKEL<span class="ln"></span></div>
     ${a.part===false && a.r==='customer' ? '<div class="empty">Inte deltagare i studiocirklarna.</div>'
       : inC.length ? inC.map(c=>`<div class="kv"><span>${esc(c.n)}</span><b>${esc(c.leader ? 'ansvarig ' + c.leader : 'ingen ledare än')}</b></div>`).join('')
-      : `<div class="note">Inte placerad i en grupp än.${can('manageCircles') ? ` <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();closeSheet();openDistribute()">Fördela</a>` : ''}</div>`}
+      : `<div class="note">Inte placerad i en grupp än.${can('manageCircles') ? ` <a href="#" style="color:var(--pur3);font-weight:600" onclick="event.preventDefault();closeSheet();openDistribute()">Fördela</a>` : ''}</div>`}
     <div class="eyebrow">KAN BOKA MED<span class="ln"></span></div>
     ${artistProdSection(a)}
     <div class="eyebrow">BOKNINGAR<span class="ln"></span></div>
@@ -2836,7 +3246,7 @@ function vEducation(){
 function eduBank(){
   const c = eduCatalog;
   return `<div class="two end"><div><label class="lbl" for="edQ" style="margin-top:0">SÖK KOD ELLER NAMN</label>
-      <input id="edQ" value="${esc(eduQ)}" placeholder="t.ex. MP03 eller mixning" autocomplete="off" oninput="eduQ=this.value;paintEduBank()"></div>
+      <input id="edQ" type="search" enterkeyhint="search" value="${esc(eduQ)}" placeholder="t.ex. MP03 eller mixning" autocomplete="off" oninput="eduQ=this.value;paintEduBank()"></div>
     <div><label class="lbl" for="edC" style="margin-top:0">ÄMNESOMRÅDE</label><select id="edC" onchange="eduCatF=this.value;paintEduBank()">
       <option value="">Alla ${c.cats.length}</option>${c.cats.map(k=>`<option value="${esc(k.kod)}" ${eduCatF===k.kod?'selected':''}>${esc(k.namn)}</option>`).join('')}</select></div></div>
     <div id="eduBankList">${eduBankList()}</div>`;
@@ -3270,6 +3680,7 @@ function showGate(){
   document.getElementById('app').style.display='none';
   document.getElementById('nav').style.display='none';
   document.getElementById('fab').style.display='none';
+  document.body.classList.remove('fab-on');
   renderGate(); fitGateTitle();
 }
 /* Skylten "BANDO HQ": fylls ut till hela bredden när typsnittet laddats (versalhöjden i Barlow
@@ -3303,9 +3714,13 @@ function showApp(){
     document.getElementById('fab').style.display='';
     buildNav();
     go(tabs()[0]);
+    /* entrén: uppifrån och ned i en enda ordning, över alla grupper */
+    if(document.documentElement.classList.contains('enter'))
+      document.querySelectorAll('#view .stagger>*').forEach((el,i)=>el.style.animationDelay = Math.min(i,6)*45 + 'ms');
   } else {
     document.getElementById('nav').style.display='none';
     document.getElementById('fab').style.display='none';
+    document.body.classList.remove('fab-on');
     render();
   }
 }
@@ -3348,7 +3763,7 @@ function renderGate(){
            <button class="btn ghost" style="margin-top:14px" onclick="gateMode='login';renderGate()">TILLBAKA TILL INLOGGNINGEN</button>`
         : `<form class="gate-form" onsubmit="event.preventDefault();doForgot()">
             <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
-            <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
+            <input id="gE" autocomplete="username" inputmode="email" enterkeyhint="next" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
             <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKICKAR…':'SKICKA LÄNK'}</button>
             ${gateErrBox()}</form>
            <button class="linkbtn" onclick="gateMode='login';gateErr='';renderGate()">Tillbaka</button>`;
@@ -3373,9 +3788,9 @@ function renderGate(){
     const bookBtn = `<a class="btn ${isNative()?'':'ghost'}" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:${isNative()?'0':'14px'}" href="${esc(accessUrl())}">BANDO HQ ACCESS — SKICKA FÖRFRÅGAN</a>`;
     b.innerHTML = `${isNative() ? bookBtn + `<div class="gate-or">har du ett konto?</div>` : ''}<form class="gate-form" onsubmit="event.preventDefault();doLogin()">
         <label class="lbl" for="gE">ANVÄNDARNAMN ELLER E-POST</label>
-        <input id="gE" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
+        <input id="gE" autocomplete="username" inputmode="email" enterkeyhint="next" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(gateEmail)}" required>
         <label class="lbl" for="gP">LÖSENORD</label>
-        <input id="gP" type="password" autocomplete="current-password" required>
+        <input id="gP" type="password" autocomplete="current-password" enterkeyhint="go" required>
         <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'LOGGAR IN…':'LOGGA IN'}</button>
         ${gateErrBox()}
       </form>
@@ -3516,7 +3931,7 @@ async function renderJoin(tag, b){
       <label class="lbl" for="jE">E-POST</label>
       <input id="jE" type="email" inputmode="email" autocomplete="email" value="${esc(jd.email!==undefined ? jd.email : joinInfo.email||'')}" ${PREVIEW_LOGIN?'':'required'}>
       ${PREVIEW_LOGIN ? '' : `<label class="lbl" for="jP">VÄLJ LÖSENORD</label>
-      <input id="jP" type="password" autocomplete="new-password" minlength="8" placeholder="Minst 8 tecken" required>`}
+      <input id="jP" type="password" autocomplete="new-password" enterkeyhint="go" minlength="8" placeholder="Minst 8 tecken" required>`}
       <label class="consent"><input type="checkbox" id="jC" required>
         <span>Jag har läst <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur BANDOHQ hanterar mina uppgifter</a></span></label>
       <button class="btn" style="margin-top:20px" ${gateBusy?'disabled':''}>${gateBusy?'SKAPAR KONTOT…':'SKAPA KONTO'}</button>
@@ -4252,10 +4667,11 @@ const ICONS = {
   goals:'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.2"/>',
   gallery:'<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
   rewards:'<path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/>',
+  studio:'<path d="M4 20V9l8-5 8 5v11"/><path d="M9 20v-6h6v6"/><path d="M9.5 10.5l1.5 1.5 3-3"/>',
   education:'<path d="M2.5 9L12 4.5 21.5 9 12 13.5z"/><path d="M6.5 11v5c1.5 1.4 3.4 2.2 5.5 2.2s4-.8 5.5-2.2v-5"/><path d="M21.5 9v5.5"/>'
 };
 const LABELS = {today:'IDAG', week:'SCHEMA', agenda:'AGENDA', beats:'BEATS', more:'MER',
-  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅLSÄTTNING', gallery:'GALLERI', rewards:'REWARDS', education:'EDUCATION'};
+  team:'CREW', dash:'STATISTIK', circles:'CIRKLAR', artists:'ARTISTER', goals:'MÅLSÄTTNING', gallery:'GALLERI', rewards:'REWARDS', education:'EDUCATION', studio:'STUDIO'};
 /* Sex flikar hade blivit tio. Fem i botten, resten bakom MER. */
 function tabs(){
   const m = me();
@@ -4269,24 +4685,50 @@ function moreViews(){
   const m = me(); if(m && m.r==='camera') return [];
   const base = can('dashboard') ? ['artists','gallery','dash','circles','team','goals'] : ['artists','gallery','circles','team','goals'];
   const withEdu = m && isCrewRole(m.r) ? base.concat('education') : base;          /* Bando Education: crewet (producenter leder grupper) */
-  return canIntel() ? withEdu.concat('rewards') : withEdu;
+  const withStudio = m && isAdminRole(m.r) ? withEdu.concat('studio') : withEdu;   /* sessionsstatistik och studiokontroller: admin */
+  return canIntel() ? withStudio.concat('rewards') : withStudio;
 }
 function canView(v){ return roleView()==='full' && (tabs().includes(v) || moreViews().includes(v)); }
 
 /* Mobilen: fem flikar i botten. Datorn: allt i sidopanelen, utan MER. */
 const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', more:'Mer',
-  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards', education:'Education'};
+  team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards', education:'Education', studio:'Studio'};
 function buildNav(){
-  const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="go('${k}')">
+  const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="navTap('${k}')">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg><span class="nl-m">${LABELS[k]}</span></button>`;
   document.getElementById('navInner').innerHTML =
     `<div class="nav-brand"><div class="mark"></div><div class="wordmark">BANDO<span>HQ</span></div></div>`
     + tabs().map(k=>btn(k, k==='more'?'nav-m':'', 'nav-'+k)).join('')
     + `<div class="nav-sep nav-d">ARBETE</div>`
-    + moreViews().map(k=>btn(k, 'nav-d', 'navd-'+k)).join('');
+    + moreViews().map(k=>btn(k, 'nav-d', 'navd-'+k)).join('')
+    + `<i class="nav-ind" aria-hidden="true"></i>`;
   /* sidopanelen läser bättre i gemener */
   if(matchMedia('(min-width:1024px)').matches)
     document.querySelectorAll('#navInner .nl-m').forEach(el=>{ const k = el.parentNode.dataset.v; el.textContent = NAVNAME[k]; });
+  requestAnimationFrame(()=>placeNavInd(false));
+}
+/* Ett enda neonrör i navigeringen som glider till fliken man valde (telefon: ovanför, dator: till vänster). */
+function placeNavInd(anim){
+  const ind = document.querySelector('#navInner .nav-ind'); if(!ind) return;
+  const b = [...document.querySelectorAll('#navInner button.on')].find(x=>x.offsetWidth);
+  const nav = document.getElementById('nav');
+  if(!b){ ind.style.opacity = '0'; return; }
+  nav.classList.add('has-ind'); ind.style.opacity = '';
+  const jump = !anim || !ind._placed || reduceMotion();
+  if(jump) ind.style.transition = 'none';
+  if(innerWidth >= 1024){ ind.style.width = '2px'; ind.style.height = (b.offsetHeight - 16) + 'px'; ind.style.transform = `translateY(${b.offsetTop + 8}px)`; }
+  else { ind.style.height = '2px'; ind.style.width = (b.offsetWidth * .4).toFixed(1) + 'px'; ind.style.transform = `translateX(${(b.offsetLeft + b.offsetWidth * .3).toFixed(1)}px)`; }
+  if(jump){ void ind.offsetWidth; ind.style.transition = ''; }
+  ind._placed = true;
+}
+/* Flikarna minns var man var; ett tryck på den aktiva fliken rullar till toppen. */
+const tabPos = {};
+function navTap(v){
+  if(v===view){ window.scrollTo({top:0, behavior:reduceMotion() ? 'auto' : 'smooth'}); return; }
+  tabPos[view] = window.scrollY;
+  go(v);
+  const y = tabPos[v] || 0;
+  if(y) requestAnimationFrame(()=>window.scrollTo(0, y));
 }
 function go(v){
   if(v==='files') v = 'beats';               /* gamla länkar till FILER går till beatkanalen */
@@ -4300,7 +4742,7 @@ function go(v){
   const lit = moreViews().includes(v) ? 'more' : v;
   document.querySelectorAll('#navInner button').forEach(el=>el.classList.toggle('on',
     el.dataset.v===v || (el.dataset.v==='more' && lit==='more')));
-  render(); window.scrollTo(0,0);
+  render(); window.scrollTo(0,0); placeNavInd(true);
 }
 function render(){
   const m = me(); if(!m) return;
@@ -4310,6 +4752,8 @@ function render(){
   if(rv !== 'full'){
     document.getElementById('nav').style.display = 'none';
     document.getElementById('fab').style.display = 'none';
+    document.getElementById('hBook').style.display = 'none';
+    document.body.classList.remove('fab-on');
     document.body.classList.add('simple');
     document.getElementById('view').className = '';
     document.getElementById('view').innerHTML = demoBanner() + pushBanner() + (
@@ -4318,8 +4762,11 @@ function render(){
     return;
   }
   document.getElementById('nav').style.display = '';
-  /* Plustecknet bokar studio — det hör bara hemma där kalendern syns. */
-  document.getElementById('fab').style.display = (view==='today'||view==='week') && can('book') ? '' : 'none';
+  /* Plustecknet bokar studio — det hör bara hemma där kalendern syns (på datorn: knappen i headern). */
+  const fabOn = (view==='today'||view==='week') && can('book');
+  document.getElementById('fab').style.display = fabOn ? '' : 'none';
+  document.getElementById('hBook').style.display = fabOn ? '' : 'none';
+  document.body.classList.toggle('fab-on', fabOn);
   document.body.classList.remove('simple');
   document.getElementById('view').className = ['today','week','dash'].includes(view) ? 'wide' : '';
   document.getElementById('view').innerHTML = (view===tabs()[0] ? demoBanner() + pushBanner() : '') + (
@@ -4327,7 +4774,7 @@ function render(){
     view==='agenda'  ? vAgenda()  : view==='beats'   ? vBeats()   :
     view==='more'    ? vMore()    : view==='artists' ? vArtists() :
     view==='goals'   ? vGoals()   : view==='team'    ? vTeam()    :
-    view==='gallery' ? vGallery() : view==='rewards' ? vRewards() : view==='education' ? vEducation() :
+    view==='gallery' ? vGallery() : view==='rewards' ? vRewards() : view==='education' ? vEducation() : view==='studio' ? vStudio() :
     view==='circles' ? (openCircle ? vCircle() : vCircles()) : vDash());
   if(view==='gallery') loadThumbs();
   paintSync();
@@ -4339,15 +4786,10 @@ function vMore(){
   const top = artistsRanked()[0], p1 = lartists().filter(a=>prioOf(a)===1).length;
   const myGoals = lgoals().filter(g=>g.owner===m.id && g.status!=='klar').length;
   const allGoals = lgoals().filter(g=>g.status!=='klar').length;
-  const card = (v, title, sub) => `
-    <button class="member" onclick="go('${v}')">
-      <div class="av" style="background:linear-gradient(150deg,rgba(255,62,191,.32),rgba(208,27,140,.14));
-        box-shadow:0 0 0 1px var(--line2) inset">
-        <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--pur3);fill:none;stroke-width:1.8;
-          stroke-linecap:round;stroke-linejoin:round">${ICONS[v]}</svg></div>
-      <div class="grow"><div class="mname">${title}</div><div class="mrole">${sub}</div></div>
-      <span style="color:var(--mut2);font-size:18px">›</span>
-    </button>`;
+  let n = 0;   /* numreras per synlig rad, som Access-sidans register */
+  const row = (on, title, sub) => `<button class="mrow" onclick="${on}"><i>${String(++n).padStart(2,'0')}</i>
+      <span class="grow"><b>${title}</b><em>${sub}</em></span><span class="chev" aria-hidden="true">›</span></button>`;
+  const card = (v, title, sub) => row(`tabPos['${v}']=0;go('${v}')`, title, sub);
   return `
     <div class="h1">Mer</div>
     <div class="sub">Allt som inte är kalender, agenda eller beats.</div>
@@ -4355,13 +4797,10 @@ function vMore(){
       ${card('artists','ARTISTER', `${lartists().length} artister${p1?' · '+p1+' i prio 1':''}${top&&prioOf(top)===1?' · '+esc(top.n)+' överst':''}`)}
       ${mgr ? card('dash','STATISTIK', 'Samarbeten, släpp, streams och studiotid') : ''}
       ${card('goals','MÅLSÄTTNING', mgr ? `Allas personliga mål och planer · ${nt(allGoals,'aktivt','aktiva')}` : `Dina personliga mål, ambitioner och utvecklingsområden · ${nt(myGoals,'aktiv','aktiva')}`)}
-      <button class="member" onclick="agendaTab='general';go('agenda')">
-        <div class="av" style="background:linear-gradient(150deg,rgba(255,62,191,.32),rgba(208,27,140,.14));box-shadow:0 0 0 1px var(--line2) inset">
-          <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:var(--pur3);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round">${ICONS.agenda}</svg></div>
-        <div class="grow"><div class="mname">ALLMÄN AGENDA</div><div class="mrole">Det vi tillsammans vill uppnå · ${nt(lagenda().filter(a=>a.kind==='general' && !a.done).length,'punkt','punkter')}</div></div>
-        <span style="color:var(--mut2);font-size:18px">›</span></button>
+      ${row(`tabPos.agenda=0;agendaTab='general';go('agenda')`, 'ALLMÄN AGENDA', `Det vi tillsammans vill uppnå · ${nt(lagenda().filter(a=>a.kind==='general' && !a.done).length,'punkt','punkter')}`)}
       ${card('gallery','GALLERI', `${nt(lmedia().length,'bild eller film','bilder och filmer')} från kamerateamet`)}
       ${card('education','EDUCATION', canEdu() ? '200 läroplaner · tilldela till cirkelledare' : 'Dina tilldelade läroplaner, månad för månad')}
+      ${isAdminRole(m.r) ? card('studio','STUDIO', `Sessionsstatistik och studiokontroller${(loadChecks(), missingChecks(true).length) ? ' · ' + nt(missingChecks(true).length,'pass saknar','pass saknar') + ' kontroll' : ''}`) : ''}
       ${canIntel() ? card('rewards','REWARDS', 'Poäng, belöningar, nivåer och Artist Intelligence') : ''}
       ${card('team','CREW', `${teamAcc().length} personer · profiler och konton`)}
       ${card('circles','CIRKLAR', `${lcircle().length} cirklar i programmet`)}
@@ -4699,6 +5138,8 @@ function openArtistEdit(id){
     <label class="lbl" for="arI">INSTAGRAM</label><input id="arI" value="${a?esc(a.ig||''):''}" placeholder="namn utan @ — för samarbetsinlägg" maxlength="30">
     <label class="lbl">ANTECKNING</label>
     <textarea id="arT" placeholder="Vad som är på gång, vad som behövs" maxlength="300">${a?esc(a.note||''):''}</textarea>
+    <label class="consent" style="margin-top:14px"><input type="checkbox" id="arPct" ${!a || a.pct!==false ? 'checked' : ''}>
+      <span><b>Procentartist</b> — passen räknas som Artist Session (%) i Studio → Sessioner</span></label>
     <button class="btn" style="margin-top:20px" onclick="saveArtist('${a?a.id:''}')">SPARA</button>
     ${a?`<button class="btn danger" style="margin-top:9px" onclick="delArtist('${a.id}')">TA BORT ARTISTEN</button>`:''}`);
 }
@@ -4708,7 +5149,7 @@ function saveArtist(id){
   if(lartists().some(a=>a.id!==id && a.n.toLowerCase()===n.toLowerCase())) return toast('Artisten finns redan');
   const on = document.querySelector('.chip.prio.on'), pr = on ? +on.dataset.p : 2;
   const patch = {n, genre:document.getElementById('arG').value.trim(), note:document.getElementById('arT').value.trim(),
-    ig:document.getElementById('arI').value.trim().replace(/^@/,''), priority:pr};
+    ig:document.getElementById('arI').value.trim().replace(/^@/,''), priority:pr, pct:document.getElementById('arPct').checked};
   let aid = id;
   if(id){ const a = artistById(id); if(prioOf(a)!==pr) patch.rank = 1e9; bump(Object.assign(a, patch)); }
   else { aid = uid(); S.artists.push(bump(Object.assign({id:aid, active:true, del:false, rank:1e9}, patch))); }
@@ -4773,11 +5214,11 @@ function agTask(a, opts){
   opts = opts || {};
   const mine = can('editAgenda', a);
   return `<div class="task ${a.done?'done':''}">
-    <button class="tick" role="checkbox" aria-checked="${!!a.done}" aria-label="${esc(a.text)}"
-      ${mine?`onclick="toggleTask('${a.id}')"`:'disabled'}>${a.done?'✓':''}</button>
+    <button class="tick" role="checkbox" aria-checked="${!!a.done}" aria-label="${esc(a.text)}" data-tick="${a.id}"
+      ${mine?`onclick="toggleTask('${a.id}')"`:'disabled'}></button>
     <div class="grow task-t">${esc(a.text)}${opts.who && a.who?` <span class="task-w" style="color:${glow(a.who)}">${esc(a.who)}</span>`:''}${
       a.due?`<span class="task-w">klart ${esc(longDate(a.due).toLowerCase())}</span>`:''}</div>
-    ${mine && opts.del?`<button class="task-x" aria-label="Ta bort" onclick="delTask('${a.id}')">✕</button>`:''}
+    ${mine && opts.del?`<button class="task-x" aria-label="Ta bort" onclick="delTask('${a.id}')">${IC.x}</button>`:''}
   </div>`;
 }
 const weekTasks = (mon, who) => lagenda().filter(a=>a.kind==='week' && a.week===iso(mon) && (who===undefined || a.who===who));
@@ -4790,8 +5231,8 @@ const planSessions = mon => booked().filter(b=>!b.circleId && !b.leadId && !(b.p
 function planRow(b){
   const mine = can('markRan', b), a = artistById(b.artistId), past = startAt(b) <= new Date();
   return `<div class="task ${b.ran?'done':''}">
-    <button class="tick" role="checkbox" aria-checked="${!!b.ran}" aria-label="Kört: ${esc(b.title||'Session')} ${b.date}"
-      ${mine?`onclick="toggleRan('${b.id}')"`:'disabled'}>${b.ran?'✓':''}</button>
+    <button class="tick" role="checkbox" aria-checked="${!!b.ran}" aria-label="Kört: ${esc(b.title||'Session')} ${b.date}" data-tick="${b.id}"
+      ${mine?`onclick="toggleRan('${b.id}')"`:'disabled'}></button>
     <button class="grow task-t plan-t" onclick="openDetail('${b.id}')">
       <b>${DAY2[fromIso(b.date).getDay()]} ${b.start}–${b.end}</b> · ${esc(S.studios[b.studio]||'')}${
       (b.with||[]).length?' · med '+b.with.map(esc).join(', '):''}${a?' · '+esc(a.n):''}${
@@ -4813,7 +5254,7 @@ function weekPlanSection(mon){
 }
 function toggleRan(id){
   const b = S.bookings.find(x=>x.id===id); if(!b || !can('markRan', b)) return;
-  bump(Object.assign(b, {ran:!b.ran})); save(); render(); sync(true);
+  bump(Object.assign(b, {ran:!b.ran})); save(); popTick = id; render(); sync(true);
 }
 /* Förra veckans pass som text i tolkens format — samma väg in som när man skriver själv. */
 function lastWeekPlanText(){
@@ -4841,36 +5282,42 @@ function vWeekAgenda(){
   const isNow = wk===iso(monday(new Date()));
 
   const taskRow = a => agTask(a, {del:1});
+  const mayAdd = who => mgr || who===m.n || who==='';
+  const addBtn = (title, who) => mayAdd(who) ? `<button class="iconbtn" aria-label="Ny uppgift för ${esc(title)}" onclick="openTask('week','${esc(who)}')">${IC.plus}</button>` : '';
+  /* samma komponent som IDAG: personrader i ett kort, plus i rubriken */
   const block = (title, color, list, who) => {
     const done = list.filter(a=>a.done).length;
-    return `<div class="card" style="margin-bottom:9px">
-      <div class="row"><div class="grow" style="font-weight:800;letter-spacing:.07em;color:${color}">${esc(title)}</div>
-        <span class="tiny muted">${done}/${list.length}</span></div>
-      ${list.length?`<div class="bar" style="height:3px;margin:9px 0 4px"><i data-fill="agv:${esc(title)}" style="width:${done/list.length*100}%"></i></div>`:''}
-      ${list.length ? list.map(taskRow).join('') : `<div class="tiny muted" style="margin-top:8px">Inget inlagt.</div>`}
-      ${(mgr || who===m.n || who==='') ? `<button class="chip" style="margin-top:10px"
-        onclick="openTask('week','${esc(who)}')">+ UPPGIFT</button>`:''}
-    </div>`;
+    return `<div class="agp">
+      <div class="agp-h"><b style="color:${color}">${esc(title)}</b><span class="agp-n">${done}/${list.length}</span>${addBtn(title, who)}</div>
+      <div class="bar thin"><i data-fill="agv:${esc(title)}" style="width:${done/list.length*100}%"></i></div>
+      ${list.map(taskRow).join('')}</div>`;
   };
+  const rows = [];
+  if(shared.length) rows.push(block('ALLA', 'var(--txt)', shared, ''));
+  const empty = [];
+  if(!shared.length && mgr) empty.push(['Alla', '']);
+  people.forEach(c=>{ const l = items.filter(a=>a.who===c.n); l.length ? rows.push(block(c.n, c.g, l, c.n)) : empty.push([c.n, c.n]); });
+  const emptyRow = empty.length ? `<div class="agp agp-empty"><div class="tiny muted">Inget inlagt: ${empty.map(([n])=>esc(n)).join(', ')}</div>
+      ${empty.some(([,w])=>mayAdd(w)) ? `<div class="chips wrap" style="margin-top:9px">${empty.filter(([,w])=>mayAdd(w)).map(([n,w])=>
+        `<button class="chip" onclick="openTask('week','${esc(w)}')">+ ${esc(n)}</button>`).join('')}</div>` : ''}</div>` : '';
 
   return `
     <div class="sub">Veckans uppgifter och studiotider — så alla vet vad som gäller.</div>
     ${can('parseAgenda')?`<div class="row" style="gap:9px">
-      <button class="btn" style="flex:1" onclick="openParse()">✎ SKRIV IN VECKAN</button>
-      <button class="btn ghost" style="flex:1" onclick="openParse(lastWeekPlanText())">KOPIERA FÖRRA VECKAN</button></div>`:''}
+      <button class="btn" style="flex:1" onclick="openParse()">SKRIV IN VECKAN</button>
+      <button class="btn ghost" style="flex:1" onclick="openParse(lastWeekPlanText())" aria-label="Kopiera förra veckans plan">KOPIERA V ${weekNo(addDays(aWeek(),-7))}</button></div>`:''}
 
     <div class="weeknav" style="margin-top:18px">
-      <button onclick="agendaWeek=addDays(aWeek(),-7);render()">‹</button>
-      <div class="wk">VECKA ${weekNo(aWeek())}${isNow?' · DENNA':''}</div>
-      <button onclick="agendaWeek=addDays(aWeek(),7);render()">›</button>
+      <button onclick="agendaWeek=addDays(aWeek(),-7);render()" aria-label="Förra veckan">${IC.l}</button>
+      <div class="wk">VECKA ${weekNo(aWeek())}${isNow?'<small>DENNA</small>':''}</div>
+      <button onclick="agendaWeek=addDays(aWeek(),7);render()" aria-label="Nästa vecka">${IC.r}</button>
     </div>
 
     ${weekPlanSection(aWeek())}
 
     <div class="eyebrow">VECKANS AGENDA<span class="ln"></span>
       <span style="color:var(--mut2)">${items.filter(a=>a.done).length}/${items.length} klara</span></div>
-    ${shared.length || mgr ? block('ALLA', 'var(--txt)', shared, '') : ''}
-    ${people.map(c=>block(c.n, c.g, items.filter(a=>a.who===c.n), c.n)).join('')}`;
+    ${rows.length || emptyRow ? `<div class="card agcard">${rows.join('')}${emptyRow}</div>` : ''}`;
 }
 
 /* ---------- ALLMÄN AGENDA ----------
@@ -4911,7 +5358,7 @@ function vGeneralAgenda(){
     ${done.length ? `<div class="eyebrow">UPPNÅTT<span class="ln"></span><span style="color:var(--mut2)">${done.length}</span></div>
       <div class="card">${done.map(genRow).join('')}</div>` : ''}
     <div class="note">Gemensamt för hela teamet — alla ser det och kan lägga till. Det du personligen vill uppnå och utveckla
-      hör hemma i <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();go('goals')">din målsättning</a>.</div>`;
+      hör hemma i <a href="#" style="color:var(--pur3);font-weight:600" onclick="event.preventDefault();go('goals')">din målsättning</a>.</div>`;
 }
 function openGeneral(id, cat){
   const a = id ? S.agenda.find(x=>x.id===id) : null;
@@ -4948,7 +5395,7 @@ function saveGeneral(id){
 }
 function toggleGeneral(id){
   const a = S.agenda.find(x=>x.id===id); if(!a || !can('editGeneral', a)) return;
-  bump(Object.assign(a, {done:!a.done})); save(); render(); sync(true);
+  bump(Object.assign(a, {done:!a.done})); save(); popTick = id; render(); sync(true);
   if(a.done) toast('Uppnått ✓');
 }
 function delGeneral(id){
@@ -4983,7 +5430,7 @@ function saveTask(kind){
 }
 function toggleTask(id){
   const a = S.agenda.find(x=>x.id===id); if(!a || !can('editAgenda', a)) return;
-  bump(Object.assign(a, {done:!a.done})); save(); render(); sync(true);
+  bump(Object.assign(a, {done:!a.done})); save(); popTick = id; render(); sync(true);
 }
 function delTask(id){
   const a = S.agenda.find(x=>x.id===id); if(!a || !can('editAgenda', a)) return;
@@ -5296,7 +5743,7 @@ function vGoals(){
     <button onclick="toggleGoal('${g.id}')" style="flex:none;width:22px;height:22px;border-radius:50%;margin-top:1px;
       border:1.5px solid ${g.status==='klar'?'transparent':'var(--line2)'};
       background:${g.status==='klar'?'linear-gradient(150deg,var(--ok2),#059669)':'transparent'};
-      color:#05130d;font-size:12px;font-weight:900">${g.status==='klar'?'✓':''}</button>
+      color:#05130d;font-size:12px;font-weight:600">${g.status==='klar'?'✓':''}</button>
     <div class="grow" onclick="openGoal('${g.id}')" style="cursor:pointer">
       <div style="font-size:14.5px;${g.status==='klar'?'color:var(--mut2);text-decoration:line-through':''}">${esc(g.text)}</div>
       ${g.due?`<div class="tiny" style="color:${g.status!=='klar'&&g.due<iso(new Date())?'var(--bad2)':'var(--mut2)'};margin-top:3px">
@@ -5328,7 +5775,7 @@ function vGoals(){
 
     <div class="note">Personligt: synligt för ${own?'dig':esc(who.n)} och managern — ingen annan i teamet ser det här.
       Det ni vill uppnå tillsammans som organisation ligger i
-      <a href="#" style="color:var(--pur3);font-weight:650" onclick="event.preventDefault();agendaTab='general';go('agenda')">allmänna agendan</a>.</div>`;
+      <a href="#" style="color:var(--pur3);font-weight:600" onclick="event.preventDefault();agendaTab='general';go('agenda')">allmänna agendan</a>.</div>`;
 }
 
 /* Från en profil rakt in i personens mål. Producenten hamnar alltid i sina
@@ -5510,16 +5957,21 @@ async function playBeat(id){
   let np = document.getElementById('np');
   if(!np){ np = document.createElement('div'); np.id = 'np'; document.body.appendChild(np); }
   playing = id;
-  np.innerHTML = `<div class="np-ic" style="color:${glow(b.who)}">♪</div>
+  document.querySelectorAll('.flink.on[data-play]').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll(`[data-play="${id}"]`).forEach(x=>x.classList.add('on'));
+  np.classList.add('paused');
+  np.innerHTML = `<div class="np-ic" style="color:${glow(b.who)}"><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
     <div class="np-t"><b>${esc(b.name)}</b><span><span style="color:${glow(b.who)}">${esc(b.who)}</span>${
       b.bpm?' · '+esc(b.bpm)+' bpm':''}${b.key?' · '+esc(b.key):''}</span></div>
     <div class="np-a"><span class="tiny muted">Hämtar…</span></div>
-    <button class="np-x" onclick="stopBeat()" aria-label="Stäng spelaren">✕</button>`;
+    <button class="np-x" onclick="stopBeat()" aria-label="Stäng spelaren">${IC.x}</button>`;
   np.classList.add('on'); document.body.classList.add('np-on');
   try{
     const r = await dbx('files/get_temporary_link', {path:b.fileId});
     if(playing!==id) return;
     np.querySelector('.np-a').innerHTML = `<audio controls autoplay preload="auto" src="${esc(r.link)}"></audio>`;
+    const au = np.querySelector('audio');
+    au.onplay = ()=>np.classList.remove('paused'); au.onpause = au.onended = ()=>np.classList.add('paused');
   }catch(e){
     if(playing!==id) return;
     np.querySelector('.np-a').innerHTML = `<span class="tiny" style="color:var(--bad2)">${
@@ -5530,6 +5982,7 @@ function stopBeat(){
   playing = '';
   const np = document.getElementById('np');
   if(np){ const a = np.querySelector('audio'); if(a) a.pause(); np.classList.remove('on'); np.innerHTML = ''; }
+  document.querySelectorAll('.flink.on[data-play]').forEach(x=>x.classList.remove('on'));
   document.body.classList.remove('np-on');
 }
 
@@ -5644,28 +6097,30 @@ function vBeatList(){
         <div class="ft" style="border-color:${col(b.who)};color:${glow(b.who)}">${esc(b.key||'♪')}</div>
         <div class="grow" style="min-width:0">
           <div class="fname">${esc(b.name)}</div>
-          <div class="fmeta"><span style="color:${glow(b.who)};font-weight:800">${esc(b.who)}</span>
+          <div class="fmeta"><span style="color:${glow(b.who)};font-weight:600">${esc(b.who)}</span>
             ${b.bpm?`<span>${esc(b.bpm)} bpm</span>`:''}
             <span class="pill" style="background:rgba(255,255,255,.05);color:${s.c}">${s.n}</span>
             ${a?`<span>→ ${esc(a.n)}</span>`:''}</div>
         </div>
-        ${b.fileId||b.link?`<button class="flink ${playing===b.id?'on':''}" onclick="event.stopPropagation();playBeat('${b.id}')" title="Spela" aria-label="Spela ${esc(b.name)}">
+        ${b.fileId||b.link?`<button class="flink ${playing===b.id?'on':''}" data-play="${b.id}" onclick="event.stopPropagation();playBeat('${b.id}')" title="Spela" aria-label="Spela ${esc(b.name)}">
           <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg></button>`:''}
       </div>`;}).join('')
       : `<div class="empty">${total?'Inget matchar filtret.':'Inga beats i kanalen än.'}</div>`}
   `;
 }
 /* Vad beatkanalen säger när Dropbox inte är klart — olika för AZ och producenten. */
-function beatsSetupNote(){
-  const mgr = can('manageDropbox');
+function beatsSetupNote(kind){
+  const mgr = can('manageDropbox'), media = kind==='media';
   if(!dbxConfigured() || !S.dropbox.setupAt)
-    return `<div class="note" style="margin-top:0"><b>Beatkanalen bor i Dropbox.</b> ${mgr
+    return `<div class="note" style="margin-top:0">${media ? `<b>Galleriet bor i Dropbox.</b> ${mgr
+      ? 'Koppla Dropbox under Profil så hamnar kamerateamets bilder här.'
+      : 'AZ kopplar Dropbox — sedan hamnar kamerateamets bilder här.'}` : `<b>Beatkanalen bor i Dropbox.</b> ${mgr
       ? 'Koppla Dropbox under Profil, så får varje producent en egen beatmapp.'
-      : 'AZ kopplar Dropbox — sedan får du en egen beatmapp här.'}</div>
-      ${mgr?`<button class="btn" style="margin-top:12px" onclick="openDropboxSetup()">KOPPLA DROPBOX</button>`:''}`;
+      : 'AZ kopplar Dropbox — sedan får du en egen beatmapp här.'}`}</div>
+      ${mgr?`<button class="btn ghost slim" style="margin-top:12px;width:auto" onclick="openDropboxSetup()">KOPPLA DROPBOX</button>`:''}`;
   return `<div class="note" style="margin-top:0"><b>Koppla ditt Dropbox en gång</b> så kan du ladda upp
       och lyssna. Mappen BANDOHQ dyker sedan upp i ditt Dropbox av sig själv.</div>
-    <button class="btn" style="margin-top:12px" onclick="dbxConnect()">KOPPLA DROPBOX</button>`;
+    <button class="btn ghost slim" style="margin-top:12px;width:auto" onclick="dbxConnect()">KOPPLA DROPBOX</button>`;
 }
 
 function openBeat(id){
@@ -5673,7 +6128,7 @@ function openBeat(id){
   const mine = can('dashboard') || b.who===me().n;
   openSheet(`${X}
     <h2>${esc(b.name)}</h2>
-    <div class="sub"><span style="color:${glow(b.who)};font-weight:800">${esc(b.who)}</span>${
+    <div class="sub"><span style="color:${glow(b.who)};font-weight:600">${esc(b.who)}</span>${
       b.file?' · '+esc(b.file):''}${b.size?' · '+kb(b.size):''}</div>
     ${b.fileId||b.link?`<button class="btn" style="margin-top:16px" onclick="playBeat('${b.id}')">▶ SPELA</button>`:''}
     ${mine?`
@@ -5826,7 +6281,7 @@ function vGallery(){
       ${uploads.length ? uploads.map(u=>`<div class="uprow" style="margin-top:9px"><div class="row"><div class="grow fname">${esc(u.name)}</div>
         <span class="tiny muted nums">${u.err?'':Math.round(u.p*100)+'%'}</span></div>
         ${u.err?`<div class="tiny" style="color:var(--bad2);margin-top:5px">${esc(u.err)}</div>`:`<div class="upbar"><i id="up-${u.id}" style="transform:scaleX(${(+u.p||0).toFixed(3)})"></i></div>`}</div>`).join(''):''}`
-      : beatsSetupNote()) : ''}
+      : beatsSetupNote('media')) : ''}
     ${total ? `<div class="chips" style="margin-top:var(--s4)">
       <button class="chip ${!galFilter&&!galOnlyNew?'on':''}" onclick="galFilter='';galOnlyNew=false;render()">ALLA</button>
       ${teams.map(t=>`<button class="chip ${galFilter===t?'on':''}" onclick="galFilter=galFilter==='${esc(t)}'?'':'${esc(t)}';render()">${esc(t)}</button>`).join('')}
@@ -5916,9 +6371,10 @@ function vToday(){
   const wk = booked().filter(b=>startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
   const wkH = wk.reduce((a,b)=>a+dur(b),0);
   return `
-    <div class="h1">${DAY2[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}</div>
+    <div class="h1">${DAY2[d.getDay()]} <b class="dnum">${d.getDate()}</b> ${MON[d.getMonth()]}</div>
     <div class="sub">Vecka ${weekNo(d)} · ${todays.length} pass idag · ${hh(wkH)} h bokade i veckan</div>
     ${backupBanner()}
+    ${checkBanner()}
     ${inboxCard()}
     <div class="stagger live-pair">
       ${['A','B'].map((s,i)=>liveCard(s,i)).join('')}
@@ -5965,25 +6421,25 @@ function weekAgendaCard(){
 }
 function liveCard(s, idx){
   const now = nowIn(s), nx = nextIn(s), name = S.studios[s];
-  const st = `animation-delay:${idx*70}ms`;
   if(now){
     const p = Math.min(100,Math.max(0,(new Date()-startAt(now))/(endAt(now)-startAt(now))*100));
     const left = Math.max(0, Math.round((endAt(now)-new Date())/60000));
-    return `<button class="card live on" style="width:100%;text-align:left;margin-bottom:10px;${st}" onclick="openDetail('${now.id}')">
-      <div class="row"><div class="studio-name grow">${esc(name)}</div>
+    return `<button class="card live on" style="width:100%;text-align:left;margin-bottom:10px" onclick="openDetail('${now.id}')">
+      <div class="row"><div class="studio-name sign grow sdot" style="--s:${SC[s]}">${esc(name)}</div>
         <span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">
           <span class="eq"><i></i><i></i><i></i><i></i></span>PÅGÅR</span></div>
       <div class="live-title">${esc(now.title||'Session')}</div>
-      <div class="live-meta"><span style="color:${glow(now.who)};font-weight:800">${esc(now.who)}</span>
+      <div class="live-meta"><span style="color:${glow(now.who)};font-weight:600">${esc(now.who)}</span>
         · ${now.start}–${now.end} · ${left>=60?Math.floor(left/60)+' h '+(left%60)+' min':left+' min'} kvar</div>
       <div class="bar"><i style="width:${p}%"></i></div></button>`;
   }
-  return `<div class="card live" style="margin-bottom:10px;${st}">
-    <div class="row"><div class="studio-name grow">${esc(name)}</div>
-      <span class="pill" style="background:rgba(255,62,191,.12);color:var(--pur3)">LEDIG</span></div>
-    <div class="live-title" style="color:var(--mut)">Ingen i studion</div>
-    <div class="live-meta">${nx ? 'Nästa: '+(relDay(nx.date)||longDate(nx.date))+' '+nx.start+' · '+esc(nx.who)
-                                : 'Inga kommande pass bokade'}</div></div>`;
+  /* ledig: kompakt, och leder till nästa pass i studion */
+  const head = `<div class="row"><div class="studio-name sign grow sdot" style="--s:${SC[s]}">${esc(name)}</div>
+      <span class="pill" style="background:transparent;box-shadow:inset 0 0 0 1px var(--line2);color:var(--mut)">LEDIG</span></div>`;
+  if(!nx) return `<div class="card live" style="margin-bottom:10px">${head}<div class="live-title">Inget bokat</div></div>`;
+  return `<button class="card live" style="width:100%;text-align:left;margin-bottom:10px" onclick="openDetail('${nx.id}')">${head}
+    <div class="live-title">Nästa · ${relDay(nx.date)||longDate(nx.date)} ${nx.start}</div>
+    <div class="live-meta"><span style="color:${glow(nx.who)};font-weight:600">${esc(nx.who)}</span> · ${esc(nx.title||'Session')}</div></button>`;
 }
 
 /* ---------- SCHEMA ---------- */
@@ -6013,9 +6469,9 @@ function vWeek(){
     ${myAgendaPanel()}
     <div class="wk-main">
     <div class="weeknav">
-      <button onclick="shiftWeek(-1)">‹</button>
-      <div class="wk">VECKA ${weekNo(weekStart)} · ${MON[weekStart.getMonth()].toUpperCase()}</div>
-      <button onclick="shiftWeek(1)">›</button>
+      <button onclick="shiftWeek(-1)" aria-label="Förra veckan">${IC.l}</button>
+      <div class="wk" role="heading" aria-level="1">VECKA ${weekNo(weekStart)}<small>${MON[weekStart.getMonth()].toUpperCase()}</small></div>
+      <button onclick="shiftWeek(1)" aria-label="Nästa vecka">${IC.r}</button>
     </div>
     <div class="days">${grid}</div>
     <div class="chips" style="margin-top:13px">
@@ -6032,7 +6488,7 @@ function vWeek(){
     <div class="stagger">
     ${day.length ? day.map((b,i)=>bkCard(b,false,i)).join('')
       : `<div class="empty">Inga pass ${relDay(selDate)==='IDAG'?'idag':'denna dag'}.<br>
-          <b style="color:var(--pur3)" onclick="openForm(null,'${selDate}')">+ Boka studio</b></div>`}
+          <button class="linkbtn inline" onclick="openForm(null,'${selDate}')">Boka studio</button></div>`}
     </div>
     ${groups ? `<div class="eyebrow" style="margin-top:26px">RESTEN AV VECKAN<span class="ln"></span></div>${groups}` : ''}
     </div></div>
@@ -6040,7 +6496,7 @@ function vWeek(){
 }
 /* Min agenda bredvid schemat. På datorn en egen kolumn till vänster, på
    mobilen ett hopfällbart kort överst (öppet/stängt kommer ihåg sig). */
-let myAgOpen = (()=>{ try{ return localStorage.getItem('bandosesh_myag')!=='0'; }catch(e){ return true; } })();
+let myAgOpen = (()=>{ try{ return localStorage.getItem('bandosesh_myag')==='1'; }catch(e){ return false; } })();
 function toggleMyAg(){
   myAgOpen = !myAgOpen;
   try{ localStorage.setItem('bandosesh_myag', myAgOpen?'1':'0'); }catch(e){}
@@ -6075,18 +6531,18 @@ function bkCard(b, showDate, idx){
   const m = me();
   const nf = lfile().filter(f=>f.bookingId===b.id && can('viewFile',f)).length;
   return `<button class="bk ${past?'past':''} ${m&&b.who===m.n?'mine':''}"
-    style="--k:${col(b.who)};--kg:${glow(b.who)};animation-delay:${(idx||0)*45}ms" onclick="openDetail('${b.id}')">
+    style="--k:${col(b.who)};--kg:${glow(b.who)}" onclick="openDetail('${b.id}')">
     <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
     <div class="grow">
       <div class="bk-title">${esc(b.title||'Session')}</div>
       <div class="bk-sub">
         <span class="sdot" style="--s:${SC[b.studio]}">${esc(S.studios[b.studio])}</span>
-        <span style="color:${glow(b.who)};font-weight:700;letter-spacing:.03em">${esc(b.who)}${
+        <span style="color:${glow(b.who)};font-weight:600;letter-spacing:.03em">${esc(b.who)}${
           (b.with||[]).map(n=>` <span style="color:var(--mut2)">+</span> <span style="color:${glow(n)}">${esc(n)}</span>`).join('')}</span>
         ${b.artistId&&artistById(b.artistId)?`<span style="color:var(--txt)">· ${esc(artistById(b.artistId).n)}</span>`:''}
         ${showDate&&!relDay(b.date)?'· '+longDate(b.date):''}
         ${on?'<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">NU</span>':''}
-        ${b.paid?'<span class="pill" style="background:rgba(250,178,25,.14);color:var(--warn)">BETALD</span>':''}
+        ${b.paid?'<span class="pill" style="box-shadow:inset 0 0 0 1px var(--line2);color:var(--mut)">BETALD</span>':''}
         ${b.circleId?`<span class="pill" style="background:rgba(255,106,216,.15);color:var(--pur3)">CIRKEL${
           b.status==='done'?' ✓':''}</span>`:''}
       </div>
@@ -6108,7 +6564,7 @@ function fileRow(f){
     <div class="grow" style="min-width:0">
       <div class="fname">${esc(f.name)}</div>
       <div class="fmeta"><span class="nums">${kb(f.size||0)}</span>
-        <span style="color:${glow(f.who)};font-weight:800">${esc(f.who)}</span>
+        <span style="color:${glow(f.who)};font-weight:600">${esc(f.who)}</span>
         ${b?`<span>· ${esc(b.title||'Session')} ${esc(longDate(b.date))}</span>`:''}</div>
     </div>
     ${f.link?`<a class="flink" href="${esc(f.link)}" target="_blank" rel="noopener" title="Öppna">
@@ -6733,8 +7189,9 @@ function invitesSection(){
         Skicka en inbjudan — de väljer användarnamn och lösenord och skriver in en kod från mejlet.</div>
       ${(invAll ? w : w.slice(0,5)).map(a=>{ const st = inviteStatus(a); return `<div class="member invrow" style="cursor:default">${avatar(a)}
         <div class="grow"><div class="mname">${esc(a.n)}</div>
-          <div class="mrole">${roleLabel(a)} · ${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'} · ${esc(st.txt)}</div></div>
-        <button class="btn slim ${st.open?'ghost':''}" style="width:auto;flex:none;padding:9px 12px" onclick="openAddPerson(null,'${a.id}')">${st.open?'IGEN':'BJUD IN'}</button>
+          <div class="mrole">${roleLabel(a)} · ${esc(st.txt)}</div>
+          <div class="mrole mmail">${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'}</div></div>
+        <button class="btn slim ghost" style="width:auto;flex:none;padding:9px 12px${st.open?';color:var(--mut)':''}" onclick="openAddPerson(null,'${a.id}')">${st.open?'IGEN':'BJUD IN'}</button>
       </div>`; }).join('')}
       ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}
       ${ready.length ? `<button class="btn" style="margin-top:12px" onclick="inviteAll()">SKICKA TILL ALLA MED E-POST (${ready.length})</button>` : ''}
@@ -6748,8 +7205,8 @@ function clientsSection(){
     <div class="card">
       ${(invAll ? w : w.slice(0,5)).map(a=>`<div class="member invrow" style="cursor:default">${avatar(a)}
         <div class="grow"><div class="mname">${esc(a.n)}</div>
-          <div class="mrole">${ROLE_NAME[a.r]}${a.r==='customer' && byId(a.producer) ? ' · ' + esc(byId(a.producer).n) : ''} · ${
-            a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'}</div></div>
+          <div class="mrole">${ROLE_NAME[a.r]}${a.r==='customer' && byId(a.producer) ? ' · ' + esc(byId(a.producer).n) : ''}</div>
+          <div class="mrole mmail">${a.email ? esc(a.email) : '<span style="color:var(--warn)">ingen e-post</span>'}</div></div>
         <button class="btn slim ghost" style="width:auto;flex:none;padding:9px 12px" onclick="openAddPerson(null,'${a.id}')">BJUD IN</button>
       </div>`).join('')}
       ${w.length > 5 ? `<button class="linkbtn" style="margin-top:4px" onclick="invAll=!invAll;render()">${invAll ? 'Visa färre' : 'Visa alla ' + w.length}</button>` : ''}
@@ -6872,7 +7329,7 @@ function kpi(label, val, prev, unit, dec){
     : Math.abs(Math.round(d)) + '%';
   return `<div class="kpi">
     <em>${label}</em>
-    <b><span class="cnt" data-to="${val}" data-dec="${dec}">${dec?hh(val):Math.round(val)}</span><u>${unit}</u></b>
+    <b>${dec?hh(val):Math.round(val).toLocaleString('sv-SE')}<u>${unit}</u></b>
     <span class="dlt ${dir}">${arrow} ${change}
       <span style="color:var(--mut2);font-weight:600">mot ${dec||pct?hh(prev):Math.round(prev)}${unit}</span></span>
   </div>`;
@@ -6901,12 +7358,11 @@ function barsPerProducer(cur, prev){
         <text class="ct-val" x="${W}" y="${y+12}" text-anchor="end">${hh(r.h)} h${
           d!==null && r.h ? `<tspan class="ct-ax" dx="6">${d>0?'+':''}${d}%</tspan>` : ''}</text>
         <rect x="${L}" y="${y+20}" width="${BW}" height="8" rx="1" fill="rgba(255,255,255,.05)"/>
-        <rect x="${L}" y="${y+20}" width="${w}" height="8" rx="1" fill="var(--tube)"/>
+        <rect x="${L}" y="${y+20}" width="${w}" height="8" rx="1" fill="var(--tube)" data-fill="dash:${esc(r.c.id||r.c.n)}"/>
       </g>`;
     }).join('')}
   </svg></div>
-  <div class="tiny muted" style="margin-top:10px">Staplarna delar färg med flit — längden bär siffran,
-    pricken bär personen. Procenten jämför mot ${periodRange(period,true).label}.
+  <div class="tiny muted" style="margin-top:10px">Procenten jämför mot ${periodRange(period,true).label}.
     Ett pass räknas på alla som var med, så staplarna kan tillsammans bli fler än studiotimmarna.</div>`;
 }
 
@@ -6925,7 +7381,7 @@ function studioBars(cur, days){
         <text class="ct-val" x="${W}" y="${y+12}" text-anchor="end">${hh(d.h)} h
           <tspan class="ct-ax" dx="4">av ${cap}</tspan></text>
         <rect x="0" y="${y+20}" width="${W}" height="11" rx="5.5" fill="rgba(255,255,255,.05)"/>
-        <rect x="0" y="${y+20}" width="${w}" height="11" rx="5.5" fill="${SC[d.s]}"/>
+        <rect x="0" y="${y+20}" width="${w}" height="11" rx="5.5" fill="${SC[d.s]}" data-fill="st:${d.s}"/>
         <text class="ct-ax" x="0" y="${y+44}">${Math.round(d.h/cap*100)}% av rimlig kapacitet</text>
       </g>`;
     }).join('')}
@@ -6954,9 +7410,9 @@ function heatmap(cur){
   return `
     <div style="display:grid;grid-template-columns:44px repeat(7,1fr);gap:2px;align-items:center">
       <span></span>${DAY.slice(1).concat(DAY[0]).map(d=>
-        `<span class="ct-ax" style="text-align:center;font-size:9px;color:var(--mut2);font-weight:800">${d}</span>`).join('')}
+        `<span class="ct-ax" style="text-align:center;font-size:9px;color:var(--mut2);font-weight:600">${d}</span>`).join('')}
       ${BLOCKS.map((bk,i)=>`
-        <span class="ct-ax" style="font-size:9px;color:var(--mut2);font-weight:800">${bk[2]}</span>
+        <span class="ct-ax" style="font-size:9px;color:var(--mut2);font-weight:600">${bk[2]}</span>
         ${g[i].map((v,j)=>`<div class="hm-cell" style="background:${step(v)}"
           title="${DAY[(j+1)%7]} ${bk[2]} · ${hh(v)} h"></div>`).join('')}`).join('')}
     </div>
@@ -7008,9 +7464,9 @@ function collabMatrix(cur){
   return `
     <div class="scrollx"><div style="display:grid;grid-template-columns:56px repeat(${ppl.length},minmax(30px,1fr));
       gap:3px;align-items:center;min-width:${56+ppl.length*34}px">
-      <span></span>${ppl.map(c=>`<span class="ct-ax" style="text-align:center;font-size:9px;font-weight:800;
+      <span></span>${ppl.map(c=>`<span class="ct-ax" style="text-align:center;font-size:9px;font-weight:600;
         color:var(--mut)">${esc(short(c.n))}</span>`).join('')}
-      ${ppl.map(r=>`<span style="font-size:10px;font-weight:800;color:var(--mut);letter-spacing:.04em;
+      ${ppl.map(r=>`<span style="font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.04em;
           display:flex;align-items:center;gap:5px"><i style="width:7px;height:7px;border-radius:50%;
           background:${r.c};flex:none"></i>${esc(short(r.n))}</span>
         ${ppl.map(c=>{
@@ -7018,7 +7474,7 @@ function collabMatrix(cur){
             border:1px dashed var(--line3)"></div>`;
           const v = pair[key(r.n,c.n)]||0;
           return `<div title="${esc(r.n)} + ${esc(c.n)}: ${v} pass" style="aspect-ratio:1;border-radius:5px;
-            background:${step(v)};display:grid;place-items:center;font-size:10.5px;font-weight:800;
+            background:${step(v)};display:grid;place-items:center;font-size:10.5px;font-weight:600;
             color:${v/max>.55?'#0a0713':'var(--txt)'}">${v||''}</div>`;}).join('')}`).join('')}
     </div></div>
     <div class="hm-scale" style="margin-top:12px">0 ${SEQ.slice(1).map(c=>`<i style="background:${c}"></i>`).join('')} ${max} pass</div>
@@ -7035,7 +7491,7 @@ function artistTable(){
   return `<table class="tbl">
     <thead><tr><th class="l">PRIO</th><th class="l">ARTIST</th><th>SESSIONS</th><th>TIM</th><th>LÅTAR SLÄPPTA</th><th>SESS./LÅT</th><th>STREAMS</th><th>STR/LÅT</th></tr></thead>
     <tbody>${rows.map(r=>`<tr onclick="openArtist('${r.a.id}')" style="cursor:pointer">
-      <td class="l ${r.p===1?'hl':''}">${r.p} · #${r.r}</td><td class="l" style="font-weight:700">${esc(r.a.n)}</td>
+      <td class="l ${r.p===1?'hl':''}">${r.p} · #${r.r}</td><td class="l" style="font-weight:600">${esc(r.a.n)}</td>
       <td>${r.sessions}</td><td>${hh(r.hours)}</td><td>${r.releases}</td>
       <td>${r.perRelease==null?'–':hh(r.perRelease)}</td>
       <td>${r.streams?fmtNum(r.streams):'–'}</td>
@@ -7148,7 +7604,7 @@ function vCircleGroups(){
   const cand = mgr ? distributeCandidates().length : 0;
   const rows = cs.map((c,i)=>{
     const f = fillOf(c), up = circleSessions(c.id).filter(b=>b.status!=='done' && b.status!=='request' && endAt(b)>now).length;
-    return `<button class="member" style="animation-delay:${i*45}ms" onclick="openCircleView('${c.id}')">
+    return `<button class="member" onclick="openCircleView('${c.id}')">
       <div class="av" style="background:linear-gradient(150deg,${col(c.leader)||'#7c3aed'},#201a29)">
         ${esc((c.n.match(/\d+/)||[''])[0] || c.n.slice(0,2))}</div>
       <div class="grow"><div class="mname" style="letter-spacing:.02em">${esc(c.n)}</div>
@@ -7244,7 +7700,7 @@ function vCircleCal(){
   return `
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="calWeek=addDays(calWeek,-7);render()" aria-label="Förra veckan">‹</button>
-      <div class="grow" style="text-align:center;font-weight:650">Vecka ${weekNo(calWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
+      <div class="grow" style="text-align:center;font-weight:600">Vecka ${weekNo(calWeek)} · ${fromIso(days[0]).getDate()} ${MON[fromIso(days[0]).getMonth()]}–${fromIso(days[6]).getDate()} ${MON[fromIso(days[6]).getMonth()]}</div>
       <button class="btn ghost slim" style="width:auto;padding:8px 12px" onclick="calWeek=addDays(calWeek,7);render()" aria-label="Nästa vecka">›</button>
     </div>
     ${cs.length > 1 ? `<div class="calfilters">${leaders.length>1?sel('leader', leaders.map(n=>[n,n]), 'Alla ledare'):''}
@@ -7433,7 +7889,7 @@ function vCircle(){
       <div class="live-title" style="font-size:17px;margin-top:6px">${esc(cur.title)}</div>
       <div style="margin-top:12px;white-space:pre-wrap;line-height:1.75;color:var(--mut)">${esc(cur.body)}</div>
       ${cur.from?`<div class="tiny" style="color:var(--mut2);margin-top:12px">Gäller från ${esc(cur.from)}</div>`:''}
-    </div>`:`<div class="empty">Ingen kurs kopplad.${mgr?'<br><b style="color:var(--pur3)" onclick="openCircleEdit(\''+c.id+'\')">Välj en</b>':''}</div>`}`}
+    </div>`:`<div class="empty">Ingen kurs kopplad.${mgr?'<br><button class="linkbtn inline" onclick="openCircleEdit(\''+c.id+'\')">Välj en</button>':''}</div>`}`}
 
     ${leads && pending.length?`
       <div class="eyebrow">FÖRFRÅGNINGAR ATT SVARA PÅ<span class="ln"></span>
@@ -7486,8 +7942,7 @@ function vCircle(){
 function circleSessionRow(b, c, leads, i){
   const done = b.status==='done';
   const st = S.studios[b.studio];
-  return `<div class="bk" style="--k:${col(c.leader)||'#7c3aed'};--kg:${glow(c.leader)||'#a855f7'};
-      animation-delay:${(i||0)*40}ms;cursor:default">
+  return `<div class="bk" style="--k:${col(c.leader)||'#7c3aed'};--kg:${glow(c.leader)||'#a855f7'};cursor:default">
     <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
     <div class="grow">
       <div class="bk-title">${esc(longDate(b.date))}${relDay(b.date)?' · '+relDay(b.date):''}</div>
@@ -7619,7 +8074,7 @@ function vLeader(){
       <button role="tab" aria-selected="${leaderTab==='edu'}" class="${leaderTab==='edu'?'on':''}"
         onclick="leaderTab='edu';eduAt=0;render()">Läroplaner${eduList ? ` <span class="muted">${eduList.filter(x=>x.mine && x.status==='active').length}</span>` : ''}</button>
     </div>`;
-  if(leaderTab==='edu') return head + eduMine();
+  if(leaderTab==='edu') return checkBanner() + head + eduMine();
 
   if(leaderTab==='members'){
     const mails = mem.map(p=>p.email).filter(Boolean);
@@ -7920,7 +8375,7 @@ function vCustomer(){
     ${waiting.length?`<div class="eyebrow">VÄNTAR PÅ SVAR<span class="ln"></span><span style="color:var(--warn)">${waiting.length}</span></div>
       ${waiting.map(b=>myRow(b, sub(b), mineBtn(b))).join('')}`:''}
     <div class="eyebrow">DINA BOKNINGAR<span class="ln"></span></div>
-    ${upcoming.length ? upcoming.map(b=>myRow(b, sub(b), mineBtn(b))).join('') : `<div class="empty">Inga bekräftade bokningar än.</div>`}
+    ${upcoming.length ? upcoming.map(b=>myRow(b, sub(b), mineBtn(b))).join('') + confirmedCard(upcoming[0]) : `<div class="empty">Inga bekräftade bokningar än.</div>`}
     <div class="tiny muted" style="margin-top:4px;line-height:1.55">Avboka senast en timme innan. Efter det: hör av dig till
       ${esc(p ? p.name : 'din producent')}.</div>
     ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
@@ -8012,7 +8467,7 @@ function openLead(id){
       ${l.message?`<div class="kv" style="border:0"><span>MEDDELANDE</span><b style="font-weight:500">${esc(l.message)}</b></div>`:''}</div>
     <label class="lbl">GODKÄNN I</label>
     <div class="studiopick">${['A','B'].map(st=>{ const ok = free.includes(st);
-      return `<button class="spick ${l.studio===st&&ok?'on':''}" ${ok?`onclick="approveLead('${l.id}','${st}')"`:'disabled'} style="${ok?'':'opacity:.4'}">
+      return `<button class="spick ${l.studio===st&&ok?'on':''}" ${ok?`onclick="approveLead('${l.id}','${st}')"`:'disabled'} style="--s:${SC[st]};${ok?'':'opacity:.4'}">
         <b>${esc(S.studios[st])}</b><span>${ok?(l.studio===st?'Önskad · ledig':'Ledig'):'Upptagen'}</span></button>`; }).join('')}</div>
     <div class="note">${l.email ? 'Godkänn = tiden bokas och kunden får en bokningsbekräftelse på mejlen, med en länk för att skapa sitt konto.'
       : 'Kunden har bara lämnat telefonnummer. Godkänn = tiden bokas, och du får en färdig text med länken att skicka som sms.'}</div>
@@ -8082,7 +8537,7 @@ function openApprove(id){
     <div class="studiopick">${['A','B'].map(st=>{
       const ok = free.includes(st);
       return `<button class="spick" ${ok?`onclick="doApprove('${id}','${st}')"`:'disabled'}
-        style="${ok?'':'opacity:.4'}">
+        style="--s:${SC[st]};${ok?'':'opacity:.4'}">
         <b>${esc(S.studios[st])}</b><span>${ok?'Ledig':'Upptagen'}</span></button>`;}).join('')}</div>
     ${free.length?'':`<div class="warn">Båda studiorna är upptagna den tiden.
       Avböj förfrågan, eller be om en annan tid.</div>`}
@@ -8112,22 +8567,91 @@ async function declineRequest(id){
 }
 
 /* ===================== SHEET ===================== */
+let sheetReturn = null, kbdNav = false;
+addEventListener('keydown', e=>{ if(e.key==='Tab' || e.key==='Enter' || e.key===' ') kbdNav = true; }, true);
+addEventListener('pointerdown', ()=>{ kbdNav = false; }, true);
 function openSheet(html){
-  document.getElementById('sheetBody').innerHTML = html;
+  const sh = document.getElementById('sheet'), body = document.getElementById('sheetBody'), wasOn = sh.classList.contains('on');
+  body.innerHTML = html;
   document.getElementById('scrim').classList.add('on');
-  document.getElementById('sheet').classList.add('on');
-  document.getElementById('sheet').scrollTop = 0;
+  sh.classList.add('on');
+  sh.scrollTop = 0;
+  if(wasOn){
+    /* nytt innehåll i ett öppet ark: en kort toning i stället för ett hopp */
+    if(!reduceMotion() && body.animate) body.animate([{opacity:0, transform:'translateY(6px)'}, {opacity:1, transform:'none'}],
+      {duration:180, easing:curve('--ease', 'cubic-bezier(.23,1,.32,1)')});
+    return;
+  }
+  sheetReturn = document.activeElement;
+  document.documentElement.classList.add('sheet-open');
+  /* fokus in i arket, om det inte självt fokuserar ett fält: med tangentbord till stängknappen,
+     annars till arket (ingen fokusring efter ett tryck) */
+  requestAnimationFrame(()=>{ if(sh.contains(document.activeElement)) return;
+    const c = kbdNav && sh.querySelector('.close'); (c || sh).focus({preventScroll:true}); });
 }
 function closeSheet(){
+  const sh = document.getElementById('sheet'), was = sh.classList.contains('on');
   document.getElementById('scrim').classList.remove('on');
-  document.getElementById('sheet').classList.remove('on');
+  sh.classList.remove('on');
+  document.documentElement.classList.remove('sheet-open');
   editId=null;
+  if(was && sheetReturn && sheetReturn.isConnected && sheetReturn.focus) sheetReturn.focus({preventScroll:true});
+  sheetReturn = null;
 }
+addEventListener('keydown', e=>{ if(e.key==='Escape' && document.getElementById('sheet').classList.contains('on')) closeSheet(); });
+/* Dra ned för att stänga (telefon): från greppet, eller från arket när det står överst. Uppåt dämpas.
+   Släpper man efter en fjärdedel av arket, eller i fart, stänger det — annars fjädrar det tillbaka
+   från fingret med arkets egen övergång. Pekhändelser med preventDefault, så rullning inne i arket
+   aldrig kapas: draget tar bara över när arket redan står överst och fingret går nedåt. */
+(function sheetDrag(){
+  const sh = document.getElementById('sheet'), scrim = document.getElementById('scrim');
+  let y0 = null, grip = false, live = false, dy = 0, last = null, v = 0;
+  sh.addEventListener('touchstart', e=>{
+    y0 = null;
+    if(e.touches.length !== 1 || innerWidth >= 1024 || reduceMotion() || !sh.classList.contains('on')) return;
+    if(e.target.closest('input,textarea,select,[contenteditable]')) return;
+    grip = !!e.target.closest('.grip');
+    if(!grip && sh.scrollTop > 0) return;
+    y0 = e.touches[0].clientY; live = false; dy = 0; v = 0; last = {y:y0, t:performance.now()};
+  }, {passive:true});
+  sh.addEventListener('touchmove', e=>{
+    if(y0 == null) return;
+    const y = e.touches[0].clientY, d = y - y0, now = performance.now();
+    if(!live){
+      if(Math.abs(d) < 5) return;
+      if(d < 0 && !grip){ y0 = null; return; }           /* uppåt i innehållet = vanlig rullning */
+      if(!grip && sh.scrollTop > 0){ y0 = null; return; }
+      live = true; sh.classList.add('dragging'); sh.style.transition = 'none'; scrim.style.transition = 'none';
+    }
+    e.preventDefault();
+    dy = d < 0 ? d * .2 : d;
+    if(now - last.t > 0) v = (y - last.y) / (now - last.t);
+    last = {y, t:now};
+    sh.style.transform = `translateY(${dy.toFixed(1)}px)`;
+    scrim.style.opacity = String(Math.max(0, 1 - dy / sh.offsetHeight));
+  }, {passive:false});
+  const end = ()=>{
+    if(y0 == null) return; y0 = null; if(!live) return; live = false;
+    sh.classList.remove('dragging'); sh.style.transition = ''; scrim.style.transition = ''; scrim.style.opacity = '';
+    if(dy > sh.offsetHeight * .25 || v > .11) closeSheet();
+    sh.style.transform = '';
+  };
+  sh.addEventListener('touchend', end); sh.addEventListener('touchcancel', end);
+})();
 function toast(t){
-  const el=document.getElementById('toast'); el.textContent=t; el.classList.add('on');
-  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),2600);
+  const el=document.getElementById('toast'), was = el.classList.contains('on');
+  el.textContent=t; el.classList.add('on');
+  /* ett nytt besked medan det förra syns: en liten puls, så man ser att texten bytts */
+  if(was && !reduceMotion() && el.animate) el.animate([{transform:'translate(-50%,0) scale(.97)'}, {transform:'translate(-50%,0)'}],
+    {duration:160, easing:curve('--ease', 'cubic-bezier(.23,1,.32,1)')});
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'), Math.min(6000, 1800 + String(t).length*45));
 }
-const X = `<button class="close" onclick="closeSheet()">✕</button>`;
+/* linjeikoner i stället för Unicode-glyfer (som ritas olika per typsnitt och plattform) */
+const IC = {l:'<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+  r:'<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+  x:'<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'};
+const X = `<button class="close" aria-label="Stäng" onclick="closeSheet()">${IC.x}</button>`;
 
 /* ===================== RÖRELSERNA =====================
    Bara transform och opacity. Inget av det här spelar vid reducerad rörelse. */
@@ -8169,7 +8693,7 @@ function segIndicators(){
 const fillPos = new Map();
 function fillBars(){
   document.querySelectorAll('[data-fill]').forEach(el=>{
-    const k = el.dataset.fill, v = parseFloat(el.style.width) || 0, prev = fillPos.get(k);
+    const k = el.dataset.fill, v = parseFloat(el.style.width) || parseFloat(el.getAttribute('width')) || 0, prev = fillPos.get(k);
     const cur = prev ? midway(prev.from, prev.v, prev.anim) : null;          /* där stapeln syns just nu */
     if((cur != null && Math.abs(cur - v) < .05) || !v || reduceMotion() || !el.animate){ fillPos.set(k, {v, from:v, anim:null}); return; }
     const from = cur == null ? 0 : cur;
@@ -8179,11 +8703,57 @@ function fillBars(){
   });
 }
 let motionRaf = 0;
-function afterPaint(){ if(motionRaf) return; motionRaf = requestAnimationFrame(()=>{ motionRaf = 0; segIndicators(); fillBars(); }); }
+function pressedState(){
+  document.querySelectorAll('button.chip,button.day,button.spick,button.dchip').forEach(b=>{
+    const on = String(b.classList.contains('on') || b.classList.contains('sel'));
+    if(b.getAttribute('aria-pressed')!==on) b.setAttribute('aria-pressed', on);
+  });
+}
+/* bocken man nyss tryckte på: fokus tillbaka (raden ritades om) och en kort pop när den kryssas i */
+let popTick = null;
+function tickPop(){
+  if(!popTick) return;
+  const t = document.querySelector(`[data-tick="${popTick}"]`); popTick = null; if(!t) return;
+  t.focus({preventScroll:true});
+  if(t.getAttribute('aria-checked')==='true' && t.animate && !reduceMotion())
+    t.animate([{transform:'scale(.8)'}, {transform:'scale(1.08)', offset:.6}, {transform:'none'}], {duration:260, easing:curve('--ease', 'cubic-bezier(.23,1,.32,1)')});
+}
+/* rader som rullar i sidled: det valda syns, och tonen mot kanten försvinner när man nått slutet */
+function rowEnds(){
+  document.querySelectorAll('.chips:not(.wrap),.seg.many').forEach(row=>{
+    if(!row._seen){
+      row._seen = true;
+      const b = row.querySelector('.chip.on,button.on');
+      if(b && row.scrollWidth > row.clientWidth){
+        const r = row.getBoundingClientRect(), c = b.getBoundingClientRect();
+        if(c.right > r.right - 32) row.scrollLeft += c.right - r.right + 48;
+      }
+    }
+    row.classList.toggle('at-end', row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
+  });
+}
+document.addEventListener('scroll', e=>{ const t = e.target; if(t && t.classList && (t.classList.contains('chips') || t.classList.contains('many')))
+  t.classList.toggle('at-end', t.scrollLeft + t.clientWidth >= t.scrollWidth - 2); }, {capture:true, passive:true});
+/* En enda observatör, som kopplas om när vyn ritas om och rubriken blir ett nytt element. */
+let titleIO = null, titleEl = null;
+function watchTitle(){
+  const h = document.querySelector('#app header'), t = document.getElementById('hTitle');
+  if(!h || !t || !window.IntersectionObserver) return;
+  const el = innerWidth < 1024 ? document.querySelector('#view .h1, #view .weeknav .wk') : null;
+  if(el === titleEl) return;
+  if(titleIO) titleIO.disconnect();
+  titleEl = el; h.classList.remove('titled');
+  if(!el) return;
+  t.textContent = [...el.childNodes].filter(n=>n.nodeType===3 || n.tagName==='B').map(n=>n.textContent).join('').replace(/\s+/g,' ').trim();
+  if(!titleIO) titleIO = new IntersectionObserver(es=>es.forEach(e=>h.classList.toggle('titled', !e.isIntersecting && e.boundingClientRect.top < 60)),
+    {rootMargin:'-60px 0px 0px 0px'});
+  titleIO.observe(el);
+}
+function afterPaint(){ if(motionRaf) return; motionRaf = requestAnimationFrame(()=>{ motionRaf = 0; pressedState(); segIndicators(); fillBars(); tickPop(); rowEnds(); watchTitle(); }); }
 function watchMotion(){
   if(!window.MutationObserver) return;
   ['view','sheetBody'].forEach(id=>{ const el = document.getElementById(id); if(el) new MutationObserver(afterPaint).observe(el, {childList:true, subtree:true}); });
-  addEventListener('resize', ()=>{ segNoAnim = true; afterPaint(); });
+  addEventListener('resize', ()=>{ segNoAnim = true; afterPaint(); placeNavInd(false); });
 }
 /* Första vyn efter inloggningen kommer i tur och ordning — en gång per session. */
 function enterOnce(){
@@ -8764,8 +9334,7 @@ function openForm(id, date, circleId, asCustomer){
 
     <label class="lbl">STUDIO</label>
     <div class="studiopick">
-      ${['A','B'].map(s=>`<button class="spick ${v.studio===s?'on':''}" data-s="${s}" onclick="pickStudio('${s}')"
-        style="${v.studio===s?`background:linear-gradient(150deg,${SC[s]},${s==='A'?'#5b21b6':'#075985'})`:''}">
+      ${['A','B'].map(s=>`<button class="spick ${v.studio===s?'on':''}" data-s="${s}" onclick="pickStudio('${s}')" style="--s:${SC[s]}">
         <b>${esc(S.studios[s])}</b><span id="st-${s}">–</span></button>`).join('')}
     </div>
 
@@ -8836,7 +9405,6 @@ function pickStudio(s){
   document.querySelectorAll('.spick').forEach(el=>{
     const on = el.dataset.s===s;
     el.classList.toggle('on',on);
-    el.style.background = on ? `linear-gradient(150deg,${SC[el.dataset.s]},${el.dataset.s==='A'?'#5b21b6':'#075985'})` : '';
   });
   checkForm();
 }
@@ -8891,7 +9459,7 @@ function checkForm(){
     const alt = freeAt(other,f.date,f.start,f.end,editId);
     box.innerHTML = `<div class="warn"><b>Krock i ${esc(S.studios[f.studio])}</b><br>
       ${esc(o.who)} har ${o.start}–${o.end}${o.title?' · '+esc(o.title):''}.
-      ${alt?`<br><b style="color:var(--pur3)" onclick="pickStudio('${other}')">→ ${esc(S.studios[other])} är ledig, byt dit</b>`:''}</div>`;
+      ${alt?`<br><button type="button" class="linkbtn inline" style="margin-left:0" onclick="pickStudio('${other}')">${esc(S.studios[other])} är ledig, byt dit</button>`:''}</div>`;
     btn.disabled = true;
   } else {
     const h = dur(f);
@@ -9021,11 +9589,15 @@ function openDetail(id){
       ${(b.with||[]).length?`<div class="kv"><span>MED</span><b>${b.with.map(n=>
         `<span style="color:${glow(n)}">${esc(n)}</span>`).join(', ')}</b></div>`:''}
       ${b.artistId&&artistById(b.artistId)?`<div class="kv"><span>ARTIST</span><b>${esc(artistById(b.artistId).n)}</b></div>`:''}
-      ${b.paid?`<div class="kv"><span>BETALD</span><b style="color:var(--warn)">Ja${
+      ${b.paid?`<div class="kv"><span>BETALD</span><b>Ja${
         rateFor(b.who)?' · '+Math.round(dur(b)*rateFor(b.who))+' kr':''}</b></div>`:''}
       ${b.note?`<div class="kv"><span>NOTERING</span><b style="font-weight:500;color:var(--mut)">${esc(b.note)}</b></div>`:''}
     </div>
     ${fs.length?`<div class="eyebrow">FILER FRÅN PASSET<span class="ln"></span></div>${fs.map(fileRow).join('')}`:''}
+    ${checkable(b) && b.date >= CHECK_FROM && startAt(b) < new Date() && (mayCheck(b) || checkOf(b.id)) ? (()=>{ const c = checkOf(b.id);
+      return `<div class="kv"><span>STUDIOKONTROLL</span><b>${c ? `${c.all_ok ? 'Inskickad' : '<span style="color:var(--warn)">Avvikelse</span>'} · ${esc(c.by||'')} ${fmtAt(c.at)}`
+        : '<span style="color:var(--warn)">Saknas</span>'}</b></div>
+      <button class="btn ${c?'ghost':''}" style="margin-top:14px" onclick="openCheck('${b.id}')">${c ? 'VISA STUDIOKONTROLLEN' : 'FYLL I STUDIOKONTROLLEN'}</button>`; })() : ''}
     ${customerOf(b) && !b.status ? `<div class="kv"><span>AVSLUT</span><b>${b.closed ? (b.paid ? `Avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'Avslutat, ej betalt') : startAt(b) < new Date() ? '<span style="color:var(--warn)">Inte avslutat</span>' : 'Kommande'}</b></div>
       ${startAt(b) < new Date() && mayClose(b) ? `<button class="btn ${b.closed?'ghost':''}" style="margin-top:14px" onclick="openClose('${b.id}')">${b.closed ? 'ÄNDRA AVSLUTET' : 'AVSLUTA PASSET'}</button>` : ''}
       ${mayClose(b) || canIntel() ? `<button class="linkbtn" onclick="openArtistProfile('${customerOf(b).id}')">Artistprofilen</button>` : ''}` : ''}

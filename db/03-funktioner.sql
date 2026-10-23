@@ -2521,11 +2521,11 @@ begin
     bs_member_by_name(d->>'closedBy'),
     (select producer from members where role::text = 'customer' and lower(name) = lower(d->>'who') limit 1));
 end $$;
-/* Får jag skicka in kontrollen: admin, den ansvariga, eller crew som var med i passet. */
+/* Får jag skicka in kontrollen: admin, den ansvariga (även en cirkelledare), eller crew som var med i passet. */
 create or replace function bs_check_may(d jsonb) returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce(bs_is_admin() or (bs_is_crew() and (bs_check_responsible(d) = bs_my_id()
-    or lower(d->>'who') = lower((bs_me()).name) or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
+  select coalesce(bs_is_admin() or bs_check_responsible(d) = bs_my_id() or (bs_is_crew() and (
+    lower(d->>'who') = lower((bs_me()).name) or coalesce(d->'with','[]'::jsonb) ? (bs_me()).name
     or d->>'closedBy' = (bs_me()).name)), false)
 $$;
 /* Pass som ska ha studiokontroll: bokade pass i en studio som har börjat. */
@@ -2574,15 +2574,15 @@ begin
   return jsonb_build_object('ok', true, 'all_ok', ok);
 end $$;
 
-/* Studiokontrollerna: admin ser alla, crewet sina egna pass (som ansvarig eller med i passet). */
+/* Studiokontrollerna: admin ser alla, övriga sina egna pass (som ansvarig, ledare eller med i passet). */
 create or replace function studio_checks(p_from date default null, p_to date default null) returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object('booking', c.booking_id, 'by', c.checked_by_name, 'at', c.submitted_at,
       'all_ok', c.all_ok, 'missing', to_jsonb(c.missing), 'comment', c.comment, 'damage', c.damage, 'damage_text', c.damage_text,
       'date', c.booking_date, 'start', c.booking_start, 'studio', c.studio) order by c.booking_date desc, c.booking_start desc), '[]'::jsonb)
   from studio_checks c left join records r on r.kind = 'booking' and r.id = c.booking_id
-  where bs_is_crew() and (p_from is null or c.booking_date >= p_from) and (p_to is null or c.booking_date <= p_to)
-    and (bs_is_admin() or c.checked_by = bs_my_id() or (r.data is not null and bs_check_may(r.data)))
+  where (p_from is null or c.booking_date >= p_from) and (p_to is null or c.booking_date <= p_to)
+    and coalesce(bs_is_admin() or c.checked_by = bs_my_id() or (r.data is not null and bs_check_may(r.data)), false)
 $$;
 
 /* Påminnelse till den ansvariga en kvart efter passet, om kontrollen saknas (en gång per pass). */

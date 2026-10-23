@@ -851,7 +851,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     go('week');
     const week = document.getElementById('view').innerHTML;
     const panel = document.querySelector('.myag').innerHTML;
-    toggleMyAg(); const closed = !document.querySelector('.myag').classList.contains('open'); toggleMyAg();
+    const st0 = document.querySelector('.myag').classList.contains('open'); toggleMyAg(); const st1 = document.querySelector('.myag').classList.contains('open'); toggleMyAg(); const st2 = document.querySelector('.myag').classList.contains('open'); const closed = st0!==st1 && st2===st0;
     return {today:{card:/VECKANS AGENDA/.test(today), people:['RKAY','ADREY','Alla'].every(n=>today.includes(n)),
         count:/1\\/2/.test(today), old:/Gammal vecka/.test(today)}, toggled, other,
       week:{panel:/Min agenda/.test(week), mine:/Skicka stems/.test(panel), notOthers:!/Vocals/.test(panel.split('FÖR ALLA')[0]),
@@ -864,7 +864,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('SCHEMA har "Min agenda" bredvid kalendern', r.week.panel && r.week.layout, r.week);
   ok('med mina uppgifter, inte andras', r.week.mine && r.week.notOthers, r.week);
   ok('plus det som gäller alla', r.week.shared===true);
-  ok('panelen går att fälla ihop på mobilen', r.closed===true);
+  ok('panelen går att fälla ihop och upp på mobilen (stängd från början)', r.closed===true);
 
   /* ============ v7 · SERVERLÄGET ÄR AV UTAN UPPGIFTER ============ */
   log('\n── v7: förhandsläget ──');
@@ -2113,7 +2113,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('en omritning med samma flik rör inte linjen', r.still===0, r.still);
   ok('staplarna växer när en uppgift bockas av (300 ms) och står still vid omritning', r.fills.length>=1 && r.fills.every(d=>d===300) && r.fillsAgain===0, r);
   ok('Statistik: siffrorna står där direkt', r.same===true && r.n1.length>0, r);
-  ok('arket glider med lådans kurva', /^transform 0\.42s cubic-bezier\(0\.32, 0\.72, 0, 1\)$/.test(r.sheet), r.sheet);
+  ok('arket glider med lådans kurva och stänger snabbare än det öppnar (280 ms)', /^transform 0\.28s cubic-bezier\(0\.32, 0\.72, 0, 1\)$/.test(r.sheet), r.sheet);
   ok('reducerad rörelse: arkets bakgrund och toasten tonar, toasten flyttar sig inte, entrén är av', r.rmFade && r.rmToast && r.rmStagger, r);
   w = await boot(Object.assign(seed(), {session:null}));
   r = await ev(w,`await new Promise(r=>setTimeout(r,1500)); const h = document.getElementById('gateTitle');
@@ -2182,6 +2182,84 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('vyn visar anteckningen, gruppens version och länken', r.det2===true);
   ok('avslutad: ledaren ser den men kan inte ändra', r.ended===true && /avslutad/.test(r.denyEnd), r.denyEnd);
 
+  log('\n── Studiokontroll, studioregler och sessionsstatistik ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wait = ms => new Promise(r=>setTimeout(r,ms));
+    CHECK_FROM = '2020-01-01';
+    const now = new Date(), y = addDays(new Date(now.getFullYear(), now.getMonth(), now.getDate()), -1);
+    const D = monday(y) >= monday(now) ? iso(y) : iso(now), late = D===iso(now);
+    const T = late ? ['00:00','01:00'] : ['10:00','13:00'];
+    S.accounts.push(bump({id:'ku1', n:'Kim Kund', r:'customer', email:'kim@b.se', phone:'', producer:'adrey', producers:['adrey'], c:'#555', g:'#888', active:true, del:false}));
+    S.artists = (S.artists||[]).concat(bump({id:'nova', n:'Nova', priority:1, rank:1, active:true, del:false}));
+    const B = (id, o) => S.bookings.push(bump(Object.assign({id, studio:'A', date:D, start:T[0], end:T[1], who:'RKAY', title:'Session', with:[], status:'', del:false}, o)));
+    B('k1', {ran:true}); B('k2', {who:'Kim Kund', studio:'B', with:['ADREY'], title:'Studiotid'}); B('k4', {artistId:'nova', ran:true, studio:'B'});
+    B('k5', {who:'Kim Kund', with:['RKAY'], title:'Studiotid'}); B('k6', {who:'Kim Kund', studio:'B', with:['RKAY'], title:'Studiotid', closed:true, paid:false});
+    B('k3', {who:'Kim Kund', date:iso(addDays(now, 3)), start:'12:00', end:'15:00', with:['ADREY'], title:'Studiotid'});
+    save();
+    /* RKAY: bannern på IDAG, arket, alla elva punkter */
+    signIn(byName('RKAY')); go('today'); await wait(300);
+    const banner = /Studiokontroll saknas/.test(document.getElementById('view').innerHTML);
+    openCheck('k1');
+    const items = document.querySelectorAll('.ckl .task').length, off0 = document.getElementById('ckGo').disabled;
+    CHECK_ITEMS.slice(0, 10).forEach(([k])=>ckToggle(k));
+    const off10 = document.getElementById('ckGo').disabled;
+    document.getElementById('ckC').value = 'Dörren gick inte att låsa'; ckPaint();
+    const dev = !document.getElementById('ckGo').disabled && /AVVIKELSE/.test(document.getElementById('ckGo').textContent);
+    document.getElementById('ckC').value = ''; ckToggle('skador');
+    const full = !document.getElementById('ckGo').disabled && document.getElementById('ckGo').textContent==='SKICKA IN' && document.getElementById('ckN').textContent==='11/11';
+    await sendCheck('k1'); await wait(80);
+    const done = document.getElementById('sheetBody').innerHTML;
+    closeSheet(); go('today'); await wait(50);
+    const bannerAfter = missingChecks(false).map(b=>b.id).sort().join();   /* k1 klar — k4 och kundpassen k5, k6 (med RKAY) återstår */
+    let deny = ''; signIn(byName('ADREY')); await wait(200);
+    try{ await rw('submit_studio_check', {p_booking:'k1', p_items:{}, p_comment:'x'}); }catch(e){ deny = e.message; }
+    /* ADREY: kundpasset, med en skada */
+    let noTxt = ''; try{ await rw('submit_studio_check', {p_booking:'k2', p_items:Object.fromEntries(CHECK_ITEMS.map(([k])=>[k,true])), p_damage:true}); }catch(e){ noTxt = e.message; }
+    openCheck('k2'); CHECK_ITEMS.forEach(([k])=>ckToggle(k)); document.getElementById('ckD').checked = true; ckPaint();
+    const needTxt = document.getElementById('ckGo').disabled;
+    document.getElementById('ckDT').value = 'Mikrofonstativet är trasigt'; ckPaint(); await sendCheck('k2'); await wait(80);
+    /* AZ: översikten, avsluten med Vanlig/Paket BS och statistiken */
+    signIn(byName('AZ')); await wait(200); checksAt = 0; go('studio'); await wait(250);
+    go('more'); const more = document.getElementById('view').innerHTML; go('studio');
+    stTab = 'check'; ckTab = 'missing'; render(); const missing = [...document.querySelectorAll('#view .srow')].length;
+    ckTab = 'dev'; render(); const devRows = document.getElementById('view').innerHTML;
+    openDetail('k4'); const det = document.getElementById('sheetBody').innerHTML;
+    openClose('k2'); document.querySelector('#clK button[data-v="1"]').click(); await saveClose('k2'); await wait(60);
+    openClose('k5'); const inherit = (document.querySelector('#clK button.on')||{}).dataset.v;
+    document.querySelector('#clK button[data-v="0"]').click(); await saveClose('k5'); await wait(60);
+    const kp = {k2:S.bookings.find(b=>b.id==='k2').pkg, k5:S.bookings.find(b=>b.id==='k5').pkg};
+    stTab = 'stats'; stPer = 'week'; stOff = Math.round((monday(fromIso(D)) - monday(new Date()))/6048e5); stProd = null; render();
+    const K = () => Object.fromEntries([...document.querySelectorAll('#view .kpi')].map(k=>[k.querySelector('em').textContent, k.querySelector('b').firstChild.textContent.trim()]));
+    const k0 = K(); stProd = 'ADREY'; render(); const kA = K(); stProd = null;
+    artistById('nova').pct = false; render(); const kN = K(); artistById('nova').pct = true;
+    stPer = 'month'; stOff = (fromIso(D).getFullYear()*12 + fromIso(D).getMonth()) - (now.getFullYear()*12 + now.getMonth()); render(); const kM = K();
+    /* kunden: bekräftelsen med regler, rubriken tänds bara första gången */
+    signIn(byName('Kim Kund')); await wait(200); localStorage.removeItem('bandohq_conf_k3'); render();
+    const cv = document.getElementById('view').innerHTML, lit1 = !!document.querySelector('.conf-h.lit');
+    render(); const lit2 = !!document.querySelector('.conf-h.lit');
+    return {banner, items, off0, off10, dev, full, done:/STUDIOKONTROLL INSKICKAD/.test(done) && /ck-sign lit/.test(done) && /RKAY/.test(done),
+      ok1: !!(checkOf('k1') && checkOf('k1').all_ok), bannerAfter, deny, noTxt, needTxt, k2:!!(checkOf('k2') && !checkOf('k2').all_ok && checkOf('k2').damage),
+      more:/STUDIO/.test(more) && /Sessionsstatistik/.test(more), missing, devRows:/SKADA/.test(devRows) && /ADREY/.test(devRows),
+      det:/STUDIOKONTROLL/.test(det) && /Saknas/.test(det) && /FYLL I STUDIOKONTROLLEN/.test(det), kp, inherit, k0, kA, kN, kM,
+      cust:/SESSION BEKRÄFTAD ✅/.test(cv) && /Råsundavägen 102/.test(cv) && (cv.match(/class="rrow"/g)||[]).length===5 && /Max 2 extra personer/.test(cv), lit1, lit2};`);
+  ok('IDAG påminner producenten om studiokontrollen som saknas', r.banner===true, r);
+  ok('arket har elva punkter, och skickas inte in tomt', r.items===11 && r.off0===true && r.off10===true, r);
+  ok('en punkt som inte gick: kommentar → skickas in som avvikelse', r.dev===true, r);
+  ok('alla elva bockade: SKICKA IN, 11/11', r.full===true, r);
+  ok('inskickad: skylten tänds med namn, kontrollen är sparad och passet lämnar listan', r.done && r.ok1 && r.bannerAfter==='k4,k5,k6', r);
+  ok('någon som inte var med i passet kan inte skicka in', /Bara passets producent/.test(r.deny), r.deny);
+  ok('en skada kräver en beskrivning, och registreras som avvikelse', /Beskriv skadan/.test(r.noTxt) && r.needTxt===true && r.k2, r);
+  ok('admin: STUDIO i Mer, och kontrollerna som saknas och avviker', r.more && r.missing===3 && r.devRows, r);
+  ok('detaljarket visar att kontrollen saknas, med knappen', r.det===true, r);
+  ok('avsluta: Paket BS sparas, och nästa pass föreslår samma', r.kp.k2===true && r.inherit==='1' && r.kp.k5===false, r);
+  ok('statistiken: genomförda, BS, Vanlig, Paket, Artist Session (%) och Övriga räknas av sig själva',
+    r.k0['GENOMFÖRDA']==='5' && r.k0['BS TOTALT']==='2' && r.k0['VANLIG BS']==='1' && r.k0['PAKET BS']==='1' && r.k0['ARTIST SESSION (%)']==='1' && r.k0['ÖVRIGA']==='2', r.k0);
+  ok('filter per producent', r.kA['GENOMFÖRDA']==='1' && r.kA['PAKET BS']==='1', r.kA);
+  ok('en artist som inte är procentartist räknas inte som Artist Session', r.kN['ARTIST SESSION (%)']==='0' && r.kN['ÖVRIGA']==='3', r.kN);
+  ok('per månad', r.kM['GENOMFÖRDA']==='5', r.kM);
+  ok('kunden ser Session bekräftad, adressen och de fem studioreglerna', r.cust===true, r);
+  ok('rubriken tänds bara första gången', r.lit1===true && r.lit2===false, r);
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
