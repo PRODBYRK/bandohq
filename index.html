@@ -984,6 +984,89 @@ body.np-on{padding-bottom:calc(160px + var(--safeB))}
   .dsec.full{grid-column:1/-1}
   .dsec .chart{max-width:520px}
 }
+
+/* ================= LIQUID GLASS (iPhone-appen på iOS 26, när glaset är på) =================
+   Som i iOS: bara navigeringslagret är glas — menyn, headerns knappar, plustecknet, arket, toasten
+   och spelaren. Korten och listorna är aldrig glas; de är det man ser genom glaset när man rullar.
+   Klassen sätts av appen (BandoNative.appearance): iOS 26 och "Minska genomskinlighet" av.
+   Utan den gäller den vanliga designen, oförändrad. Oskärpan animeras aldrig (dyr att rita). */
+html.glass{
+  --glass:rgba(32,25,41,.44); --glass-thick:rgba(24,19,31,.66);
+  --glass-fx:blur(22px) saturate(180%);
+  /* ljuset som fångas i kanten: ljus överkant, svag underkant, hårfin kontur */
+  --glass-rim:inset 0 1px 0 rgba(255,255,255,.24), inset 0 -1px 0 rgba(255,255,255,.06), inset 0 0 0 .5px rgba(255,255,255,.18);
+  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 38%,rgba(255,255,255,0) 62%,rgba(255,255,255,.05));
+  --glass-drop:0 12px 32px -12px rgba(0,0,0,.7);
+  /* koncentriska hörn: innehållet under glaset rundas med det (arket 32, korten 18, rutorna 12) */
+  --r:18px; --r-sm:12px;
+}
+/* knappar och chips som kapslar, som kontrollerna i iOS 26 */
+html.glass .btn,html.glass .chip,html.glass .pill,html.glass .badge{border-radius:999px}
+html.glass .btn::after{border-radius:999px}
+@media (max-width:1023px){
+  /* menyn: en svävande glaskapsel ovanför hemindikatorn */
+  html.glass nav{left:calc(14px + var(--safeL));right:calc(14px + var(--safeR));bottom:max(10px,calc(var(--safeB) - 14px));
+    padding:6px;border:0;border-radius:999px;background:var(--glass-sheen),var(--glass);
+    -webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);box-shadow:var(--glass-rim),var(--glass-drop)}
+  html.glass nav button{z-index:1;padding:7px 0 6px;gap:4px;color:rgba(243,239,247,.72)}
+  html.glass nav button.on{color:#fff}
+  html.glass nav button svg{transition:transform .14s var(--ease)}
+  html.glass nav button:active{transform:none}
+  html.glass nav button:active svg{transform:scale(1.14)}      /* glaset sväller under fingret */
+  /* den valda fliken: en glaslins som glider (placeNavInd), i stället för neonlinjen */
+  html.glass .nav-ind{top:0;left:0;border-radius:999px;transition:none;z-index:0;
+    background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,.06));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.32),inset 0 0 0 .5px rgba(255,255,255,.22),0 0 18px -6px var(--glow)}
+  /* headern: ingen list, bara en tunn skärm av glas där innehållet rullar in under den */
+  html.glass header{background:transparent;border-bottom:0}
+  html.glass header::before{content:"";position:absolute;inset:0 0 -22px;z-index:-1;pointer-events:none;
+    background:linear-gradient(180deg,rgba(11,9,14,.62),rgba(11,9,14,0));
+    -webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);
+    -webkit-mask-image:linear-gradient(#000 52%,transparent);mask-image:linear-gradient(#000 52%,transparent)}
+  html.glass .hbtn{height:38px;padding:0 6px 0 4px;border:0;border-radius:999px;background:var(--glass-sheen),var(--glass);
+    -webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);box-shadow:var(--glass-rim)}
+  html.glass .hbtn .av{border-radius:999px!important}
+  html.glass .hbtn{transition:transform .14s var(--ease)}
+  html.glass .hbtn:active{transform:scale(1.05)}
+  /* plustecknet: tonat glas i Bandos rosa */
+  html.glass .fab{border-radius:999px;bottom:calc(max(10px,calc(var(--safeB) - 14px)) + 76px);
+    background:var(--glass-sheen),rgba(208,27,140,.62);-webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);
+    box-shadow:var(--glass-rim),0 10px 30px -10px var(--glow);
+    transition:transform .14s var(--ease),translate .26s var(--ease),background-color .18s}
+  html.glass .fab:active{transform:scale(1.06)}
+  /* arket: ett tjockare glas som svävar en bit från kanterna, med rundade hörn runt om */
+  html.glass .sheet{left:calc(6px + var(--safeL));right:calc(6px + var(--safeR));bottom:6px;border:0;border-radius:32px;
+    max-height:calc(92dvh - 6px);padding-bottom:calc(24px + var(--safeB));
+    background:var(--glass-sheen) no-repeat,var(--glass-thick);
+    -webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+    box-shadow:var(--glass-rim),0 -20px 60px -20px #000}
+  html.glass .grip{background:rgba(255,255,255,.38)}
+  html.glass .scrim{background:rgba(5,4,8,.46)}
+  html.glass .sheet .close{border:0;border-radius:999px;background:rgba(255,255,255,.09);box-shadow:var(--glass-rim);color:var(--txt);
+    transition:transform .14s var(--ease)}
+  html.glass .sheet .close:active{transform:scale(1.08)}
+  /* toasten: en glaskapsel ovanför menyn */
+  html.glass .toast{bottom:calc(max(10px,calc(var(--safeB) - 14px)) + 84px);border:0;border-radius:999px;padding:12px 20px;
+    background:var(--glass-sheen),var(--glass-thick);-webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);
+    box-shadow:var(--glass-rim),var(--glass-drop);transform:translate(-50%,8px) scale(.96)}
+  html.glass .toast.on{transform:translate(-50%,0) scale(1)}
+  /* spelaren: samma kapsel som menyn, ovanför den */
+  html.glass #np{bottom:calc(max(10px,calc(var(--safeB) - 14px)) + 76px);left:calc(14px + var(--safeL));right:calc(14px + var(--safeR));
+    border:0;border-radius:28px;background:var(--glass-sheen),var(--glass-thick);
+    -webkit-backdrop-filter:var(--glass-fx);backdrop-filter:var(--glass-fx);box-shadow:var(--glass-rim),var(--glass-drop)}
+  html.glass .np-ic{border-radius:999px;border:0;background:rgba(255,255,255,.08)}
+  html.glass body.np-on .fab{translate:0 -72px}
+}
+/* "Öka kontrast": glaset blir nästan solitt med en tydlig kant */
+@media (prefers-contrast:more){
+  html.glass{--glass:rgba(24,19,31,.92);--glass-thick:rgba(20,16,26,.96);
+    --glass-rim:inset 0 0 0 1px rgba(255,255,255,.5)}
+}
+/* reducerad rörelse: linsen hoppar, glaset sväller inte */
+@media (prefers-reduced-motion:reduce){
+  html.glass nav button:active svg,html.glass .fab:active,html.glass .sheet .close:active,html.glass .hbtn:active{transform:none}
+  html.glass .toast,html.glass .toast.on{transform:translate(-50%,0)!important}
+}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -3592,6 +3675,17 @@ const PREVIEW_LOGIN = !(CLOUD.url && CLOUD.key);
    En funktion (inte en konstant) så att testerna kan låtsas vara appen. */
 const isNative = () => !!(window.Capacitor && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform());
 const plug = n => (isNative() && Capacitor.Plugins && Capacitor.Plugins[n]) || null;
+/* Liquid Glass (se nativeBando): förra startens svar ger rätt utseende i första bilden.
+   ?glass=1 visar glaset i en vanlig webbläsare (skärmdumpar och tester), ?glass=0 stänger av. */
+const GLASS_LS = 'bandohq_glass', GLASS_ON_LS = 'bandohq_glass_on', LIVE_LS = 'bandohq_live', LIVE_TOK_LS = 'bandohq_livetok';
+const lsGet = (k, d) => { try{ const v = localStorage.getItem(k); return v == null ? d : v; }catch(_){ return d; } };
+const lsSet = (k, v) => { try{ localStorage.setItem(k, v); }catch(_){} };
+const GLASS_Q = (()=>{ try{ return new URLSearchParams(location.search).get('glass'); }catch(_){ return null; } })();
+let glassNative = isNative() && lsGet(GLASS_ON_LS, '0') === '1';
+const glassPref = () => lsGet(GLASS_LS, 'auto');
+const liveOn = () => lsGet(LIVE_LS, '1') !== '0';
+const glassWanted = () => GLASS_Q === '1' || (GLASS_Q !== '0' && glassNative && glassPref() !== 'off');
+document.documentElement.classList.toggle('glass', glassWanted());
 /* Demoläget: förhandsläget med påhittad data (demo.js) — det App Store-granskningen loggar in i.
    Inget når servern och inga riktiga personer syns. */
 const DEMO_LS = 'bandohq_demo', DEMO_USER = 'apple-review', DEMO_PASS = 'BandoDemo2026';
@@ -3666,6 +3760,7 @@ function signOut(){
     /* Riktig utloggning: inget av kontots data får ligga kvar på enheten. */
     const tok = AUTH && AUTH.access_token;
     pushOff();                         /* nästa person på enheten ska inte få mina notiser */
+    liveOff();                         /* … och inte min session i Dynamic Island */
     saveAuth(null); saveDbx(null);
     if(tok) fetch(CLOUD.url + '/auth/v1/logout', {method:'POST',
       headers:{apikey:CLOUD.key, Authorization:'Bearer '+tok}}).catch(()=>{});
@@ -3709,6 +3804,7 @@ function showApp(){
   document.getElementById('gate').classList.remove('on');
   document.getElementById('app').style.display='';
   enterOnce();
+  liveKey = null; setTimeout(liveTick, 400);         /* min pågående session i Dynamic Island (iPhone-appen) */
   if(roleView()==='full'){
     document.getElementById('nav').style.display='';
     document.getElementById('fab').style.display='';
@@ -4715,11 +4811,31 @@ function placeNavInd(anim){
   if(!b){ ind.style.opacity = '0'; return; }
   nav.classList.add('has-ind'); ind.style.opacity = '';
   const jump = !anim || !ind._placed || reduceMotion();
+  if(document.documentElement.classList.contains('glass') && innerWidth < 1024) return glassLens(ind, b, jump);
   if(jump) ind.style.transition = 'none';
   if(innerWidth >= 1024){ ind.style.width = '2px'; ind.style.height = (b.offsetHeight - 16) + 'px'; ind.style.transform = `translateY(${b.offsetTop + 8}px)`; }
   else { ind.style.height = '2px'; ind.style.width = (b.offsetWidth * .4).toFixed(1) + 'px'; ind.style.transform = `translateX(${(b.offsetLeft + b.offsetWidth * .3).toFixed(1)}px)`; }
   if(jump){ void ind.offsetWidth; ind.style.transition = ''; }
   ind._placed = true;
+}
+/* Liquid Glass: den valda fliken är en glaslins bakom knappen. Den glider från där den syns just nu
+   (ett nytt tryck mitt i rörelsen börjar där, inget hopp) och sträcks ut lite på vägen, som en
+   droppe — 280 ms med linjernas kurva. Reducerad rörelse: den står på plats direkt. */
+function glassLens(ind, b, jump){
+  const w = b.offsetWidth - 4, h = b.offsetHeight + 6, x = b.offsetLeft + 2, y = b.offsetTop - 3;
+  const to = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+  let from = null;
+  if(!jump && ind._lens && Math.abs(ind._lens - x) > .5 && ind.animate){
+    try{ from = new DOMMatrixReadOnly(getComputedStyle(ind).transform); }catch(_){ from = null; }
+  }
+  if(ind._anim){ ind._anim.cancel(); ind._anim = null; }
+  ind.style.width = w + 'px'; ind.style.height = h + 'px'; ind.style.transform = to;
+  if(from){
+    const fx = from.m41, mid = `translate(${((fx + x) / 2).toFixed(1)}px,${y.toFixed(1)}px) scale(1.16,.9)`;
+    ind._anim = ind.animate([{transform:`translate(${fx.toFixed(1)}px,${y.toFixed(1)}px)`}, {transform:mid, offset:.45}, {transform:to}],
+      {duration:280, easing:curve('--ease-io', 'cubic-bezier(.77,0,.175,1)')});
+  }
+  ind._lens = x; ind._placed = true;
 }
 /* Flikarna minns var man var; ett tryck på den aktiva fliken rullar till toppen. */
 const tabPos = {};
@@ -5959,6 +6075,7 @@ async function playBeat(id){
   playing = id;
   document.querySelectorAll('.flink.on[data-play]').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll(`[data-play="${id}"]`).forEach(x=>x.classList.add('on'));
+  if(np._out){ np._out.cancel(); np._out = null; }
   np.classList.add('paused');
   np.innerHTML = `<div class="np-ic" style="color:${glow(b.who)}"><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
     <div class="np-t"><b>${esc(b.name)}</b><span><span style="color:${glow(b.who)}">${esc(b.who)}</span>${
@@ -5981,7 +6098,16 @@ async function playBeat(id){
 function stopBeat(){
   playing = '';
   const np = document.getElementById('np');
-  if(np){ const a = np.querySelector('audio'); if(a) a.pause(); np.classList.remove('on'); np.innerHTML = ''; }
+  if(np){
+    const a = np.querySelector('audio'); if(a) a.pause();
+    /* lämnar samma väg som den kom (np-in) — spelar man igen under tiden avbryts det */
+    const done = () => { if(playing) return; np.classList.remove('on'); np.innerHTML = ''; };
+    if(np.classList.contains('on') && np.animate && !reduceMotion()){
+      np._out = np.animate([{opacity:1, transform:'none'}, {opacity:0, transform:'translateY(16px)'}],
+        {duration:200, easing:curve('--ease', 'cubic-bezier(.23,1,.32,1)'), fill:'forwards'});
+      np._out.finished.then(()=>{ done(); if(np._out){ np._out.cancel(); np._out = null; } }).catch(()=>{});
+    } else done();
+  }
   document.querySelectorAll('.flink.on[data-play]').forEach(x=>x.classList.remove('on'));
   document.body.classList.remove('np-on');
 }
@@ -8786,6 +8912,7 @@ function openMe(){
       </div>
       <div style="margin-top:18px">${extra}</div>
       ${PREVIEW_LOGIN ? '' : notisNote()}
+      ${iphoneCard()}
       <button class="btn ghost" style="margin-top:22px" onclick="signOut()">${PREVIEW_LOGIN ? 'BYT KONTO' : 'LOGGA UT'}</button>
       <div class="note">Din roll är satt av AZ. Behöver du se något annat än det här,
         är det AZ som ändrar det under Hantera konton.</div>${privacyLink()}${deleteLink()}`);
@@ -8806,6 +8933,7 @@ function openMe(){
       <div class="kv"><span>SYNK</span><b><span class="row" style="justify-content:flex-end">
         <i class="syncdot ${syncState}"></i><span data-syncmsg>${esc(syncMsg||'—')}</span></span></b></div>
     </div>
+    ${iphoneCard()}
 
     <div class="eyebrow">DROPBOX<span class="ln"></span></div>
     ${dropboxCard()}
@@ -8886,6 +9014,84 @@ function openSupport(){
     </div>${privacyLink()}`);
 }
 
+/* ---------- LIQUID GLASS OCH DYNAMIC ISLAND (iPhone-appen) ----------
+   BandoNative (app/ios/App/App/BandoNativePlugin.swift) svarar om glaset ska visas — iOS 26 och
+   "Minska genomskinlighet" avstängt — och startar Live Activity för den pågående sessionen.
+   Servern startar den också när passet börjar (push-to-start), även när appen är stängd. */
+let bnPlugin = null, liveKey = null, liveTimer = 0;
+function bandoNative(){
+  if(!isNative()) return null;
+  if(!bnPlugin) try{ bnPlugin = (Capacitor.registerPlugin && Capacitor.registerPlugin('BandoNative')) || (Capacitor.Plugins && Capacitor.Plugins.BandoNative) || null; }catch(_){ bnPlugin = null; }
+  return bnPlugin;
+}
+function applyGlass(repaint){
+  const h = document.documentElement, on = glassWanted();
+  if(h.classList.contains('glass') === on) return;
+  h.classList.toggle('glass', on);
+  if(repaint){ segNoAnim = true; afterPaint(); requestAnimationFrame(()=>placeNavInd(false)); }
+}
+function setGlass(on){ lsSet(GLASS_LS, on ? 'auto' : 'off'); applyGlass(true); }
+async function nativeBando(App){
+  const N = bandoNative(); if(!N) return;
+  const look = a => { glassNative = !!(a && a.glass); lsSet(GLASS_ON_LS, glassNative ? '1' : '0'); applyGlass(true); };
+  try{ look(await N.appearance()); }catch(_){}
+  try{ N.addListener('appearance', look); }catch(_){}
+  try{ N.addListener('liveToken', e => saveLiveToken(e && e.token)); }catch(_){}
+  if(App) App.addListener('appStateChange', st => { if(st && st.isActive){ liveKey = null; liveTick(); } });
+  clearInterval(liveTimer); liveTimer = setInterval(liveTick, 30000);
+  liveTick();
+}
+/* Min pågående session: jag har bokat den, är med i den, eller leder/går i cirkeln. */
+function inSession(b, m){
+  const n = String(m.n||'').toLowerCase();
+  if(String(b.who||'').toLowerCase()===n || (b.with||[]).some(x=>String(x).toLowerCase()===n)) return true;
+  const c = b.circleId && S.circles.find(x=>x.id===b.circleId);
+  return !!c && ((c.members||[]).includes(m.id) || String(c.leader||'').toLowerCase()===n);
+}
+function mySessionNow(){
+  const m = me(); if(!m) return null; const t = new Date();
+  return booked().filter(b=>!b.busy && b.studio && startAt(b)<=t && endAt(b)>t && inSession(b, m))
+    .sort((a,b)=>startAt(a)-startAt(b))[0] || null;
+}
+async function liveTick(){
+  const N = bandoNative(); if(!N) return;
+  const b = S.session && liveOn() ? mySessionNow() : null;
+  if(S.session && liveOn()) N.liveState().then(st => st && st.startToken && saveLiveToken(st.startToken)).catch(()=>{});
+  const key = b ? [b.id, b.date, b.start, b.end, b.studio, b.title].join('|') : '';
+  if(key === liveKey) return;
+  liveKey = key;
+  try{
+    if(b) await N.liveStart({id:b.id, title:b.title || 'Session', studio:S.studios[b.studio] || '', color:SC[b.studio] || '#ff3ebf',
+      who:b.who || '', start:+startAt(b), end:+endAt(b)});
+    else await N.liveEnd({past:true});
+  }catch(_){ liveKey = null; }
+}
+/* push-to-start-token till servern — en gång per telefon och konto */
+function saveLiveToken(tok){
+  if(!tok || PREVIEW_LOGIN || !AUTH || !liveOn()) return;
+  const m = me(), k = tok + '|' + (m ? m.id : '');
+  if(!m || lsGet(LIVE_TOK_LS, '') === k) return;
+  sbRpc('save_live_token', {p_token:tok}).then(()=>lsSet(LIVE_TOK_LS, k)).catch(()=>{});
+}
+function liveOff(){
+  lsSet(LIVE_TOK_LS, ''); liveKey = null;
+  if(!PREVIEW_LOGIN && AUTH) sbRpc('remove_live_tokens', {}).catch(()=>{});
+  const N = bandoNative(); if(N) N.liveEnd({}).catch(()=>{});
+}
+function setLive(on){
+  lsSet(LIVE_LS, on ? '1' : '0');
+  if(on){ liveKey = null; liveTick(); } else liveOff();
+  toast(on ? 'Din session visas i Dynamic Island' : 'Dynamic Island är av');
+}
+function iphoneCard(){
+  if(!isNative() && GLASS_Q !== '1') return '';
+  return `<div class="eyebrow">IPHONE<span class="ln"></span></div>
+    <label class="consent"><input type="checkbox" id="pfGlass" ${glassPref()!=='off' ? 'checked' : ''} onchange="setGlass(this.checked)">
+      <span><b>Liquid Glass</b> — följer iPhonen: glas på iOS 26, solitt när Minska genomskinlighet är på</span></label>
+    <label class="consent"><input type="checkbox" id="pfLive" ${liveOn() ? 'checked' : ''} onchange="setLive(this.checked)">
+      <span>Visa min pågående session i <b>Dynamic Island</b> och på låsskärmen, med tid kvar</span></label>`;
+}
+
 /* ---------- IPHONE-APPEN OCH DEMOLÄGET ---------- */
 async function nativeInit(){
   if(!isNative()) return;
@@ -8893,6 +9099,7 @@ async function nativeInit(){
   const App = plug('App'), Push = plug('PushNotifications');
   /* inbjudningar, #boka och lösenordslänkar från mejl öppnar appen (Universal Links) */
   if(App) App.addListener('appUrlOpen', e => openLanding(e && e.url));
+  nativeBando(App);
   if(Push){
     try{ const p = (await Push.checkPermissions()).receive; nativePerm = p==='granted' ? 'granted' : p==='denied' ? 'denied' : 'default'; }catch(_){}
     /* tryck på en notis: färsk data och appens första vy */

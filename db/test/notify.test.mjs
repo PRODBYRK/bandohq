@@ -299,6 +299,26 @@ ok('okänt användarnamn: samma svar, inget mejl', r2.status === 200 && JSON.str
 r = await A.handle({ username: 'a b"; drop', password: 'x' });
 ok('ogiltigt användarnamn avvisas direkt', r.status === 400 && authCalls.length === 0);
 
+head('Live Activity: push-to-start för den pågående sessionen');
+{
+  const d = { token: 'ab'.repeat(32), booking: 'b1', member: 'ku1', title: 'Studiotid', studio: 'STUDIO A', color: '#7c3aed', who: 'Kim Kund', start: 1793000000.4, end: 1793010800 };
+  const p = W.livePayload(d, 1793000060);
+  ok('samma namn och fält som SessionAttributes i appen', p.aps['attributes-type'] === 'SessionAttributes' && p.aps.event === 'start'
+     && JSON.stringify(Object.keys(p.aps.attributes).sort()) === JSON.stringify(['bookingId', 'colorHex', 'studio', 'title', 'who'])
+     && JSON.stringify(p.aps['content-state']) === JSON.stringify({ startEpoch: 1793000000, endEpoch: 1793010800 }), p);
+  ok('inaktuell när passet slutar, och en notis när den startar', p.aps['stale-date'] === 1793010800 && p.aps.timestamp === 1793000060
+     && p.aps.alert.title === 'Din session har börjat' && p.aps.alert.body === 'STUDIO A · Studiotid', p.aps);
+  const sent = [], keep = globalThis.fetch;
+  globalThis.fetch = async (url, o) => { sent.push({ url, headers: o.headers, body: JSON.parse(o.body) }); return new Response('{"reason":"Unregistered"}', { status: 410 }); };
+  const r = await W.sendLiveStart(d, { key: pem, keyId: 'KEY123', teamId: 'TEAM456', topic: 'se.bandohq.app' });
+  globalThis.fetch = keep;
+  const h = sent[0] && sent[0].headers;
+  ok('till Apples produktion, som liveactivity med appens Live Activity-ämne', !!h && sent[0].url === 'https://api.push.apple.com/3/device/' + d.token
+     && h['apns-push-type'] === 'liveactivity' && h['apns-topic'] === 'se.bandohq.app.push-type.liveactivity' && h['apns-priority'] === '10'
+     && /^bearer /.test(h.authorization), h);
+  ok('en token Apple säger är borta rapporteras', r.gone === true && r.ok === false, r);
+}
+
 console.log('\n══════════════════════════════');
 console.log(pass + ' PASS · ' + fail + ' FAIL'); console.log(fail ? '✗ TRASIGT' : '✓ ALLT GRÖNT');
 process.exit(fail ? 1 : 0);

@@ -616,8 +616,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await playBeat(nyB.id);
     const audio = document.querySelector('#np audio');
     const playing = {bar:document.getElementById('np').classList.contains('on'), src:!!(audio && /^data:audio/.test(audio.src))};
-    stopBeat();
-    const stopped = !document.getElementById('np').classList.contains('on');
+    stopBeat(); const paused = !audio || audio.paused;
+    await new Promise(r=>setTimeout(r,280));                      /* spelaren glider ut (200 ms) */
+    const stopped = paused && !document.getElementById('np').classList.contains('on');
     /* ta bort i appen = bort ur Dropbox */
     await delBeat(nyB.id);
     const gone = !Object.values(MX.f).some(f=>f.path==='/BANDOHQ/Beats/RKAY/Ny 120bpm Gm.wav');
@@ -2260,6 +2261,48 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('per månad', r.kM['GENOMFÖRDA']==='5', r.kM);
   ok('kunden ser Session bekräftad, adressen och de fem studioreglerna', r.cust===true, r);
   ok('rubriken tänds bara första gången', r.lit1===true && r.lit2===false, r);
+  log('\n── iPhone-appen: Liquid Glass och Dynamic Island ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wait = ms => new Promise(r=>setTimeout(r,ms));
+    const calls = [], L = {}, now = new Date();
+    const hm = d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const s0 = new Date(+now - 36e5), e0 = new Date(+now + 72e5);
+    S.bookings.push(bump({id:'live1', studio:'A', date:iso(s0), start:hm(s0), end:hm(e0), who:'ADREY', with:['RKAY'], title:'Mix', status:'', del:false}));
+    save(); signIn(byName('RKAY')); await wait(100);
+    const N = {appearance:async()=>({glass:true}), liveStart:async o=>{ calls.push('start:'+o.id+':'+o.studio+':'+(o.end>o.start)); return {started:true}; },
+      liveEnd:async o=>{ calls.push('end:'+JSON.stringify(o)); return {ended:1}; }, liveState:async()=>({startToken:'cd'.repeat(32)}),
+      addListener:async(ev, fn)=>{ L[ev] = fn; return {remove(){}}; }};
+    window.Capacitor = {isNativePlatform:()=>true, registerPlugin:n=>n==='BandoNative'?N:null, Plugins:{App:{addListener:async()=>({remove(){}})}}};
+    bnPlugin = null; await nativeInit(); await wait(60);
+    const glassOn = document.documentElement.classList.contains('glass');
+    const navR = getComputedStyle(document.getElementById('nav')).borderRadius, navBlur = getComputedStyle(document.getElementById('nav')).backdropFilter || getComputedStyle(document.getElementById('nav')).webkitBackdropFilter || '';
+    const cardBlur = getComputedStyle(document.querySelector('#view .card')).backdropFilter || '';
+    await wait(80); const ind = document.querySelector('#navInner .nav-ind'), lensW = parseFloat(ind.style.width);
+    /* fliken byts: linsen glider (280 ms) från där den står */
+    document.getElementById('nav-week').click(); await wait(30);
+    const lensAnim = ind._anim ? ind._anim.effect.getTiming().duration : 0;
+    /* appen: min pågående session startar Live Activity */
+    const started = calls.filter(c=>c.startsWith('start:')).slice();
+    await liveTick(); const again = calls.filter(c=>c.startsWith('start:')).length;
+    /* "Minska genomskinlighet" slås på medan appen är öppen */
+    L.appearance({glass:false}); const offAcc = !document.documentElement.classList.contains('glass');
+    L.appearance({glass:true}); setGlass(false); const offPref = !document.documentElement.classList.contains('glass'); setGlass(true);
+    openMe(); const prof = document.getElementById('sheetBody').innerHTML; closeSheet();
+    setLive(false); const endAll = calls.includes('end:{}');
+    setLive(true); await wait(20);
+    /* passet är slut: Live Activity tas bort */
+    const b = S.bookings.find(x=>x.id==='live1'); b.end = hm(new Date(+now - 6e4)); b.start = hm(new Date(+now - 2*36e5)); save();
+    await liveTick(); const endPast = calls.includes('end:{"past":true}');
+    delete window.Capacitor; bnPlugin = null; document.documentElement.classList.remove('glass');
+    return {glassOn, navR, navBlur, cardBlur, lensW, lensAnim, started, again, offAcc, offPref, endAll, endPast, calls,
+      prof:/Liquid Glass/.test(prof) && /Dynamic Island/.test(prof) && /id="pfGlass" checked/.test(prof) && /id="pfLive" checked/.test(prof)};`);
+  ok('appen på iOS 26 med glaset på: navigeringslagret blir glas, korten inte', r.glassOn && parseFloat(r.navR) > 100 && /blur/.test(r.navBlur) && !/blur/.test(r.cardBlur), r);
+  ok('den valda fliken är en glaslins som glider till nästa flik (280 ms)', r.lensW > 40 && r.lensAnim===280, r);
+  ok('min pågående session startar Live Activity — en gång', r.started.length===1 && r.started[0]==='start:live1:STUDIO A:true' && r.again===1, r.calls);
+  ok('"Minska genomskinlighet" eller valet i profilen ger det vanliga utseendet', r.offAcc && r.offPref, r);
+  ok('profilen har Liquid Glass och Dynamic Island', r.prof===true, r);
+  ok('Dynamic Island av i profilen tar bort Live Activity; passet slut tar bort det', r.endAll && r.endPast, r.calls);
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

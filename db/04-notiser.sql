@@ -365,6 +365,52 @@ create or replace function remove_push_sub(p_endpoint text) returns void
 language sql security definer set search_path = public as $$
   delete from push_subs where endpoint = p_endpoint and member_id = bs_my_id()
 $$;
+/* Live Activity: telefonens push-to-start-token (inte samma som notistoken). */
+create or replace function save_live_token(p_token text)
+returns void language plpgsql security definer set search_path = public as $$
+declare mid text := bs_my_id(); tok text := lower(regexp_replace(coalesce(p_token,''), '[\s<>]', '', 'g'));
+begin
+  if mid is null then raise exception 'Logga in först'; end if;
+  if tok !~ '^[0-9a-f]{64,200}$' then raise exception 'Ogiltig enhetstoken'; end if;
+  insert into live_tokens(token, member_id) values (tok, mid)
+  on conflict (token) do update set member_id = mid, fails = 0, created_at = now();
+end $$;
+/* Av i profilen (eller utloggning): inga fler Live Activity till mina telefoner. */
+create or replace function remove_live_tokens() returns void
+language sql security definer set search_path = public as $$
+  delete from live_tokens where member_id = bs_my_id()
+$$;
+/* För utskicket (varje minut): pass som just börjat, en rad per person i passet och telefon.
+   I passet = den som bokat, de som är med, och för cirkelpass ledaren och deltagarna.
+   Tio minuters fönster, så att en försenad körning inte tappar passet. */
+create or replace function live_due() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('token', t.token, 'member', m.id, 'booking', r.id,
+      'title', coalesce(nullif(r.data->>'title', ''), 'Session'), 'studio', bs_studio(r.data->>'studio'),
+      'color', case r.data->>'studio' when 'A' then '#7c3aed' when 'B' then '#0284c7' else '#ff3ebf' end,
+      'who', coalesce(r.data->>'who', ''), 'start', extract(epoch from bs_starts(r.data)), 'end', extract(epoch from bs_ends(r.data)))
+      order by r.id, m.id), '[]'::jsonb)
+  from records r
+  join members m on m.active and (lower(m.name) = lower(r.data->>'who')
+       or coalesce(r.data->'with', '[]'::jsonb) ? m.name
+       or (coalesce(r.data->>'circleId', '') <> '' and exists (select 1 from records c where c.kind = 'circle' and not c.del
+             and c.id = r.data->>'circleId'
+             and (coalesce(c.data->'members', '[]'::jsonb) ? m.id or lower(c.data->>'leader') = lower(m.name)))))
+  join live_tokens t on t.member_id = m.id and t.fails < 5
+  where r.kind = 'booking' and not r.del and bs_check_needed(r.data)
+    and bs_starts(r.data) between now() - interval '10 minutes' and now() + interval '30 seconds'
+    and bs_ends(r.data) > now() + interval '1 minute'
+    and not exists (select 1 from live_sent s where s.booking_id = r.id and s.member_id = m.id)
+$$;
+/* Utskicket svarar per telefon: passet är skickat till personen, och token räknas som fungerande eller borta. */
+create or replace function live_mark(p_booking text, p_member text, p_token text, p_ok boolean, p_gone boolean)
+returns void language sql security definer set search_path = public as $$
+  insert into live_sent(booking_id, member_id) values (p_booking, p_member) on conflict do nothing;
+  delete from live_tokens where token = p_token and coalesce(p_gone, false);
+  update live_tokens set last_ok = case when p_ok then now() else last_ok end,
+         fails = case when p_ok then 0 else fails + 1 end
+   where token = p_token;
+$$;
 /* Servernyckeln (publik) — enheten behöver den för att prenumerera. */
 create or replace function push_public_key() returns text
 language sql stable security definer set search_path = public as $$
@@ -431,6 +477,10 @@ revoke all on function outbox_claim(int) from public, anon, authenticated;
 revoke all on function outbox_done(bigint, boolean, text, text) from public, anon, authenticated;
 revoke all on function push_targets(text) from public, anon, authenticated;
 revoke all on function push_result(bigint, boolean, boolean) from public, anon, authenticated;
+revoke all on function live_due() from public, anon, authenticated;
+revoke all on function live_mark(text, text, text, boolean, boolean) from public, anon, authenticated;
+revoke all on function save_live_token(text), remove_live_tokens() from public, anon;
+grant execute on function save_live_token(text), remove_live_tokens() to authenticated;
 revoke all on function push_public_key() from public;
 grant execute on function push_public_key() to anon, authenticated;
 revoke all on function reminders(date) from public, anon, authenticated;
@@ -444,6 +494,7 @@ do $$ begin
     grant execute on function outbox_done(bigint, boolean, text, text) to service_role;
     grant execute on function push_targets(text) to service_role;
     grant execute on function push_result(bigint, boolean, boolean) to service_role;
+    grant execute on function live_due(), live_mark(text, text, text, boolean, boolean) to service_role;
     grant select, update on outbox to service_role;
   end if;
 end $$;

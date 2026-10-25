@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05D37CAB3ACB4B7B07AE459D /* BandoLive.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1090DCCA5A78B70781D43823 /* BandoLive.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		1C55F925E93C4CFA3631DC91 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 79DB23A57E26B28A987D79B3 /* WidgetKit.framework */; };
+		28890F26639628BA29CB7C09 /* BandoNativePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74949A33C7FEE5CAF14C6B06 /* BandoNativePlugin.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -15,11 +18,45 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		55D0BD9E0B4C58AC125F0D2F /* SessionAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BB559E7B666F305BE69AE6 /* SessionAttributes.swift */; };
+		7EB3A42A36A8BDC38234977A /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 999921A4696B22FAF842325E /* Foundation.framework */; };
+		81032715CF7E08E583D8B79B /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9193651795A4C04EA390002A /* SwiftUI.framework */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		B24A5358D12F1978B3B444B0 /* SessionAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2BB559E7B666F305BE69AE6 /* SessionAttributes.swift */; };
+		E554B59A7E001CB83C6D8F24 /* BandoLiveBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 157750B155CD87F723B6F5DC /* BandoLiveBundle.swift */; };
+		EA6F965552B51C069CFBA963 /* BandoBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44A2E5F973C80B1B39F4DF1D /* BandoBridgeViewController.swift */; };
+		F1B431C68D70B3D6D42BF4A8 /* SessionLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A794D16947A707F8BD967F /* SessionLiveActivity.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		2132C53F5E54E671A6D155C4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CDD94AA865E97772C3E6A60A;
+			remoteInfo = BandoLive;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7202496DDFBC347943F02D6E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				05D37CAB3ACB4B7B07AE459D /* BandoLive.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		1090DCCA5A78B70781D43823 /* BandoLive.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BandoLive.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		157750B155CD87F723B6F5DC /* BandoLiveBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BandoLiveBundle.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		44A2E5F973C80B1B39F4DF1D /* BandoBridgeViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BandoBridgeViewController.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -28,11 +65,28 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		74949A33C7FEE5CAF14C6B06 /* BandoNativePlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BandoNativePlugin.swift; sourceTree = "<group>"; };
+		79DB23A57E26B28A987D79B3 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		9193651795A4C04EA390002A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		999921A4696B22FAF842325E /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		D3A794D16947A707F8BD967F /* SessionLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionLiveActivity.swift; sourceTree = "<group>"; };
+		E2BB559E7B666F305BE69AE6 /* SessionAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SessionAttributes.swift; sourceTree = "<group>"; };
+		EAB9C4501A12299F346E5501 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		14FB462014D857E2E0FC21B1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7EB3A42A36A8BDC38234977A /* Foundation.framework in Frameworks */,
+				1C55F925E93C4CFA3631DC91 /* WidgetKit.framework in Frameworks */,
+				81032715CF7E08E583D8B79B /* SwiftUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -44,12 +98,35 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		2A346987CED5053457C6E1CD /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				E2BB559E7B666F305BE69AE6 /* SessionAttributes.swift */,
+			);
+			name = Shared;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		2E8872B0411715A9A35D6070 /* BandoLive */ = {
+			isa = PBXGroup;
+			children = (
+				157750B155CD87F723B6F5DC /* BandoLiveBundle.swift */,
+				D3A794D16947A707F8BD967F /* SessionLiveActivity.swift */,
+				EAB9C4501A12299F346E5501 /* Info.plist */,
+			);
+			name = BandoLive;
+			path = BandoLive;
+			sourceTree = "<group>";
+		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
+				2A346987CED5053457C6E1CD /* Shared */,
+				64CBCD9BBB315D8881E66F92 /* Frameworks */,
+				2E8872B0411715A9A35D6070 /* BandoLive */,
 			);
 			sourceTree = "<group>";
 		};
@@ -57,6 +134,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				1090DCCA5A78B70781D43823 /* BandoLive.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,8 +151,28 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				74949A33C7FEE5CAF14C6B06 /* BandoNativePlugin.swift */,
+				44A2E5F973C80B1B39F4DF1D /* BandoBridgeViewController.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		64CBCD9BBB315D8881E66F92 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				CCED698DF849836263F4D3E7 /* iOS */,
+				79DB23A57E26B28A987D79B3 /* WidgetKit.framework */,
+				9193651795A4C04EA390002A /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		CCED698DF849836263F4D3E7 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				999921A4696B22FAF842325E /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -87,10 +185,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				7202496DDFBC347943F02D6E /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				F6D9A6EBF10A9360E50EF26D /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -99,6 +199,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CDD94AA865E97772C3E6A60A /* BandoLive */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 39203493D7473F88F09A4F21 /* Build configuration list for PBXNativeTarget "BandoLive" */;
+			buildPhases = (
+				19F62296E3413CB7C7859F69 /* Sources */,
+				14FB462014D857E2E0FC21B1 /* Frameworks */,
+				E0414EB7387E664F1E0FEB6C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BandoLive;
+			productName = BandoLive;
+			productReference = 1090DCCA5A78B70781D43823 /* BandoLive.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -133,6 +250,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				CDD94AA865E97772C3E6A60A /* BandoLive */,
 			);
 		};
 /* End PBXProject section */
@@ -151,19 +269,48 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E0414EB7387E664F1E0FEB6C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		19F62296E3413CB7C7859F69 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E554B59A7E001CB83C6D8F24 /* BandoLiveBundle.swift in Sources */,
+				F1B431C68D70B3D6D42BF4A8 /* SessionLiveActivity.swift in Sources */,
+				B24A5358D12F1978B3B444B0 /* SessionAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				28890F26639628BA29CB7C09 /* BandoNativePlugin.swift in Sources */,
+				EA6F965552B51C069CFBA963 /* BandoBridgeViewController.swift in Sources */,
+				55D0BD9E0B4C58AC125F0D2F /* SessionAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F6D9A6EBF10A9360E50EF26D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = BandoLive;
+			target = CDD94AA865E97772C3E6A60A /* BandoLive */;
+			targetProxy = 2132C53F5E54E671A6D155C4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -185,6 +332,32 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		1071A291DD129A0F6B8FA6B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = G2354GKTHX;
+				INFOPLIST_FILE = BandoLive/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = se.bandohq.app.BandoLive;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		504EC3141FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -301,8 +474,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = G2354GKTHX;
-				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -325,8 +498,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = G2354GKTHX;
-				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -342,9 +515,45 @@
 			};
 			name = Release;
 		};
+		D256D8A76AFC0F9760EDBCEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = G2354GKTHX;
+				INFOPLIST_FILE = BandoLive/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = se.bandohq.app.BandoLive;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		39203493D7473F88F09A4F21 /* Build configuration list for PBXNativeTarget "BandoLive" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D256D8A76AFC0F9760EDBCEE /* Release */,
+				1071A291DD129A0F6B8FA6B9 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

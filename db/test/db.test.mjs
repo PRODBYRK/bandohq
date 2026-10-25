@@ -1413,6 +1413,39 @@ await as(db,U.rkay,()=>rpc('close_session',{p_booking:'pk3',p_paid:false,p_note:
 const pk = Object.fromEntries((await q(`select id, data->>'pkg' p from records where id in ('pk1','pk2','pk3')`)).map(r=>[r.id, r.p]));
 ok('Paket BS registreras vid avslut, nästa pass ärver det, obetalt räknas inte som BS', pk.pk1==='true' && pk.pk2==='true' && pk.pk3==='false', pk);
 }
+/* ============ LIVE ACTIVITY: DEN PÅGÅENDE SESSIONEN I DYNAMIC ISLAND ============ */
+{
+head('Live Activity: servern startar den pågående sessionen på personernas iPhones');
+const tok = c => c.repeat(64);
+ok('anonym kan inte spara en token', !!(await boom(()=>asAnon(db,()=>rpc('save_live_token',{p_token:tok('a')})))));
+ok('en ogiltig token nekas', /Ogiltig/.test(await boom(()=>as(db,U.ku1,()=>rpc('save_live_token',{p_token:'xyz'})))||''));
+await as(db,U.ku1,()=>rpc('save_live_token',{p_token:tok('a')}));
+await as(db,U.pr2,()=>rpc('save_live_token',{p_token:tok('b')}));
+await as(db,U.rkay,()=>rpc('save_live_token',{p_token:tok('c')}));
+await as(db,U.sofia,()=>rpc('save_live_token',{p_token:tok('d')}));
+U.lvp = await user('lvp@b.se'); await M('lvp', U.lvp, 'participant', 'Lina Deltagare', 'lvp@b.se', null);
+await q(`update records set data = jsonb_set(data, '{members}', coalesce(data->'members','[]'::jsonb) || '"lvp"'::jsonb) where kind='circle' and id='c1'`);
+await as(db,U.lvp,()=>rpc('save_live_token',{p_token:tok('e')}));
+ok('ingen läser tokens direkt', (await as(db,U.ku1,()=>q(`select * from live_tokens`))).length===0);
+ok('appen kan inte hämta listan själv', !!(await boom(()=>as(db,U.rkay,()=>rpc('live_due',{})))));
+const t = await one(`select to_char(now() at time zone 'Europe/Stockholm' - interval '2 minutes','YYYY-MM-DD') d,
+  to_char(now() at time zone 'Europe/Stockholm' - interval '2 minutes','HH24:MI') s, to_char(now() at time zone 'Europe/Stockholm' + interval '2 hours','HH24:MI') e`);
+const LB = (id, o) => R('booking', id, Object.assign({id, studio:'A', date:t.d, start:t.s, end:t.e, who:'Kim Kund', with:['PR2'], title:'Studiotid', circleId:'', status:''}, o));
+await LB('lv1'); await LB('lv2', {who:'Sofia Marks', circleId:'c1', with:[], studio:'B', title:'Grupp 1'});
+await LB('lvR', {status:'request'}); await LB('lvF', {start:'00:00', end:'00:30', date:'2027-06-01'});
+const due = await one(`select live_due() d`);
+const got = (due.d||[]).filter(x=>x.booking.startsWith('lv')).map(x=>x.booking+':'+x.member).sort();
+ok('personerna i passet får den — kunden, producenten som är med, och cirkelns ledare och deltagare', got.join()==='lv1:ku1,lv1:pr2,lv2:lvp,lv2:sofia', got);
+ok('inte förfrågningar, inte framtida pass, inte någon som inte är med', !got.some(g=>/lvR|lvF|rkay/.test(g)), got);
+const d1 = due.d.find(x=>x.booking==='lv1' && x.member==='ku1');
+ok('med studion, studions färg och start/slut i sekunder', d1.studio==='STUDIO A' && d1.color==='#7c3aed' && d1.end - d1.start > 7000 && Math.abs(d1.start - Date.now()/1000 + 120) < 90, d1);
+for (const x of due.d) await one(`select live_mark($1,$2,$3,true,false)`, [x.booking, x.member, x.token]);
+ok('varje pass startas en gång per person', ((await one(`select live_due() d`)).d||[]).filter(x=>x.booking.startsWith('lv')).length===0);
+await one(`select live_mark('lvX','pr2',$1,false,true)`, [tok('b')]);
+ok('en token Apple säger är borta tas bort', !(await one(`select 1 x from live_tokens where token=$1`, [tok('b')])));
+await as(db,U.ku1,()=>rpc('remove_live_tokens',{}));
+ok('Dynamic Island av: mina tokens tas bort, inte andras', !(await one(`select 1 x from live_tokens where member_id='ku1'`)) && !!(await one(`select 1 x from live_tokens where member_id='rkay'`)));
+}
 /* ============ SÄKERHETSGRANSKNINGEN 2026-10-23: NULL får aldrig släppa igenom ============ */
 {
 head('Behörigheter: anrop utan konto eller med tomma fält släpps aldrig igenom');

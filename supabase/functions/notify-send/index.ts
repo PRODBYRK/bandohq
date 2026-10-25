@@ -126,6 +126,32 @@ export async function sendApns(target, payload, apns, urgent) {
   return { status: res.status, gone: res.status === 410 || /^(BadDeviceToken|Unregistered|DeviceTokenNotForTopic)$/.test(reason), reason };
 }
 
+/* ---------- Live Activity: den pågående sessionen i Dynamic Island ----------
+   Push-to-start (iOS 17.2+): Apple startar Live Activity på telefonen utan att appen är igång.
+   attributes-type, attributes och content-state måste stämma exakt med SessionAttributes i
+   app/ios/App/Shared/SessionAttributes.swift. Tider i sekunder sedan 1970 (startEpoch/endEpoch). */
+export function livePayload(d, nowSec) {
+  const now = Math.floor(nowSec ?? Date.now() / 1000);
+  const start = Math.round(+d.start), end = Math.round(+d.end);
+  return { aps: { timestamp: now, event: 'start',
+    'content-state': { startEpoch: start, endEpoch: end },
+    'attributes-type': 'SessionAttributes',
+    attributes: { bookingId: String(d.booking), title: String(d.title || 'Session'), studio: String(d.studio || ''),
+      colorHex: String(d.color || '#ff3ebf'), who: String(d.who || '') },
+    'stale-date': end,
+    alert: { title: 'Din session har börjat', body: [d.studio, d.title].filter(Boolean).join(' · ') } } };
+}
+export async function sendLiveStart(d, apns) {
+  const res = await fetch(`https://api.push.apple.com/3/device/${d.token}`, { method: 'POST',
+    body: JSON.stringify(livePayload(d)),
+    headers: { authorization: `bearer ${await apnsJwt(apns)}`, 'apns-topic': `${apns.topic}.push-type.liveactivity`,
+      'apns-push-type': 'liveactivity', 'apns-priority': '10', 'content-type': 'application/json',
+      'apns-expiration': String(Math.round(+d.end)) } });
+  let reason = '';
+  if (!res.ok) { try { reason = (await res.json()).reason || ''; } catch (_) { /* tomt svar */ } }
+  return { ok: res.ok, status: res.status, gone: res.status === 410 || /^(BadDeviceToken|Unregistered|DeviceTokenNotForTopic)$/.test(reason), reason };
+}
+
 /* ---------- utskicket ---------- */
 const env = (k) => (globalThis.Deno ? Deno.env.get(k) : process.env[k]) || '';
 const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfrågan mottagen', answer: 'Svar på din förfrågan',
@@ -244,6 +270,16 @@ export async function handle() {
       await rpc('outbox_done', { p_id: r.id, p_ok: false, p_channel: null,
         p_error: !r.email ? 'Ingen enhet med push och ingen e-postadress' : 'Mejl är inte inkopplat (RESEND_KEY saknas)' });
       out.failed++;
+    }
+  }
+  /* pass som just börjat: Live Activity till personerna i passet */
+  if (apns) {
+    out.live = 0;
+    for (const d of (await rpc('live_due', {})) || []) {
+      let r;
+      try { r = await sendLiveStart(d, apns); } catch (_) { continue; }   /* nätet: inte markerat, nästa minut försöker igen */
+      await rpc('live_mark', { p_booking: d.booking, p_member: d.member, p_token: d.token, p_ok: r.ok, p_gone: r.gone });
+      if (r.ok) out.live++;
     }
   }
   return out;

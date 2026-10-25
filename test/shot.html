@@ -26,5 +26,5 @@ fr.onload=()=>setTimeout(()=>{
 /* page=access: registreringssidan (BANDO HQ ACCESS) i stället för appen; scroll=px rullar ner */
 if(P.get('scroll')) fr.addEventListener('load', ()=>setTimeout(()=>{ try{ fr.contentWindow.scrollTo(0, +P.get('scroll')); }catch(e){} }, 400));
 fr.src = P.get('page')==='access' ? '../access.html?static=1&cb='+Math.random()
-  : '../index.html?mock=1&cb='+Math.random()+(P.get('join')?'#join='+P.get('join'):'');
+  : '../index.html?mock=1&cb='+Math.random()+(P.get('glass')?'&glass='+P.get('glass'):'')+(P.get('join')?'#join='+P.get('join'):'');
 </script>

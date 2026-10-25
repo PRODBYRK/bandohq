@@ -163,6 +163,23 @@ create table if not exists push_subs (
 alter table push_subs add column if not exists kind text not null default 'web';
 alter table push_subs alter column p256dh drop not null;
 alter table push_subs alter column auth drop not null;
+/* Live Activity (iPhone-appen, iOS 17.2+): telefonens push-to-start-token, så att servern kan visa
+   den pågående sessionen i Dynamic Island när passet börjar — även när appen är stängd.
+   Hålls skild från push_subs: en sådan token tar bara emot Live Activity, aldrig vanliga notiser. */
+create table if not exists live_tokens (
+  token      text primary key,
+  member_id  text not null references members(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  last_ok    timestamptz,
+  fails      int not null default 0
+);
+/* vilka pass som redan fått sin Live Activity, per person — så att varje pass startas en gång */
+create table if not exists live_sent (
+  booking_id text not null,
+  member_id  text not null references members(id) on delete cascade,
+  sent_at    timestamptz not null default now(),
+  primary key (booking_id, member_id)
+);
 create index if not exists outbox_due_idx on outbox (send_after) where sent_at is null;
 
 -- ---------------------------------------------------------------------
