@@ -1,10 +1,10 @@
 # BANDOHQ i App Store: det som fylls i i App Store Connect
 
 Allt nedan klistras in under **Appar → BANDOHQ** i App Store Connect. Bilderna ligger i
-`skarmbilder/` (1320 × 2868, iPhone 6,9"). Gör nya med:
+`skarmbilder/` (1320 × 2868, iPhone 6,9", med Liquid Glass). Gör nya med:
 
 ```
-python3 test/run.py shot '…' bild.png 440 956 3
+python3 test/run.py shot '…&glass=1' bild.png 440 956 3
 ```
 
 ## Appinformation
@@ -19,8 +19,8 @@ python3 test/run.py shot '…' bild.png 440 956 3
 | Innehållsrätt | Appen visar inget innehåll från tredje part |
 | Åldersgräns | 4+ (svara "nej" på allt i frågeformuläret) |
 | Copyright | 2026 Bando Collective |
-| Integritetspolicy-URL | https://bandohq.se/#integritet |
-| Support-URL | https://bandohq.se/#support |
+| Integritetspolicy-URL | https://www.bandohq.se/#integritet |
+| Support-URL | https://www.bandohq.se/#support |
 | Marknadsförings-URL | https://bandocollective.com (valfritt) |
 | Pris | gratis, inga köp i appen |
 
@@ -52,8 +52,12 @@ FÖR STUDIECIRKLARNA
 Cirkelledaren bokar pass, godkänner förslag och markerar närvaro. Deltagarna föreslår tider i
 sin cirkel.
 
-NOTISER
-Bokningsbekräftelser, svar på förfrågningar och påminnelser dagen innan, direkt i telefonen.
+NOTISER OCH DYNAMIC ISLAND
+Bokningsbekräftelser, svar på förfrågningar och påminnelser dagen innan, direkt i telefonen. När
+din session pågår ser du tiden som är kvar i Dynamic Island och på låsskärmen.
+
+GJORD FÖR IPHONE
+Liquid Glass på iOS 26, och länkar från mejl och sms öppnar appen direkt.
 
 Bando HQ Access ges via inbjudan: skicka en förfrågan i appen, så mejlar vi dig en inbjudan. Crewet får sina konton med en inbjudan från
 Bando Collective.
@@ -89,6 +93,11 @@ studio,boka,studiotid,inspelning,musik,producent,studiecirkel,crew,beats,schema,
 > fully-featured demo mode with sample data (no real people), so you can review every role.
 > Tap the name in the top right, then "BYT KONTO", to view the app as a producer, admin, camera
 > team member, circle leader, participant or customer.
+>
+> Live Activities: while the signed-in person's own studio session is in progress, a Live Activity
+> shows the studio and the time remaining in the Dynamic Island and on the Lock Screen. The app
+> starts it, and our server starts it with a push-to-start notification when the session begins.
+> It can be turned off under the name in the top right → IPHONE.
 >
 > Account deletion: tap the name in the top right, then "Radera mitt konto" (Delete my account).
 >
