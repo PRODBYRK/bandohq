@@ -486,6 +486,9 @@ async function loadInfo(){
    sent (förfrågan skickad), member (redan inloggad). */
 let stage = 'form', draft = {name:'', email:'', phone:'', pnr:'', password:'', message:''}, mode = 'request', who = '', busy = false;
 const INVITE = (new URLSearchParams(location.search).get('inbjudan') || '').trim().toUpperCase();
+/* värva en artist: koden i länken bandohq.se/access?ref=KOD följer med förfrågan (och sparas för fliken) */
+const REF = (() => { const q = (new URLSearchParams(location.search).get('ref') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  try{ if(q) sessionStorage.setItem('bandohq_ref', q); return q || sessionStorage.getItem('bandohq_ref') || ''; }catch(_){ return q; } })();
 let invInfo = null;                                         /* vad inbjudan gäller (invite_info) */
 const regMode = () => mode === 'new' || (mode === 'finish' && !!invInfo);
 const field = (k, label, attrs, hint, cls) => `<div class="f ${cls || ''}">
@@ -654,14 +657,14 @@ async function sendRequest(){
   busy = true; render();
   try{
     const req = {p_name: cleanName(draft.name), p_email: draft.email.trim().toLowerCase(), p_phone: draft.phone,
-      p_interests: [...picked], p_message: (draft.message||'').trim(), p_consent: true, p_hp: hp};
+      p_interests: [...picked], p_message: (draft.message||'').trim(), p_consent: true, p_hp: hp, p_ref: REF || null};
     if(PREVIEW){
       /* förhandsläget: förfrågan hamnar i appens lokala läge, där admin svarar */
       if(!hp){
         const S2 = LS('bandosesh_v2') || {v:2};
         S2.accessReqs = (S2.accessReqs || []).filter(x => !(x.status === 'new' && x.email === req.p_email)).concat({id: 'ar_' + Date.now().toString(36),
           name: req.p_name, email: req.p_email, phone: phoneE164(req.p_phone), interests: req.p_interests, message: req.p_message,
-          status: 'new', created_at: new Date().toISOString()});
+          ref: req.p_ref, status: 'new', created_at: new Date().toISOString()});
         localStorage.setItem('bandosesh_v2', JSON.stringify(S2));
       }
     } else await call(CLOUD.url + '/rest/v1/rpc/request_access', req, await token());

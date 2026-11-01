@@ -743,16 +743,20 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
     const kalle = accounts().find(a=>a.n==='Kalle Kund');
     const sum0 = await rw('points_summary', {p_member:kalle.id});
-    const rid = await rw('save_reward', {p:{title:'Merch', cost:80}});
-    await rw('redeem_reward', {p_reward:rid, p_member:kalle.id});
-    const pend = await rw('pending_redemptions', {});
+    let redeem = ''; try{ await rw('redeem_reward', {p_reward:'x', p_member:kalle.id}); }catch(e){ redeem = e.message; }
+    await rw('adjust_points', {p_member:kalle.id, p_points:3500, p_note:'Lansering'});
+    const sum1 = await rw('points_summary', {p_member:kalle.id});
     const intel = (await rw('artist_intel', {})).find(x=>x.id===kalle.id);
-    go('rewards'); await loadRwAdmin(); rwTab='redeem'; render(); const html = document.getElementById('view').innerHTML;
-    return {pts:sum0.available, level:sum0.level && sum0.level.name, pend:pend.map(x=>x.title), intel:intel && {b:+intel.bookings, notes:+intel.notes, av:intel.available}, html:/Merch/.test(html) && /Kalle Kund/.test(html)};`);
-  ok('poängen ligger på servern: 3 h = 100', r.pts===100 && r.level==='Member', r);
-  ok('admin löser in åt kunden — inlösen väntar', JSON.stringify(r.pend)==='["Merch"]', r.pend);
-  ok('Artist Intelligence från servern', r.intel && r.intel.b===1 && r.intel.notes===1 && r.intel.av===20, r.intel);
-  ok('Mer → Rewards visar inlösen', r.html===true);
+    go('rewards'); await loadRwAdmin(); rwTab='claims'; render(); const html = document.getElementById('view').innerHTML;
+    rwTab='stats'; rsPer='year'; rsOff=0; render(); for(let i=0; i<30 && rwStatsKey!=='year:0'; i++) await new Promise(r=>setTimeout(r,100)); render();
+    const stats = document.getElementById('view').innerHTML;
+    return {pts:sum0.total, level:sum0.level, redeem, lvl:sum1.level && sum1.level.name, unl:sum1.unlocks.map(u=>u.benefit_id),
+      intel:intel && {b:+intel.bookings, notes:+intel.notes, av:intel.available}, html:/Inga belöningar väntar/.test(html), stats:/INTÄKTER/.test(stats) && /KUNDER PER NIVÅ/.test(stats) && /Bando Access/.test(stats)};`);
+  ok('poängen ligger på servern: 3 h × 100 p = 300, ingen nivå än', r.pts===300 && r.level===null, r);
+  ok('poäng är inte pengar — inget går att lösa in', /inte pengar/.test(r.redeem), r.redeem);
+  ok('3 800 p: Bando Access, belöningen upplåst', r.lvl==='Bando Access' && JSON.stringify(r.unl)==='["access-pkg20"]', r);
+  ok('Artist Intelligence från servern', r.intel && r.intel.b===1 && r.intel.notes===1 && r.intel.av===3800, r.intel);
+  ok('Mer → Rewards: uttagen och statistiken från servern', r.html===true && r.stats===true, r);
 
   /* ============ ALLMÄN AGENDA OCH MÅLSÄTTNING MOT SERVERN ============ */
   log('\n── Allmän agenda och målsättning mot servern ──');
@@ -960,14 +964,16 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
 
   /* ============ REWARDS MOT SERVERN: VÄRVA EN VÄN, BONUSAR OCH KAMPANJ ============ */
   log('\n── Rewards mot servern: värva en vän, bonusar och kampanj ──');
-  await sql(`update records set data = '{}'::jsonb, up = 2000 where kind = 'setting' and id = 'rewards'`);
+  /* admin har slagit på de klassiska bonusarna (avstängda som standard i Rewards 2.0) */
+  await sql(`update records set data = '{"bonuses":{"welcome":100,"first":200,"recurring":150},"referral":{"points":300}}'::jsonb, up = 2000 where kind = 'setting' and id = 'rewards'`);
   w = await boot();
   r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
-    await cloudView(); rwMineAt = 0; render(); ${wait(400)} render();
+    await cloudView(); rwMineAt = 0; render(); ${wait(400)} render(); ${wait(300)} render();
     const card = document.getElementById('view').innerHTML;
+    const code = (await sb('/rpc/points_summary', {method:'POST', body:'{}'})).refCode;
     openInviteFriend(); document.getElementById('frN').value = 'Vilma Vän'; document.getElementById('frE').value = 'vilma@acc.se'; await sendInviteFriend();
-    return {card:/VÄRVA EN VÄN/.test(card) && /Så tjänar du poäng/.test(card), sent:document.getElementById('frOut').textContent};`);
-  ok('artisten bjuder in en vän från sin vy', r.card && /Inbjudan skickad/.test(r.sent), r);
+    return {card:/VÄRVA EN ARTIST/.test(card) && /Så fungerar det/.test(card) && /access\\?ref=[0-9A-F]{6}/.test(card), code, sent:document.getElementById('frOut').textContent};`);
+  ok('artisten har en värvningslänk från servern, och bjuder in en vän med e-post', r.card && /^[0-9A-F]{6}$/.test(r.code||'') && /Inbjudan skickad/.test(r.sent), r);
   let fbox = await outbox();
   const fm = fbox.filter(m=>m.kind==='invite-access' && m.email==='vilma@acc.se').pop();
   const TOKV = fm && new URL(fm.link).searchParams.get('inbjudan');
@@ -1002,7 +1008,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     row.querySelector('.cM').value = '2'; savePointsCfg(); ${wait(100)} await sync(true); window.toast = rt;
     const cfg = (await sb('/records?select=data&kind=eq.setting&id=eq.rewards'))[0].data;
     return {t:tClose, camps:(cfg.campaigns||[]).map(c=>c.label)};`);
-  ok('vännens första session via servern: 100 poäng + 200 i bonus', /100 poäng \+ 200 i bonus/.test(r.t), r.t);
+  ok('vännens första session via servern: 300 poäng + 200 i bonus', /300 poäng \+ 200 i bonus/.test(r.t), r.t);
   ok('admin sparar kampanjen på servern', JSON.stringify(r.camps)==='["Dubbla poäng"]', r);
   const ap = await sql(`select p.points from points p join members m on m.id = p.member_id where m.name = 'Alva Strand' and p.ref like 'referral:%'`);
   ok('Alva får 300 poäng för vännen', ap.length===1 && ap[0].points===300, ap);

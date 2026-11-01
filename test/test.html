@@ -1607,39 +1607,44 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openClose('rk2'); await saveClose('rk2');
     const b1 = S.bookings.find(x=>x.id==='rk1');
     const intelNo = canIntel(), moreNo = moreViews().includes('rewards');
-    S.session.member = 'AZ'; render();
-    rwTab = 'rewards'; go('rewards'); openRewardEdit(); document.getElementById('rwT').value = 'Hoodie'; document.getElementById('rwC').value = '500';
-    await saveRewardEdit(''); await new Promise(r=>setTimeout(r,50));
     S.session.member = 'Nora Lind'; rwMineAt = 0; render(); await new Promise(r=>setTimeout(r,80)); render();
     const cust = document.getElementById('view').innerHTML;
-    await redeemMine(rwCat.rewards[0].id); await new Promise(r=>setTimeout(r,80));
-    const after = rwMine.available;
-    S.session.member = 'AZ'; render(); await loadRwAdmin(); rwTab = 'redeem'; go('rewards'); const red = document.getElementById('view').innerHTML;
-    await handleRedeem(rwAdmin.pend[0].id, 'delivered');
+    S.session.member = 'AZ'; render();
+    await rw('adjust_points', {p_member:'p2', p_points:3000, p_note:'Lansering'});
+    S.session.member = 'Nora Lind'; rwMineAt = 0; render(); await new Promise(r=>setTimeout(r,80)); render();
+    const cust2 = document.getElementById('view').innerHTML, un = rwMine.unlocks[0];
+    openClaim(un.id); document.getElementById('clNote').value = 'Paket med 4 sessions i december'; await sendClaim(un.id); await new Promise(r=>setTimeout(r,80));
+    const waiting = (rwMine.unlocks[0].claims[0]||{}).status;
+    S.session.member = 'AZ'; render(); await loadRwAdmin(); rwTab = 'claims'; go('rewards'); const red = document.getElementById('view').innerHTML;
+    document.getElementById('cv' + rwAdmin.claims[0].id).value = '1200'; await decideClaim(rwAdmin.claims[0].id, true); await new Promise(r=>setTimeout(r,60));
+    const delivered = rwState().claims[0].status + ':' + rwState().claims[0].value_kr + ':' + rwState().unlocks[0].uses_left;
+    rwTab = 'stats'; rsPer = 'year'; rsOff = 0; render(); await new Promise(r=>setTimeout(r,80)); render(); const stats = document.getElementById('view').innerHTML;
     await openArtistProfile('p2'); const tabs = artistTabs().map(x=>x[0]).join(','); apTab='notes'; paintArtist(); const notes = document.getElementById('sheetBody').innerHTML;
     apTab='intel'; paintArtist(); const intel = document.getElementById('sheetBody').innerHTML;
     document.getElementById('crN').value = 'Ring om EP'; document.getElementById('crF').value = D(1); await saveCrm();
     const crm = (rwState().crm.p2||{}).followup_note;
-    await rw('adjust_points', {p_member:'p2', p_points:1000, p_note:'Bonus'});
     const lvl = (await rw('points_summary', {p_member:'p2'})).level.name;
     openAccount('rkay'); document.getElementById('acX').checked = true; saveAccount('rkay'); await new Promise(r=>setTimeout(r,50));
     S.session.member = 'RKAY'; const rkIntel = canIntel() && moreViews().includes('rewards'); S.session.member = 'AZ';
     rwTab='intel'; intelList = null; await loadRwAdmin(); intelF.status = 'aktiv'; render(); const il = document.getElementById('view').innerHTML; intelF.status='';
     return {adreyNo, det:/AVSLUTA PASSET/.test(det) && /Inte avslutat/.test(det), closed:b1.closed && b1.paid && b1.closedBy==='RKAY', intelNo, moreNo,
-      cust:/BANDO REWARDS/.test(cust) && /600/.test(cust) && /MEMBER/.test(cust) && /Hoodie/.test(cust), after, red:/Hoodie/.test(red) && /UTLÄMNAD/.test(red),
-      delivered:rwState().redemptions[0].status, tabs, notes:/Bra session/.test(notes) && /Mixa/.test(notes), intel:/Pass per månad/.test(intel) && /UPPFÖLJNING/.test(intel),
+      cust:/BANDO REWARDS/.test(cust) && /900/.test(cust) && /INGEN NIVÅ ÄN/.test(cust) && /Bando Legacy/.test(cust) && /2(&nbsp;| )600 poäng kvar till/.test(cust),
+      cust2:/BANDO ACCESS/.test(cust2) && /ANVÄND/.test(cust2) && /20 % rabatt på ett sessionspaket/.test(cust2), waiting,
+      red:/Nora Lind/.test(red) && /GODKÄNN/.test(red) && /Paket med 4 sessions/.test(red), delivered,
+      stats:/INTÄKTER/.test(stats) && /RABATTER/.test(stats) && /KUNDER PER NIVÅ/.test(stats) && /1(&nbsp;| )200 kr/.test(stats), tabs, notes:/Bra session/.test(notes) && /Mixa/.test(notes), intel:/Pass per månad/.test(intel) && /UPPFÖLJNING/.test(intel),
       crm, lvl, rkIntel, il:/Nora Lind/.test(il)};`);
   ok('en producent som inte är kundens kan inte avsluta passet', /Bara kundens producent/.test(r.adreyNo), r.adreyNo);
   ok('kundens producent ser "Avsluta passet" på ett pass som varit', r.det===true);
   ok('avslutat och betalt — med vem', r.closed===true);
   ok('utan behörighet syns inte Rewards för producenten', r.intelNo===false && r.moreNo===false);
-  ok('kunden ser sina poäng (100 + 500), nivå och belöningarna', r.cust===true);
-  ok('kunden löser in — poängen dras', r.after===100, r.after);
-  ok('admin ser inlösningen och lämnar ut', r.red===true && r.delivered==='delivered', r);
+  ok('kunden ser sina poäng (300 + 600), att nivå saknas, hur långt det är kvar och alla sex nivåer', r.cust===true);
+  ok('3 900 p: Bando Access — belöningen är upplåst och går att använda', r.cust2===true && r.waiting==='waiting', r);
+  ok('admin ser uttaget och godkänner med värdet i kronor', r.red===true && r.delivered==='approved:1200:0', r);
+  ok('statistiken: intäkter, rabatter och kunder per nivå', r.stats===true);
   ok('artistprofilen har sex flikar för admin — Profil först', r.tabs==='profile,bookings,rewards,level,notes,intel', r.tabs);
   ok('omdömet syns under Anteckningar', r.notes===true);
   ok('Intelligence med aktivitet och uppföljning', r.intel===true && r.crm==='Ring om EP', r);
-  ok('nivån uppdateras automatiskt (1 100 intjänat → Silver)', r.lvl==='Silver', r.lvl);
+  ok('nivån uppdateras automatiskt (3 900 p → Bando Access)', r.lvl==='Bando Access', r.lvl);
   ok('admin ger en producent Artist Intelligence', r.rkIntel===true);
   ok('Intelligence-listan filtreras', r.il===true);
 
@@ -1650,8 +1655,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     window.confirm = () => true;
     const D = n => iso(addDays(new Date(), n)), wait = ms => new Promise(r=>setTimeout(r, ms)), rt = toast;
     const nora = byId('p2'); Object.assign(nora, {r:'customer', producer:'rkay', producers:['rkay'], interests:['rap'], consent:true, pnr:'990101-••••',
-      phone:'070-222 22 22', email:'nora@x.se'}); save();
-    /* kunden: så tjänar du poäng, och värva en vän */
+      phone:'070-222 22 22', email:'nora@x.se'});
+    /* admin har slagit på de klassiska bonusarna (avstängda som standard i Rewards 2.0) */
+    S.rewardsCfg = {bonuses:{welcome:100, first:200, recurring:150, recurringCount:3}, referral:{enabled:true, points:300, maxOpen:3}, up:1}; save();
+    /* kunden: så fungerar det, och värva en artist */
     signIn(nora); rwMineAt = 0; render(); await wait(80); render();
     const card = document.getElementById('view').innerHTML;
     openInviteFriend(); const sheet = document.getElementById('sheetBody').innerHTML;
@@ -1686,25 +1693,25 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const vb2 = rwState().points.filter(p=>p.booking_id==='vb2' && p.kind==='earn').map(p=>[p.points, p.note]);
     signIn(byName('Vera Vän')); rwMineAt = 0; render(); await wait(80); render(); const vcard = document.getElementById('view').innerHTML;
     openPointsHistory(); const hist = document.getElementById('sheetBody').innerHTML;
-    return {card:/Så tjänar du poäng/.test(card) && /Första sessionen/.test(card) && /\\+200/.test(card) && /VÄRVA EN VÄN/.test(card) && /BJUD IN EN VÄN/.test(card),
+    return {card:/Så fungerar det/.test(card) && /VÄRVA EN ARTIST/.test(card) && /Bjud in med e-post/.test(card) && /\\+300/.test(card),
       sheet:/Bjud in en vän/.test(sheet) && /300 poäng/.test(sheet), own, sent, inv:inv && {ref:inv.referrer, by:inv.created_by, max:inv.max_uses},
       card2:/Vera Vän/.test(card2) && /INBJUDEN/.test(card2), vera:vera && {ref:vera.referredBy, r:vera.r}, welcome, t, ref:ref && ref.points,
       card3:/Vera Vän/.test(card3) && /KLAR · \\+300/.test(card3), badMult, camps,
-      panel:/KAMPANJER/.test(panel) && /PÅGÅR/.test(panel) && /BONUSPOÄNG/.test(panel) && /VÄRVA EN VÄN/.test(panel),
-      closeTxt:/200 poäng \\(Dubbla poäng ×2\\)/.test(closeHtml), vb2, vcard:/rwcamp/.test(vcard) && /Dubbla poäng/.test(vcard) && /×2/.test(vcard),
+      panel:/KAMPANJER/.test(panel) && /PÅGÅR/.test(panel) && /BONUSPOÄNG/.test(panel) && /VÄRVA EN ARTIST/.test(panel) && /POÄNG PER BETALD TIMME/.test(panel),
+      closeTxt:/600 poäng \\(Dubbla poäng ×2\\)/.test(closeHtml), vb2, vcard:/rwcamp/.test(vcard) && /Dubbla poäng/.test(vcard) && /×2/.test(vcard),
       hist:/Bonus/.test(hist) && /Första sessionen/.test(hist) && /Välkomstbonus/.test(hist)};`);
-  ok('kunden ser "Så tjänar du poäng" med bonusarna, och Värva en vän', r.card===true);
+  ok('kunden ser "Så fungerar det" och Värva en artist', r.card===true);
   ok('bjud in en vän: arket säger vad det ger', r.sheet===true);
   ok('inte sin egen adress', /din egen/.test(r.own), r.own);
   ok('inbjudan skickas — från kunden, en användning', /Inbjudan skickad/.test(r.sent) && /1 av 3/.test(r.sent) && r.inv && r.inv.ref==='p2' && r.inv.by==='p2' && r.inv.max===1, r);
   ok('vännen syns som inbjuden', r.card2===true);
   ok('vännen skapar kontot med inbjudan: värvad av kunden, välkomstbonus 100', r.vera && r.vera.ref==='p2' && r.vera.r==='customer' && JSON.stringify(r.welcome)==='[100]', r);
-  ok('vännens första session: 100 poäng + 200 i bonus', /100 poäng \+ 200 i bonus/.test(r.t), r.t);
+  ok('vännens första session: 300 poäng + 200 i bonus', /300 poäng \+ 200 i bonus/.test(r.t), r.t);
   ok('och kunden som bjöd in får 300', r.ref===300, r.ref);
   ok('kunden ser vännen som klar, +300', r.card3===true);
   ok('kampanj: en faktor på 1 nekas, 2 sparas', /Kontrollera Dubbla poäng/.test(r.badMult) && JSON.stringify(r.camps)==='["Dubbla poäng 2"]', r);
-  ok('adminpanelen: bonuspoäng, värva en vän och kampanjer (PÅGÅR)', r.panel===true);
-  ok('under kampanjen: avslutet visar och ger dubbla poäng', r.closeTxt===true && r.vb2.length===1 && r.vb2[0][0]===200 && /Dubbla poäng ×2/.test(r.vb2[0][1]), r);
+  ok('adminpanelen: poäng per timme, bonuspoäng, värva en artist och kampanjer (PÅGÅR)', r.panel===true);
+  ok('under kampanjen: avslutet visar och ger dubbla poäng', r.closeTxt===true && r.vb2.length===1 && r.vb2[0][0]===600 && /Dubbla poäng ×2/.test(r.vb2[0][1]), r);
   ok('vännen ser kampanjen i sin vy', r.vcard===true);
   ok('historiken visar bonusarna med namn', r.hist===true);
 
@@ -2348,6 +2355,60 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('ett möte i en studio gör studion upptagen, ett möte på annan plats inte', r.studioBlocked && r.offsite, r);
   ok('möten räknas aldrig som sessioner (statistik, studiokontroll, veckoplan)', r.excluded===true, r);
   ok('mötet syns i schemat och har ett eget detaljark', r.card && r.det, r);
+  log('\n── Bando Rewards 2.0 i appen: sen avbokning, extra tid, nivåredigeraren och värvningslänken ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    const wait = ms => new Promise(r=>setTimeout(r,ms)), now = new Date();
+    const hm = d => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const nora = byId('p2'); Object.assign(nora, {r:'customer', producer:'rkay', producers:['rkay'], interests:['rap'], consent:true, pnr:'990101-••••', phone:'070-222 22 22', email:'nora@x.se'}); save();
+    const at = h => { const d = new Date(+now + h*36e5); d.setMinutes(0,0,0); return d; };
+    const K = (id, h, o) => { const s = at(h), e = new Date(+s + 3*36e5);
+      S.bookings.push(bump(Object.assign({id, studio:'A', date:iso(s), start:hm(s), end:hm(e), who:'Nora Lind', title:'Studiotid', note:'', circleId:'', status:'', hours:null, present:[], with:[], artistId:'', paid:true, del:false}, o))); };
+    K('lt1', 6); K('lt2', 50); K('lt3', 8, {studio:'B'}); K('ex1', 30, {studio:'B'});
+    save();
+    /* kunden avbokar sent och i god tid */
+    signIn(nora); let msg = ''; window.confirm = m => { msg += m; return true; };
+    await cancelMine('lt1'); const warn = /−500 poäng/.test(msg); msg = ''; await cancelMine('lt2'); const noWarn = !/poäng/.test(msg); window.confirm = () => true;
+    const pen = rwState().points.filter(p=>p.member_id==='p2' && p.kind==='penalty').map(p=>p.points + ':' + p.ref);
+    /* crewet tar bort ett kundpass inom 24 h: frågar om sen avbokning */
+    signIn(byName('AZ')); await wait(30); del('lt3'); const sheet = document.getElementById('sheetBody').innerHTML;
+    await delLate('lt3'); const pen2 = rwState().points.filter(p=>p.member_id==='p2' && p.kind==='penalty').length;
+    const lt3gone = S.bookings.find(b=>b.id==='lt3').del;
+    /* nivå, extra tid som förlänger passet */
+    signIn(byName('AZ')); await rw('adjust_points', {p_member:'p2', p_points:8000, p_note:'Test'});
+    signIn(nora); rwMineAt = 0; render(); await wait(80); render();
+    const ux = rwMine.unlocks.find(u=>u.benefit_id==='rising-extra30');
+    openClaim(ux.id); const claimSheet = document.getElementById('sheetBody').innerHTML;
+    document.querySelector('#clBk .chip[data-b="ex1"]').click(); await sendClaim(ux.id); await wait(40);
+    signIn(byName('AZ')); await loadRwAdmin(); rwTab = 'claims'; go('rewards'); const cl = document.getElementById('view').innerHTML;
+    const c = rwAdmin.claims[0]; const sug = document.getElementById('cv' + c.id).value;
+    await decideClaim(c.id, true); await wait(30);
+    const ex1 = S.bookings.find(b=>b.id==='ex1');
+    /* nivåredigeraren: en förmån till på Bando Access */
+    rwTab = 'levels'; render(); openLevelEdit('lv_access'); const ed = document.getElementById('sheetBody').innerHTML;
+    document.getElementById('bens').insertAdjacentHTML('beforeend', benRow());
+    const rows = document.querySelectorAll('#bens .benrow'), nr = rows[rows.length-1];
+    nr.querySelector('.bT').value = 'Gratis Bando-tröja'; nr.querySelector('.bK').value = 'free'; nr.querySelector('.bS').value = 'other';
+    await saveLevelEdit('lv_access'); await wait(30);
+    const acc = rwState().levels.find(l=>l.id==='lv_access');
+    /* värvningslänken: kunden ser sin länk, förfrågan via den bär värvningen */
+    signIn(nora); rwMineAt = 0; rwRefAsked = false; render(); await wait(80); render(); await wait(40); render();
+    const card = document.getElementById('view').innerHTML, code = byId('p2').refCode;
+    S.accessReqs = [{id:'ar1', name:'Ny Artist', email:'ny@x.se', phone:'+46701112233', interests:['rap'], message:'', ref:code, status:'new', created_at:new Date().toISOString()},
+                    {id:'ar2', name:'Nora Själv', email:'nora@x.se', phone:'+46701112233', interests:['rap'], message:'', ref:code, status:'new', created_at:new Date().toISOString()}]; save();
+    signIn(byName('AZ')); await approveAccess('ar1'); await approveAccess('ar2'); closeSheet();
+    const refs = S.invites.filter(i=>['ny@x.se','nora@x.se'].includes(i.email)).map(i=>i.email + ':' + (i.referrer||''));
+    return {warn, noWarn, pen, sheet:/Sen avbokning från kunden/.test(sheet) && /id="ldLate" checked/.test(sheet), pen2, lt3gone,
+      claimSheet:/VILKET PASS/.test(claimSheet) && /data-b="ex1"/.test(claimSheet), cl:/30 min/.test(cl) && /ledig efter/.test(cl), sug,
+      ex1:ex1.end + ':' + ex1.freeMin, ed:/FÖRMÅNER/.test(ed) && /20 % rabatt på ett sessionspaket/.test(ed), acc:(acc.benefits||[]).map(b=>b.title + ':' + b.kind).join('|'),
+      card:/VÄRVA EN ARTIST/.test(card) && new RegExp('access\\\\?ref=' + code).test(card), code, refs};`);
+  ok('kunden avbokar under 24 h: varning och −500; i god tid: inget avdrag', r.warn && r.noWarn && JSON.stringify(r.pen)==='["-500:late:lt1"]', r);
+  ok('crewet tar bort ett kundpass inom 24 h: rutan för sen avbokning är ikryssad, avdraget ges', r.sheet && r.pen2===2 && r.lt3gone===true, r);
+  ok('extra tid: kunden väljer pass, admin ser att studion är ledig efter, föreslaget värde = 30 min × timpris', r.claimSheet && r.cl && r.sug==='325', r);
+  ok('godkänd extra tid förlänger passet 30 min som gratistid', /:30$/.test(r.ex1.split(':').slice(0,2).join(':')) && r.ex1.endsWith(':30'), r.ex1);
+  ok('nivåredigeraren: förmånerna går att ändra och lägga till', r.ed && r.acc==='20 % rabatt på ett sessionspaket med minst 4 sessions:discount|Gratis Bando-tröja:free', r.acc);
+  ok('kunden ser sin värvningslänk; förfrågan via länken bär värvningen — inte till sig själv', r.card && r.refs.sort().join()==='nora@x.se:,ny@x.se:p2', r);
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

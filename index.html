@@ -731,6 +731,20 @@ h2+.rank,.row .rank{font-size:16px;padding:2px 8px;border-radius:var(--r-sm);bac
 .tl-key .k-b{background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}
 .tl-key .k-own{background:var(--btn)}
 .rwcard .rwpts,.rwpts{font-family:var(--disp);font-size:44px;font-weight:800;line-height:1;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+.card.claim{margin-bottom:var(--s3)}
+.benrow{margin-bottom:var(--s3)}
+.pill.rwlevel.off{border-color:var(--line2);color:var(--mut);box-shadow:none}
+.plrow b.neg{color:var(--bad2)}
+.rwlevels{border-top:1px solid var(--line)}
+.rwlv{display:flex;gap:14px;align-items:baseline;padding:14px 2px;border-bottom:1px solid var(--line)}
+.rwlv>i{font-style:normal;font-family:var(--disp);font-size:13px;font-weight:600;letter-spacing:.14em;color:var(--mut2);width:22px;flex:none}
+.rwlv b{display:block;font-family:var(--disp);font-weight:800;font-size:22px;line-height:1.05;letter-spacing:.02em;color:var(--mut)}
+.rwlv span{display:block;font-size:12px;color:var(--mut2);margin-top:3px;letter-spacing:.06em}
+.rwlv ul{margin:8px 0 0 16px;padding:0;font-size:13.5px;line-height:1.5;color:var(--mut)}
+.rwlv.on>i,.rwlv.on b{color:var(--tube)}
+.rwlv.on ul{color:var(--txt)}
+.reflink{display:flex;gap:8px;margin-top:12px;align-items:center}
+.reflink input{flex:1;min-width:0;font-size:13px}
 .pill.rwlevel{background:transparent;border:1px solid var(--tube);color:var(--tube);letter-spacing:.2em;box-shadow:0 0 16px -6px var(--glow)}
 /* kampanjbanderollen, "så tjänar du poäng" och värva en vän */
 .rwcamp{display:flex;flex-direction:column;gap:3px;padding:12px 14px;margin-bottom:10px;border:1px solid rgba(255,106,216,.5);
@@ -1846,10 +1860,12 @@ function vCircleOverview(){
    allt via funktioner som kontrollerar behörigheten (03-funktioner.sql: BANDO REWARDS); i
    förhandsläget spelar rwLocal samma roll med samma regler. */
 const RCFG = {tiers:[{hours:3, points:100}, {hours:6, points:500}], activeDays:60, recurringMin:3, recurringWindow:90,
-  /* bonusar (en gång var): välkomst, första betalda sessionen, återkommande = recurringCount sessioner samma månad */
-  bonuses:{welcome:100, first:200, recurring:150, recurringCount:3},
-  /* värva en vän: poängen när vännens första betalda session är klar */
-  referral:{enabled:true, points:300, maxOpen:3},
+  /* Bando Rewards 2.0: poäng per betald timme, avdrag vid sen avbokning, och hur länge en belöning gäller */
+  perHour:100, lateCancel:500, lateHours:24, expiryMonths:12,
+  /* bonusar (avstängda i 2.0 — admin kan slå på dem): välkomst, första sessionen, återkommande */
+  bonuses:{welcome:0, first:0, recurring:0, recurringCount:3},
+  /* värva en artist: poängen när den nya artistens första betalda session är klar */
+  referral:{enabled:true, points:500, maxOpen:3},
   campaigns:[]};                                           /* [{id, label, from, to, multiplier}] */
 /* Som bs_rcfg: det admin sparat går före, och objekten slås ihop nyckel för nyckel. */
 const rcfg = () => { const s0 = S.rewardsCfg||{}, c = Object.assign({}, RCFG, s0);
@@ -1861,7 +1877,17 @@ const bonusOf = k => Math.round(rnum(rcfg().bonuses[k], 0));
 const refOn = () => { const v = rcfg().referral.enabled; return !(v === false || v === 'false'); };
 const refPts = () => Math.round(rnum(rcfg().referral.points, 0));
 const recurN = () => Math.max(1, Math.round(rnum(rcfg().bonuses.recurringCount, 3)));
-const pointsFor = h => Math.max(0, ...rcfg().tiers.filter(t=>+t.hours <= h + 1e-4).map(t=>+t.points||0));
+const rtop = (k, d) => Math.round(rnum(rcfg()[k], d));
+/* poäng för ett pass: perHour per betald timme (bs_points_for) */
+const pointsFor = h => Math.max(0, Math.round(rtop('perHour', 100) * Math.max(0, +h || 0)));
+/* Bando Rewards 2.0: de sex nivåerna och deras förmåner — samma som databasen (db/03, startnivåerna). */
+const RW_LEVELS = [{"id": "lv_access", "name": "Bando Access", "rank": 1, "criteria": {"minPoints": 3500}, "perks": "", "active": true, "benefits": [{"id": "access-pkg20", "title": "20 % rabatt på ett sessionspaket med minst 4 sessions", "kind": "discount", "pct": 20, "scope": "package", "minSessions": 4, "uses": 1}]}, {"id": "lv_rising", "name": "Bando Rising", "rank": 2, "criteria": {"minPoints": 7000}, "perks": "", "active": true, "benefits": [{"id": "rising-extra30", "title": "30 minuter extra studiotid på 3 sessions", "kind": "extra_time", "minutes": 30, "scope": "session", "uses": 3}, {"id": "rising-mix25", "title": "25 % rabatt på mix & master för en låt", "kind": "discount", "pct": 25, "scope": "mixmaster", "uses": 1}]}, {"id": "lv_verified", "name": "Bando Verified", "rank": 3, "criteria": {"minPoints": 10000}, "perks": "", "active": true, "benefits": [{"id": "verified-extra60", "title": "1 timme extra studiotid på 3 sessions", "kind": "extra_time", "minutes": 60, "scope": "session", "uses": 3}, {"id": "verified-media25", "title": "25 % rabatt på valfri foto-/videotjänst eller ett beat", "kind": "discount", "pct": 25, "scope": "media", "uses": 1}]}, {"id": "lv_pro", "name": "Bando Pro", "rank": 4, "criteria": {"minPoints": 15000}, "perks": "", "active": true, "benefits": [{"id": "pro-pkg30", "title": "30 % rabatt på ett sessionspaket med minst 4 sessions", "kind": "discount", "pct": 30, "scope": "package", "minSessions": 4, "uses": 1}, {"id": "pro-clip", "title": "Ett kostnadsfritt kort TikTok-/studioklipp från befintligt material", "kind": "free", "scope": "clip", "uses": 1}]}, {"id": "lv_elite", "name": "Bando Elite", "rank": 5, "criteria": {"minPoints": 20000}, "perks": "", "active": true, "benefits": [{"id": "elite-pkg40", "title": "40 % rabatt på ett paket med minst 3 sessions", "kind": "discount", "pct": 40, "scope": "package", "minSessions": 3, "uses": 1}, {"id": "elite-extra60", "title": "1 extra studiotimme på en session", "kind": "extra_time", "minutes": 60, "scope": "session", "uses": 1}, {"id": "elite-choice", "title": "Valfri bonus", "kind": "choice", "uses": 1, "options": [{"id": "media35", "title": "35 % rabatt på foto/video"}, {"id": "mix50", "title": "50 % rabatt på mix/master för en låt"}, {"id": "clip", "title": "Ett TikTok-klipp med artistens ljud"}]}]}, {"id": "lv_legacy", "name": "Bando Legacy", "rank": 6, "criteria": {"minPoints": 30000}, "perks": "", "active": true, "benefits": [{"id": "legacy-release50", "title": "50 % rabatt på ett komplett släppaket — beat, mix/master, foto, video och TikTok-marknadsföring", "kind": "discount", "pct": 50, "scope": "release", "capKr": 5000, "uses": 1, "note": "Rabattak 5 000 kr. Externa kostnader och annonsbudget ingår inte."}, {"id": "legacy-sessions50", "title": "50 % rabatt på upp till 3 sessions under 20 dagar", "kind": "discount", "pct": 50, "scope": "session", "uses": 3, "windowDays": 20}]}];
+const BEN_KIND = {discount:'Rabatt', extra_time:'Extra studiotid', free:'Kostnadsfritt', choice:'Valfri bonus'};
+const BEN_SCOPE = {package:'Sessionspaket', session:'Session', mixmaster:'Mix & master', media:'Foto/video eller beat', release:'Släppaket', clip:'Klipp', other:'Annat'};
+/* förmåner som gäller ett visst pass (extra tid, rabatt på en session) */
+const benNeedsBooking = b => !!b && (b.kind==='extra_time' || b.scope==='session');
+/* sen avbokning: passet börjar inom lateHours */
+const lateWindow = b => { const t = startAt(b) - Date.now(); return t > 0 && t < rtop('lateHours', 24) * 36e5; };
 const ISO_D = /^\d{4}-\d{2}-\d{2}$/;
 /* Kampanjen som gäller ett datum (högsta faktorn om flera överlappar), som bs_campaign. */
 function campaignOn(date){
@@ -1890,10 +1916,13 @@ async function rw(fn, args){ return PREVIEW_LOGIN ? rwLocal[fn](args||{}) : sbRp
 
 /* ---------- förhandslägets "server" ---------- */
 function rwState(){
-  if(!S.rw) S.rw = {points:[], rewards:[], redemptions:[], notes:[], crm:{}, levelHist:[], seq:1,
-    levels:[{id:'lv_member',name:'Member',rank:0,criteria:{},perks:'',active:true},{id:'lv_silver',name:'Silver',rank:1,criteria:{minEarned:1000},perks:'',active:true},
-            {id:'lv_gold',name:'Gold',rank:2,criteria:{minEarned:3000,minSessions12:10},perks:'',active:true},{id:'lv_platinum',name:'Platinum',rank:3,criteria:{minEarned:6000,minSessions12:20},perks:'',active:true}]};
-  return S.rw;
+  if(!S.rw) S.rw = {points:[], rewards:[], redemptions:[], notes:[], crm:{}, levelHist:[], seq:1, levels:[]};
+  const st = S.rw;
+  /* de gamla exempelnivåerna (Member–Platinum) byts mot Rewards 2.0 */
+  if(!Array.isArray(st.levels) || !st.levels.length || st.levels.some(l=>['lv_member','lv_silver','lv_gold','lv_platinum'].includes(l.id)))
+    st.levels = JSON.parse(JSON.stringify(RW_LEVELS));
+  if(!st.unlocks) st.unlocks = []; if(!st.claims) st.claims = [];
+  return st;
 }
 const rwFail = t => { throw new Error(t); };
 const rwLocal = {
@@ -1907,12 +1936,29 @@ const rwLocal = {
   _stats(mid){ const a = byId(mid), y = iso(addDays(new Date(), -365));
     const bs = live().filter(b=>!b.circleId && a && b.who===a.n && b.closed && b.paid && b.date >= y);
     return {earned:this._bal(mid).earned, sessions12:bs.length, hours12:bs.reduce((s,b)=>s+dur(b),0)}; },
-  _level(mid){ const st = this._stats(mid), c = (l,k,v) => (+((l.criteria||{})[k])||0) <= v;
-    return rwState().levels.filter(l=>l.active!==false && c(l,'minEarned',st.earned) && c(l,'minSessions12',st.sessions12) && c(l,'minHours12',st.hours12))
+  _net(mid){ return rwState().points.filter(p=>p.member_id===mid).reduce((a,p)=>a+p.points,0); },
+  /* nivån: nettopoängen räcker — eller den är redan nådd (bs_member_level) */
+  _level(mid){ const S2 = rwState(), net = this._net(mid), ids = S2.levels.map(l=>l.id);
+    const held = Math.max(-1, ...S2.levelHist.filter(h=>h.member_id===mid && ids.includes(h.level_id)).map(h=>+h.rank||0));
+    return S2.levels.filter(l=>l.active!==false && ((+(l.criteria||{}).minPoints || +(l.criteria||{}).minEarned || 0) <= net || l.rank <= held))
       .sort((x,y)=>y.rank-x.rank)[0] || null; },
+  _unlock(mid, rank){ const S2 = rwState(); let n = 0;
+    S2.levels.filter(l=>l.active!==false && l.rank <= rank).forEach(l=>(l.benefits||[]).forEach(b=>{
+      if(!b.id || b.active===false || S2.unlocks.some(u=>u.member_id===mid && u.benefit_id===b.id)) return;
+      const ex = new Date(); ex.setMonth(ex.getMonth() + Math.max(1, rtop('expiryMonths', 12)));
+      const uses = Math.max(1, +b.uses || 1);
+      S2.unlocks.push({id:S2.seq++, member_id:mid, level_id:l.id, level_name:l.name, benefit_id:b.id, title:b.title || 'Belöning',
+        benefit:JSON.parse(JSON.stringify(b)), uses_total:uses, uses_left:uses, unlocked_at:new Date().toISOString(), expires_at:ex.toISOString()}); n++; }));
+    return n; },
   _upd(mid){ const S2 = rwState(), lv = this._level(mid), prev = S2.levelHist.filter(h=>h.member_id===mid).pop();
+    if(lv) this._unlock(mid, lv.rank);
     if((prev ? prev.level_id : '') === (lv ? lv.id : '')) return;
     S2.levelHist.push({member_id:mid, level_id:lv ? lv.id : '', level_name:lv ? lv.name : '', rank:lv ? lv.rank : null, at:new Date().toISOString()}); },
+  /* sen avbokning: −lateCancel en gång per pass (bs_late_penalty) */
+  _late(b, by){ const cu = customerOf(b), pts = rtop('lateCancel', 500);
+    if(!cu || b.circleId || isMeeting(b) || pts <= 0 || !lateWindow(b) || rwState().points.some(p=>p.member_id===cu.id && p.ref==='late:' + b.id)) return 0;
+    this._add({member_id:cu.id, booking_id:b.id, kind:'penalty', points:-pts, note:'Sen avbokning: ' + longDate(b.date).toLowerCase() + ' ' + b.start, by_id:by, ref:'late:' + b.id});
+    this._upd(cu.id); save(); return pts; },
   _add(row){ rwState().points.push(Object.assign({id:rwState().seq++, at:new Date().toISOString()}, row)); },
   submit_studio_check({p_booking, p_items, p_comment, p_damage, p_damage_text}){
     const b = S.bookings.find(x=>x.id===p_booking && !x.del);
@@ -1940,7 +1986,8 @@ const rwLocal = {
     if(startAt(b) > new Date()) rwFail('Passet har inte börjat än');
     const cu = customerOf(b) || rwFail('Passet är inte bokat av en kund');
     if(!mayClose(b)) rwFail('Bara kundens producent, en producent som var med eller admin kan avsluta passet');
-    let pts = p_paid ? pointsFor(dur(b)) : 0, note = `${longDate(b.date).toLowerCase()} ${b.start}-${b.end}`;
+    const pct = b.artistId && artistById(b.artistId) && artistById(b.artistId).pct !== false;
+    let pts = p_paid && !pct ? pointsFor(dur(b) - (+b.freeMin || 0) / 60) : 0, note = `${longDate(b.date).toLowerCase()} ${b.start}-${b.end}`;
     const cmp = pts > 0 ? campaignOn(b.date) : null;
     if(cmp){ pts = Math.round(pts * cmp.multiplier); note += ` · ${cmp.label} ${multText(cmp.multiplier)}`; }
     const net = rwState().points.filter(p=>p.booking_id===b.id && ['earn','reversal'].includes(p.kind)).reduce((a,p)=>a+p.points,0);
@@ -1976,21 +2023,102 @@ const rwLocal = {
         return Object.assign({}, n, {at:n.created_at, author:(byId(n.author_id)||{}).n||'', mine:n.author_id===m.id, date:b.date, start:b.start, end:b.end}); });
   },
   rewards_catalog(){ const all = canIntel(), c = rcfg(), today = iso(new Date());
-    return {rewards:rwState().rewards.filter(w=>all || w.active!==false).slice().sort((a,b)=>a.cost-b.cost),
+    return {rewards:[], rules:{perHour:rtop('perHour',100), lateCancel:rtop('lateCancel',500), lateHours:rtop('lateHours',24), expiryMonths:rtop('expiryMonths',12)},
       levels:rwState().levels.filter(l=>all || l.active!==false).slice().sort((a,b)=>a.rank-b.rank), tiers:c.tiers, bonuses:c.bonuses,
       referral:{enabled:refOn(), points:refPts(), maxOpen:Math.round(rnum(c.referral.maxOpen, 3))}, campaign:campaignOn(today),
       campaigns:c.campaigns.filter(x=>x && typeof x==='object' && (all || String(x.to||'') >= today)).slice().sort((a,b)=>String(a.from).localeCompare(String(b.from)))}; },
   points_summary({p_member}){
     const mid = p_member || me().id; if(mid!==me().id && !canIntel()) rwFail('Inte behörig');
-    const lv = this._level(mid), nx = rwState().levels.filter(l=>l.active!==false && l.rank > (lv ? lv.rank : -1)).sort((a,b)=>a.rank-b.rank)[0] || null;
-    return Object.assign(this._bal(mid), {stats:this._stats(mid), level:lv, next:nx,
-      history:rwState().points.filter(p=>p.member_id===mid).slice().reverse().slice(0,50),
-      redemptions:rwState().redemptions.filter(r=>r.member_id===mid).slice().reverse(),
-      friends:accounts().filter(a=>a.referredBy===mid).map(a=>{ const p = rwState().points.find(x=>x.member_id===mid && x.ref==='referral:' + a.id);
+    const S2 = rwState(), net = this._net(mid), lv = this._level(mid);
+    const nx = S2.levels.filter(l=>l.active!==false && l.rank > (lv ? lv.rank : 0)).sort((a,b)=>a.rank-b.rank)[0] || null;
+    const mn = l => +((l && l.criteria) || {}).minPoints || 0, lo = lv ? mn(lv) : 0, hi = nx ? mn(nx) : null;
+    return {total:net, earned:this._bal(mid).earned, spent:0, available:net,
+      level:lv ? {id:lv.id, name:lv.name, rank:lv.rank, min:lo} : null, next:nx ? {id:nx.id, name:nx.name, rank:nx.rank, min:hi} : null,
+      toNext:hi==null ? null : Math.max(0, hi - net), progress:hi==null ? 1 : Math.max(0, Math.min(1, (net - lo) / ((hi - lo) || 1))),
+      levels:S2.levels.filter(l=>l.active!==false).slice().sort((a,b)=>a.rank-b.rank).map(l=>({id:l.id, name:l.name, rank:l.rank, min:mn(l), benefits:l.benefits||[], reached:l.rank <= (lv ? lv.rank : 0)})),
+      unlocks:S2.unlocks.filter(u=>u.member_id===mid).map(u=>Object.assign({}, u, {level:u.level_name, expired:new Date(u.expires_at) <= new Date(),
+        claims:S2.claims.filter(c=>c.unlock_id===u.id).slice().reverse().map(c=>({id:c.id, status:c.status, booking:c.booking_id, choice:c.choice, note:c.note, at:c.at, reason:c.reason}))})),
+      history:S2.points.filter(p=>p.member_id===mid).slice().reverse().slice(0,50), redemptions:[], refCode:(byId(mid)||{}).refCode || null,
+      friends:accounts().filter(a=>a.referredBy===mid).map(a=>{ const p = S2.points.find(x=>x.member_id===mid && x.ref==='referral:' + a.id);
           return {name:a.n, at:a.reg||null, status:p ? 'done' : 'joined', points:p ? p.points : null}; })
         .concat((S.invites||[]).filter(i=>i.referrer===mid && !i.uses).map(i=>({name:i.name, at:new Date(i.created||Date.now()).toISOString(),
           status:i.closed || i.expires_at <= Date.now() ? 'expired' : 'waiting'})))
-        .sort((x,y)=>String(y.at||'').localeCompare(String(x.at||'')))});
+        .sort((x,y)=>String(y.at||'').localeCompare(String(x.at||'')))};
+  },
+  late_cancel({p_booking}){
+    const b = S.bookings.find(x=>x.id===p_booking) || rwFail('Passet finns inte');
+    if(!customerOf(b)) rwFail('Passet är inte bokat av en kund');
+    if(!isAdminRole(me().r) && !mayClose(b)) rwFail('Bara kundens producent eller admin');
+    return {points:-this._late(b, me().id)};
+  },
+  claim_reward({p_unlock, p_booking, p_choice, p_note}){
+    const m = me(); if(!m || m.r!=='customer') rwFail('Bara artister använder belöningar');
+    const S2 = rwState(), u = S2.unlocks.find(x=>x.id===+p_unlock && x.member_id===m.id) || rwFail('Belöningen finns inte');
+    if(new Date(u.expires_at) <= new Date()) rwFail('Belöningen har gått ut');
+    const waiting = S2.claims.filter(c=>c.unlock_id===u.id && c.status==='waiting').length;
+    if(u.uses_left - waiting <= 0) rwFail('Belöningen är redan använd');
+    const ben = u.benefit || {}, note = String(p_note||'').trim().slice(0,400) || null, bk = String(p_booking||'').trim() || null;
+    if(benNeedsBooking(ben) && !bk) rwFail('Välj vilket pass belöningen gäller');
+    let b = null;
+    if(bk){
+      b = S.bookings.find(x=>x.id===bk && !x.del);
+      if(!b || String(b.who).toLowerCase()!==m.n.toLowerCase() || (b.status||'')!=='') rwFail('Välj ett av dina bokade pass');
+      if(startAt(b) <= new Date()) rwFail('Passet har redan börjat');
+      if(S2.claims.some(c=>c.booking_id===bk && c.status!=='declined')) rwFail('Passet har redan en belöning — belöningar kan inte kombineras');
+      if(+ben.windowDays > 0){ const ds = S2.claims.filter(c=>c.unlock_id===u.id && c.status!=='declined').map(c=>(S.bookings.find(x=>x.id===c.booking_id)||{}).date).filter(Boolean).sort();
+        if(ds.length && Math.abs((fromIso(b.date) - fromIso(ds[0])) / 864e5) > +ben.windowDays) rwFail(`Passen ska ligga inom ${ben.windowDays} dagar från det första`); }
+    }
+    if(ben.kind==='choice' && !(ben.options||[]).some(o=>o.id===p_choice)) rwFail('Välj din bonus');
+    if(!benNeedsBooking(ben) && ben.kind!=='choice' && !note) rwFail('Skriv vad du vill använda belöningen till');
+    const c = {id:S2.seq++, unlock_id:u.id, member_id:m.id, benefit_id:u.benefit_id, title:u.title, level_name:u.level_name, booking_id:bk,
+      choice:ben.kind==='choice' ? p_choice : null, note, minutes:ben.kind==='extra_time' ? Math.max(0, +ben.minutes || 0) : 0,
+      status:'waiting', value_kr:0, at:new Date().toISOString()};
+    S2.claims.push(c); save(); return {claim:c.id};
+  },
+  handle_claim({p_id, p_approve, p_value_kr, p_reason}){
+    if(!isAdminRole(me().r)) rwFail('Bara admin godkänner belöningar');
+    const S2 = rwState(), c = S2.claims.find(x=>x.id===+p_id); if(!c || c.status!=='waiting') rwFail('Uttaget är redan hanterat');
+    const u = S2.unlocks.find(x=>x.id===c.unlock_id), v = Math.max(0, +p_value_kr || 0), now = new Date().toISOString();
+    if(!p_approve){ Object.assign(c, {status:'declined', reason:String(p_reason||'').trim().slice(0,300) || null, handled_by:me().id, handled_at:now}); save(); return {status:'declined'}; }
+    if(!u || u.uses_left <= 0) rwFail('Belöningen är redan använd');
+    if(new Date(u.expires_at) <= new Date()) rwFail('Belöningen har gått ut');
+    if(u.benefit && +u.benefit.capKr && v > +u.benefit.capKr) rwFail(`Värdet är över taket på ${u.benefit.capKr} kr`);
+    if(c.minutes > 0){
+      const b = S.bookings.find(x=>x.id===c.booking_id && !x.del); if(!b || (b.status||'')) rwFail('Passet finns inte längre');
+      const ne = toHm((toMin(b.end) + c.minutes) % 1440);
+      if(!freeAt(b.studio, b.date, b.end, ne, b.id)) rwFail('Studion är upptagen efter passet — den extra tiden går inte att lägga till');
+      bump(Object.assign(b, {end:ne, freeMin:(+b.freeMin || 0) + c.minutes}));
+    }
+    u.uses_left -= 1; Object.assign(c, {status:'approved', value_kr:v, handled_by:me().id, handled_at:now}); save();
+    return {status:'approved'};
+  },
+  pending_claims(){ if(!isAdminRole(me().r)) return [];
+    return rwState().claims.filter(c=>c.status==='waiting').map(c=>{ const u = rwState().unlocks.find(x=>x.id===c.unlock_id) || {};
+      return Object.assign({}, c, {name:(byId(c.member_id)||{}).n || '', benefit:u.benefit || {}, uses_left:u.uses_left, booking:S.bookings.find(b=>b.id===c.booking_id) || null}); }); },
+  my_ref_code(){ const m = me(); if(!m || m.r!=='customer') rwFail('Bara artister har en värvningslänk');
+    if(!m.refCode){ m.refCode = Math.random().toString(16).slice(2, 8).toUpperCase(); bump(m); save(); } return m.refCode; },
+  referrals_admin(){ if(!canIntel()) return [];
+    return accounts().filter(a=>a.referredBy && byId(a.referredBy)).map(a=>{ const p = rwState().points.find(x=>x.member_id===a.referredBy && x.ref==='referral:' + a.id);
+      return {member:a.id, name:a.n, joined:a.reg||null, referrer:a.referredBy, referrer_name:byId(a.referredBy).n, points:p ? p.points : null, paid_at:p ? p.at : null}; }); },
+  /* lönsamheten i en period (rewards_stats) */
+  rewards_stats({p_from, p_to}){ if(!canIntel()) rwFail('Inte behörig');
+    const S2 = rwState(), f = p_from || iso(addDays(new Date(), -30)), t = p_to || iso(new Date()), inP = at => { const d = String(at||'').slice(0,10); return d >= f && d <= t; };
+    const cust = accounts().filter(a=>a.r==='customer' && a.active!==false).map(a=>({a, lv:this._level(a.id)}));
+    const bk = live().filter(b=>!b.circleId && !isMeeting(b) && b.closed && b.paid && b.date >= f && b.date <= t && cust.some(c=>c.a.n.toLowerCase()===String(b.who).toLowerCase()));
+    const hrs = b => dur(b) - (+b.freeMin || 0) / 60, cl = S2.claims.filter(c=>c.status==='approved' && inP(c.handled_at));
+    const grp = (xs, key) => Object.values(xs.reduce((o, x)=>{ const k = key(x); (o[k] = o[k] || {k, xs:[]}).xs.push(x); return o; }, {}));
+    const lv = grp(cust, c=>c.lv ? c.lv.name : 'Ingen nivå än').map(g=>({name:g.k, rank:g.xs[0].lv ? g.xs[0].lv.rank : 0, n:g.xs.length})).sort((a,b)=>a.rank-b.rank);
+    const pts = S2.points.filter(p=>inP(p.at));
+    return {from:f, to:t, levels:lv, customers:cust.length,
+      earned:pts.filter(p=>p.points>0 && ['earn','bonus','adjust'].includes(p.kind)).reduce((a,p)=>a+p.points,0),
+      penalties:-pts.filter(p=>p.kind==='penalty').reduce((a,p)=>a+p.points,0),
+      bs:bk.filter(b=>!b.pkg).length, pkgBs:bk.filter(b=>b.pkg).length, hours:bk.reduce((a,b)=>a+hrs(b),0),
+      revenue:Math.round(bk.reduce((a,b)=>a+hrs(b)*rateFor(b.who),0)),
+      referrals:accounts().filter(a=>a.referredBy && inP(a.reg)).length, referralPoints:pts.filter(p=>String(p.ref||'').startsWith('referral:')).reduce((a,p)=>a+p.points,0),
+      claims:cl.length, discount:Math.round(cl.reduce((a,c)=>a+c.value_kr,0)),
+      discountByLevel:grp(cl, c=>c.level_name||'—').map(g=>({name:g.k, kr:Math.round(g.xs.reduce((a,c)=>a+c.value_kr,0)), n:g.xs.length})).sort((a,b)=>b.kr-a.kr),
+      topRewards:grp(cl, c=>c.title).map(g=>({title:g.k, n:g.xs.length, kr:Math.round(g.xs.reduce((a,c)=>a+c.value_kr,0))})).sort((a,b)=>b.n-a.n || b.kr-a.kr).slice(0,10),
+      waiting:S2.claims.filter(c=>c.status==='waiting').length};
   },
   /* värva en vän (invite_friend) */
   invite_friend({p_name, p_email}){
@@ -2015,6 +2143,7 @@ const rwLocal = {
     save(); return {invite:tok, open:open + 1, max:mx};
   },
   redeem_reward({p_reward, p_member}){
+    rwFail('Poäng är inte pengar — belöningarna låses upp med nivåerna');
     let mid;
     if(!p_member){ if(me().r!=='customer') rwFail('Bara kunder löser in poäng'); mid = me().id; }
     else { if(!isAdminRole(me().r)) rwFail('Bara admin löser in åt en kund'); mid = p_member; }
@@ -2046,7 +2175,10 @@ const rwLocal = {
     if(ex) Object.assign(ex, v); else rwState().rewards.push(v); save(); return id; },
   delete_reward({p_id}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar belöningar'); rwState().rewards = rwState().rewards.filter(x=>x.id!==p_id); save(); },
   save_level({p}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar nivåer'); if(String(p.name||'').trim().length < 2) rwFail('Nivån behöver ett namn');
-    const id = p.id || 'lv_' + uid(), ex = rwState().levels.find(x=>x.id===id), v = {id, name:String(p.name).trim(), rank:+p.rank||0, criteria:p.criteria||{}, perks:p.perks||'', active:p.active!==false};
+    if(!Array.isArray(p.benefits || [])) rwFail('Förmånerna ska vara en lista');
+    if((p.benefits || []).some(b=>!String(b.id||'').trim() || !String(b.title||'').trim())) rwFail('Varje förmån behöver ett namn');
+    const id = p.id || 'lv_' + uid(), ex = rwState().levels.find(x=>x.id===id), v = {id, name:String(p.name).trim(), rank:+p.rank||0, criteria:p.criteria||{}, perks:p.perks||'',
+      active:p.active!==false, benefits:p.benefits || []};
     if(ex) Object.assign(ex, v); else rwState().levels.push(v); save(); return id; },
   delete_level({p_id}){ if(!isAdminRole(me().r)) rwFail('Bara admin hanterar nivåer'); rwState().levels = rwState().levels.filter(x=>x.id!==p_id); save(); },
   save_artist_crm({p_member, p}){ if(!canIntel()) rwFail('Inte behörig');
@@ -2350,49 +2482,111 @@ function loadMyRewards(force){
   Promise.all([rw('points_summary', {}), rw('rewards_catalog', {})])
     .then(([s1, c1])=>{ rwMine = s1; rwCat = c1; render(); }).catch(()=>{});
 }
+let rwRefAsked = false;
 function rewardsCard(){
   loadMyRewards();
-  const s1 = rwMine, cat = rwCat; if(!s1 || !cat) return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div><div class="skel" style="height:120px"></div>`;
-  const nx = s1.next, need = nx && (nx.criteria||{}).minEarned ? Math.max(0, +nx.criteria.minEarned - s1.earned) : null;
-  const waiting = (s1.redemptions||[]).filter(r=>r.status==='waiting');
-  const cmp = cat.campaign, bo = cat.bonuses || {}, rf = cat.referral || {}, rc = Math.max(1, Math.round(+bo.recurringCount || 3));
-  const got = ref => (s1.history||[]).some(h=>h.kind==='bonus' && h.ref===ref);
+  const s1 = rwMine, cat = rwCat; if(!s1 || !cat || !s1.levels) return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div><div class="skel" style="height:120px"></div>`;
+  /* värvningslänken: koden skapas första gången kunden ser kortet */
+  if(!s1.refCode && !rwRefAsked){ rwRefAsked = true; rw('my_ref_code', {}).then(c=>{ if(rwMine){ rwMine.refCode = c; render(); } }).catch(()=>{}); }
+  const ru = cat.rules || {perHour:100, lateCancel:500, lateHours:24, expiryMonths:12}, lv = s1.level, nx = s1.next, cmp = cat.campaign, rf = cat.referral || {};
+  const ul = s1.unlocks || [], act = ul.filter(u=>!u.expired && u.uses_left > 0), done = ul.filter(u=>u.expired || u.uses_left <= 0);
+  const first = s1.levels[0] || {};
   return `<div class="eyebrow">BANDO REWARDS<span class="ln"></span></div>
     ${cmp ? `<div class="rwcamp" role="status"><b>${esc(cmp.label)}</b><span>${multText(cmp.multiplier)} poäng på sessions till och med ${esc(longDate(cmp.to).toLowerCase())}</span></div>` : ''}
     <div class="card rwcard">
       <div class="row" style="justify-content:space-between;align-items:flex-end">
-        <div><div class="rwpts">${fmtP(s1.available)}</div><div class="tiny muted">poäng att använda</div></div>
-        ${s1.level ? `<span class="pill rwlevel">${esc(s1.level.name.toUpperCase())}</span>` : ''}</div>
-      ${nx ? `<div class="tiny muted" style="margin-top:12px">${need!=null ? `${fmtP(need)} poäng till <b style="color:var(--txt)">${esc(nx.name)}</b>` : `Nästa nivå: <b style="color:var(--txt)">${esc(nx.name)}</b>`}</div>
-        ${need!=null ? `<div class="bar thin"><i data-fill="rw-next" style="width:${Math.min(100, s1.earned / +nx.criteria.minEarned * 100)}%"></i></div>` : ''}` : ''}
+        <div><div class="rwpts">${fmtP(s1.total)}</div><div class="tiny muted">poäng</div></div>
+        <span class="pill rwlevel ${lv ? '' : 'off'}">${esc(lv ? lv.name.toUpperCase() : 'INGEN NIVÅ ÄN')}</span></div>
+      ${nx ? `<div class="tiny muted" style="margin-top:12px">${fmtP(s1.toNext)} poäng kvar till <b style="color:var(--txt)">${esc(nx.name)}</b></div>
+        <div class="bar thin"><i data-fill="rw-next" style="width:${Math.round((+s1.progress || 0) * 1000) / 10}%"></i></div>`
+        : `<div class="tiny muted" style="margin-top:12px">Du har nått högsta nivån — tack för att du skapar hos oss.</div>`}
     </div>
-    ${waiting.length ? `<div class="note">Väntar på att lämnas ut: ${waiting.map(r=>esc(r.title)).join(', ')}.</div>` : ''}
-    <div class="card plcard rwearn"><div class="pltitle">Så tjänar du poäng</div>
+    <div class="eyebrow">DINA BELÖNINGAR<span class="ln"></span><span style="color:var(--mut2)">${act.length}</span></div>
+    ${act.length ? act.map(rewardRow).join('')
+      : `<div class="empty">${lv ? 'Alla upplåsta belöningar är använda.' : `Nå ${esc(first.name || 'första nivån')} (${fmtP(first.min)} p) så låser du upp din första belöning.`}</div>`}
+    ${done.length ? `<button class="linkbtn" onclick="openUsedRewards()">Använda och utgångna (${done.length})</button>` : ''}
+    <div class="eyebrow">NIVÅERNA<span class="ln"></span></div>
+    <div class="rwlevels">${s1.levels.map((l,i)=>`<div class="rwlv ${l.reached ? 'on' : ''}"><i>${String(i+1).padStart(2,'0')}</i>
+      <div class="grow"><b>${esc(l.name)}</b><span>${fmtP(l.min)} poäng${l.reached ? ' · uppnådd' : ''}</span>
+        <ul>${(l.benefits||[]).map(bn=>`<li>${esc(bn.title)}${bn.kind==='choice' ? ': ' + (bn.options||[]).map(o=>esc(o.title)).join(', ') : ''}</li>`).join('')}</ul></div></div>`).join('')}</div>
+    ${rf.enabled ? referCard(s1, rf) : ''}
+    <div class="card plcard rwearn"><div class="pltitle">Så fungerar det</div>
       <div class="plist">
-        ${cat.tiers.map(t=>`<div class="plrow"><span>Session ${fmtH(t.hours)} h</span><b>${fmtP(t.points)}${cmp ? ` <i>${multText(cmp.multiplier)}</i>` : ''}</b></div>`).join('')}
-        ${+bo.first > 0 ? `<div class="plrow ${got('first')?'done':''}"><span>Första sessionen</span><b>+${fmtP(bo.first)}</b></div>` : ''}
-        ${+bo.recurring > 0 ? `<div class="plrow"><span>${rc} sessions samma månad</span><b>+${fmtP(bo.recurring)}</b></div>` : ''}
-        ${rf.enabled && +rf.points > 0 ? `<div class="plrow"><span>Bjud in en vän</span><b>+${fmtP(rf.points)}</b></div>` : ''}
-        ${+bo.welcome > 0 ? `<div class="plrow ${got('welcome')?'done':''}"><span>Välkomstbonus</span><b>+${fmtP(bo.welcome)}</b></div>` : ''}
+        <div class="plrow"><span>Betald studiotimme</span><b>+${fmtP(ru.perHour)}${cmp ? ` <i>${multText(cmp.multiplier)}</i>` : ''}</b></div>
+        <div class="plrow"><span>En session på 3 h</span><b>+${fmtP(ru.perHour * 3)}</b></div>
+        ${rf.enabled && +rf.points > 0 ? `<div class="plrow"><span>Värva en artist</span><b>+${fmtP(rf.points)}</b></div>` : ''}
+        <div class="plrow"><span>Avbokning under ${ru.lateHours} h innan</span><b class="neg">−${fmtP(ru.lateCancel)}</b></div>
       </div>
-      <div class="plnote">Poängen kommer när sessionen är genomförd och betald${rf.enabled && +rf.points > 0 ? ' — för en vän när hen gjort sin första session' : ''}.</div></div>
-    ${rf.enabled ? friendsCard(s1.friends||[], rf) : ''}
-    ${cat.rewards.length ? cat.rewards.map(w=>`<div class="member" style="cursor:default">
-      <div class="grow" style="min-width:0"><div class="mname">${esc(w.title)}</div><div class="mrole">${fmtP(w.cost)} poäng${w.description?' · '+esc(w.description):''}</div></div>
-      <button class="btn slim ${s1.available>=w.cost?'':'ghost'}" style="width:auto;flex:none;padding:9px 13px" ${s1.available>=w.cost?'':'disabled'} onclick="redeemMine('${w.id}')">LÖS IN</button></div>`).join('')
-      : `<div class="empty">Belöningarna kommer snart.</div>`}
+      <div class="plnote">Poäng är inte pengar och kan inte användas som betalning. Varje nivåbelöning låses upp en gång och används inom
+        ${ru.expiryMonths} månader. Belöningar kombineras inte med andra rabatter, och extra studiotid godkänns efter vad som är ledigt.</div></div>
     ${(s1.history||[]).length ? `<button class="linkbtn" onclick="openPointsHistory()">Poänghistorik</button>` : ''}`;
 }
+const fmtDay = t => { const d = new Date(t); return isNaN(d) ? '' : `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
+function rewardRow(u){
+  const wait = (u.claims||[]).filter(c=>c.status==='waiting').length, left = u.uses_left - wait;
+  return `<div class="member rwben" style="cursor:default">
+    <div class="grow" style="min-width:0"><div class="mname">${esc(u.title)}</div>
+      <div class="mrole">${esc(u.level||'')} · gäller till ${fmtDay(u.expires_at)}${u.uses_total > 1 ? ` · ${u.uses_left} av ${u.uses_total} kvar` : ''}${
+        wait ? ' · <span style="color:var(--warn)">väntar på godkännande</span>' : ''}</div></div>
+    ${left > 0 ? `<button class="btn slim" style="width:auto;flex:none;padding:9px 13px" onclick="openClaim(${u.id})">ANVÄND</button>` : ''}</div>`;
+}
+const CLAIM_ST = {waiting:'VÄNTAR', approved:'GODKÄND', declined:'NEKAD'};
+function openUsedRewards(){
+  const ul = ((rwMine||{}).unlocks||[]).filter(u=>u.expired || u.uses_left <= 0);
+  openSheet(`${X}<h2>Använda belöningar</h2><div style="margin-top:12px">${ul.map(u=>`<div class="kv"><span>${esc(u.title)}</span>
+    <b>${u.uses_left <= 0 ? 'Använd' : 'Gick ut ' + fmtDay(u.expires_at)}</b></div>`).join('')}</div>`);
+}
+function openClaim(id){
+  const u = ((rwMine||{}).unlocks||[]).find(x=>x.id===id); if(!u) return;
+  const bn = u.benefit || {}, m = me();
+  const taken = new Set(((rwMine||{}).unlocks||[]).flatMap(x=>(x.claims||[]).filter(c=>c.status!=='declined').map(c=>c.booking)).filter(Boolean));
+  const mine = live().filter(x=>x.who===m.n && !x.status && !x.busy && startAt(x) > new Date() && !taken.has(x.id)).sort((a,c)=>startAt(a)-startAt(c));
+  const needs = benNeedsBooking(bn);
+  openSheet(`${X}<h2>Använd belöning</h2><div class="sub">${esc(u.title)}</div>
+    ${bn.note ? `<div class="note">${esc(bn.note)}</div>` : ''}
+    ${needs ? `<label class="lbl">VILKET PASS?</label>${mine.length ? `<div class="chips wrap" id="clBk">${mine.map(x=>`<button type="button" class="chip" data-b="${x.id}"
+        onclick="pickOne('#clBk', this)">${esc(dayName(x.date))} ${fromIso(x.date).getDate()} ${MON[fromIso(x.date).getMonth()]} ${x.start}</button>`).join('')}</div>`
+      : `<div class="empty">Boka ett pass först — sedan använder du belöningen på det.</div>`}` : ''}
+    ${bn.kind==='choice' ? `<label class="lbl">VÄLJ DIN BONUS</label><div class="chips wrap" id="clCh">${(bn.options||[]).map(o=>`<button type="button" class="chip"
+        data-c="${esc(o.id)}" onclick="pickOne('#clCh', this)">${esc(o.title)}</button>`).join('')}</div>` : ''}
+    <label class="lbl" for="clNote">${needs || bn.kind==='choice' ? 'MEDDELANDE (VALFRITT)' : 'VAD VILL DU ANVÄNDA DEN TILL?'}</label>
+    <textarea id="clNote" maxlength="400" placeholder="${bn.scope==='package' ? 't.ex. Ett paket med 4 sessions i december' : bn.scope==='mixmaster' ? 't.ex. Mix & master på min nästa singel' : 'Berätta kort'}"></textarea>
+    <div class="tiny muted" style="margin-top:8px;line-height:1.55">Vi godkänner och hör av oss${bn.kind==='extra_time' ? ' — den extra tiden läggs till om studion är ledig efter passet' : ''}.
+      Belöningen kan inte kombineras med andra rabatter.</div>
+    <button class="btn" style="margin-top:18px" onclick="sendClaim(${u.id})" ${needs && !mine.length ? 'disabled' : ''}>SKICKA</button>`);
+}
+function pickOne(sel, el){ document.querySelectorAll(sel + ' .chip').forEach(c=>c.classList.toggle('on', c===el)); afterPaint(); }
+async function sendClaim(id){
+  const bk = document.querySelector('#clBk .chip.on'), ch = document.querySelector('#clCh .chip.on');
+  try{ await rw('claim_reward', {p_unlock:id, p_booking:bk ? bk.dataset.b : null, p_choice:ch ? ch.dataset.c : null,
+      p_note:document.getElementById('clNote').value.trim() || null});
+    closeSheet(); toast('Skickat — vi godkänner och hör av oss'); loadMyRewards(true); }catch(e){ toast(e.message); }
+}
 const FRIEND_ST = {waiting:'INBJUDEN', joined:'HAR GÅTT MED', done:'KLAR', expired:'LÄNKEN GICK UT'};
-function friendsCard(friends, rf){
+const refLink = code => new URL('access?ref=' + encodeURIComponent(code), location.origin + '/').href;
+function referCard(s1, rf){
+  const fr = s1.friends || [], ok = fr.filter(f=>f.status==='done').length;
   return `<div class="card rwfriend">
-      <div class="studio-name">VÄRVA EN VÄN</div>
-      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Bjud in en vän till Bando HQ Access. När hen har gjort sin första session får du
-        <b style="color:var(--txt)">${fmtP(rf.points)} poäng</b>.</div>
-      <button class="btn" style="margin-top:12px" onclick="openInviteFriend()">BJUD IN EN VÄN</button>
-      ${friends.length ? `<div class="rwfriends">${friends.map(f=>`<div class="kv"><span>${esc(f.name)}</span>
+      <div class="studio-name">VÄRVA EN ARTIST</div>
+      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Dela din länk. När en ny artist skickar en förfrågan via den, blir godkänd och gör sin första
+        betalda session får du <b style="color:var(--txt)">${fmtP(rf.points)} poäng</b>.</div>
+      ${s1.refCode ? `<div class="reflink"><input id="refLink" value="${esc(refLink(s1.refCode))}" readonly onclick="this.select()" aria-label="Din värvningslänk">
+        <button class="btn slim" style="width:auto;flex:none" onclick="shareRef()">${plug('Share') || navigator.share ? 'DELA' : 'KOPIERA'}</button></div>`
+        : '<div class="skel" style="height:44px;margin-top:12px"></div>'}
+      <div class="kv" style="margin-top:10px"><span>LYCKADE VÄRVNINGAR</span><b>${ok}</b></div>
+      ${fr.length ? `<div class="rwfriends">${fr.map(f=>`<div class="kv"><span>${esc(f.name)}</span>
         <b class="${f.status==='done'?'ok':f.status==='joined'?'':'muted'}">${FRIEND_ST[f.status]||''}${f.status==='done' && f.points ? ' · +' + fmtP(f.points) : ''}</b></div>`).join('')}</div>` : ''}
+      <button class="linkbtn" onclick="openInviteFriend()">Bjud in med e-post i stället</button>
     </div>`;
+}
+async function shareRef(){
+  const el = document.getElementById('refLink'); if(!el) return;
+  const link = el.value, text = 'Boka studiotid hos Bando Collective — skicka en förfrågan om Bando HQ Access via min länk:', Sh = plug('Share');
+  try{
+    if(Sh) await Sh.share({title:'Bando HQ Access', text, url:link});
+    else if(navigator.share) await navigator.share({title:'Bando HQ Access', text, url:link});
+    else copy(link, 'Länken är kopierad');
+  }catch(_){}
 }
 function openInviteFriend(){
   const m = me(); if(!m) return;
@@ -2416,11 +2610,7 @@ async function sendInviteFriend(){
     loadMyRewards(true);
   }catch(e){ out(`<div class="warn" role="alert">${esc(e.message)}</div>`); }
 }
-async function redeemMine(id){
-  const w = (rwCat.rewards||[]).find(x=>x.id===id); if(!w || !confirm(`Lösa in ${w.title} för ${fmtP(w.cost)} poäng?`)) return;
-  try{ await rw('redeem_reward', {p_reward:id}); loadMyRewards(true); toast('Inlöst — vi hör av oss när den kan hämtas'); }catch(e){ toast(e.message); }
-}
-const PKIND = {earn:'Pass', reversal:'Tillbakadraget', redeem:'Inlöst', refund:'Tillbaka', adjust:'Justering', bonus:'Bonus'};
+const PKIND = {earn:'Pass', reversal:'Tillbakadraget', redeem:'Inlöst', refund:'Tillbaka', adjust:'Justering', bonus:'Bonus', penalty:'Avdrag'};
 function pointsRows(h){
   return (h||[]).map(p=>`<div class="kv"><span>${esc(new Date(p.at).toLocaleDateString('sv-SE',{day:'numeric',month:'short'}))} · ${PKIND[p.kind]||p.kind}</span>
     <b style="color:${p.points>0?'var(--ok2)':'var(--txt)'}">${p.points>0?'+':''}${fmtP(p.points)}${p.note?` <span class="muted" style="font-weight:500">${esc(p.note)}</span>`:''}</b></div>`).join('') || '<div class="empty">Inga poäng än.</div>';
@@ -2455,19 +2645,20 @@ function paintArtist(){
           <div class="srow-m">${b.status==='request' ? 'förfrågan' : b.closed ? (b.paid ? `avslutat och betalt · ${fmtP(pointsFor(dur(b)))} poäng` : 'avslutat, ej betalt') : startAt(b) < today ? 'inte avslutat' : 'kommande'}</div></div>
         ${!b.status && startAt(b) < today && mayClose(b) ? `<button class="btn slim ${b.closed?'ghost':''}" style="width:auto;flex:none;padding:8px 12px" onclick="openClose('${b.id}')">${b.closed?'ÄNDRA':'AVSLUTA'}</button>` : ''}</div>`).join('')
       : '<div class="empty">Inga bokningar än.</div>')
-    : t==='rewards' ? (d.sum ? `<div class="card"><div class="rwpts">${fmtP(d.sum.available)}</div><div class="tiny muted">tillgängliga · ${fmtP(d.sum.earned)} intjänade · ${fmtP(d.sum.spent)} förbrukade</div>
+    : t==='rewards' ? (d.sum && d.sum.levels ? `<div class="card"><div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div><div class="rwpts">${fmtP(d.sum.total)}</div><div class="tiny muted">poäng · ${fmtP(d.sum.earned)} intjänade</div></div>
+          <span class="pill rwlevel ${d.sum.level ? '' : 'off'}">${esc(d.sum.level ? d.sum.level.name.toUpperCase() : 'INGEN NIVÅ ÄN')}</span></div>
+        ${d.sum.next ? `<div class="tiny muted" style="margin-top:10px">${fmtP(d.sum.toNext)} poäng kvar till ${esc(d.sum.next.name)}</div>
+          <div class="bar thin"><i data-fill="ap-next:${a.id}" style="width:${Math.round((+d.sum.progress||0)*1000)/10}%"></i></div>` : ''}
         ${a.referredBy && byId(a.referredBy) ? `<div class="tiny muted" style="margin-top:8px">Värvad av ${esc(byId(a.referredBy).n)}</div>` : ''}
-        ${(d.sum.friends||[]).length ? `<div class="tiny muted" style="margin-top:8px">Har bjudit in ${d.sum.friends.length}: ${d.sum.friends.map(f=>esc(f.name) + ' (' + (FRIEND_ST[f.status]||'').toLowerCase() + ')').join(', ')}</div>` : ''}</div>
-        ${can('manageCrew') ? `<div class="row" style="gap:8px;margin-top:10px"><button class="btn ghost slim" style="flex:1" onclick="openRedeemFor()">LÖS IN ÅT KUNDEN</button>
-          <button class="btn ghost slim" style="flex:1" onclick="openAdjust()">JUSTERA SALDO</button></div>` : ''}
-        ${(d.sum.redemptions||[]).length ? `<div class="eyebrow">INLÖSTA<span class="ln"></span></div>${d.sum.redemptions.map(r=>`<div class="kv"><span>${esc(new Date(r.at).toLocaleDateString('sv-SE'))}</span><b>${esc(r.title)} · ${fmtP(r.cost)} · ${{waiting:'väntar',delivered:'utlämnad',cancelled:'makulerad'}[r.status]}</b></div>`).join('')}` : ''}
+        ${(d.sum.friends||[]).length ? `<div class="tiny muted" style="margin-top:8px">Har värvat ${d.sum.friends.length}: ${d.sum.friends.map(f=>esc(f.name) + ' (' + (FRIEND_ST[f.status]||'').toLowerCase() + ')').join(', ')}</div>` : ''}</div>
+        ${can('manageCrew') ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openAdjust()">JUSTERA POÄNG</button>` : ''}
+        ${(d.sum.unlocks||[]).length ? `<div class="eyebrow">BELÖNINGAR<span class="ln"></span></div>${d.sum.unlocks.map(u=>`<div class="kv"><span>${esc(u.title)}</span>
+          <b>${u.uses_left <= 0 ? 'använd' : u.expired ? 'gick ut' : `${u.uses_left} av ${u.uses_total} kvar · till ${fmtDay(u.expires_at)}`}</b></div>`).join('')}` : ''}
         <div class="eyebrow">HISTORIK<span class="ln"></span></div>${pointsRows(d.sum.history)}` : '<div class="skel" style="height:120px"></div>')
-    : t==='level' ? (d.sum ? `<div class="card"><div class="studio-name">NIVÅ</div><div class="live-title" style="font-size:22px;margin-top:6px">${esc(d.sum.level ? d.sum.level.name : '—')}</div>
-        ${d.sum.level && d.sum.level.perks ? `<div class="tiny muted" style="margin-top:6px">${esc(d.sum.level.perks)}</div>` : ''}
-        <div class="kv" style="margin-top:12px"><span>INTJÄNADE POÄNG</span><b>${fmtP(d.sum.stats.earned)}</b></div>
-        <div class="kv"><span>BETALDA PASS, 12 MÅN</span><b>${d.sum.stats.sessions12}</b></div>
-        <div class="kv" style="border:0"><span>TIMMAR, 12 MÅN</span><b>${fmtH(+d.sum.stats.hours12)}</b></div></div>
-        ${d.sum.next ? `<div class="note">Nästa nivå: <b>${esc(d.sum.next.name)}</b> — ${critText(d.sum.next.criteria)}.</div>` : ''}` : '<div class="skel" style="height:120px"></div>')
+    : t==='level' ? (d.sum && d.sum.levels ? `<div class="rwlevels">${d.sum.levels.map((l,i)=>`<div class="rwlv ${l.reached ? 'on' : ''}"><i>${String(i+1).padStart(2,'0')}</i>
+        <div class="grow"><b>${esc(l.name)}</b><span>${fmtP(l.min)} poäng${l.reached ? ' · uppnådd' : ''}</span></div></div>`).join('')}</div>
+        ${d.sum.next ? `<div class="note">Nästa nivå: <b>${esc(d.sum.next.name)}</b> — ${fmtP(d.sum.toNext)} poäng kvar.</div>` : ''}` : '<div class="skel" style="height:120px"></div>')
     : t==='notes' ? `${bs.some(b=>!b.status && startAt(b) < today && mayClose(b)) ? `<button class="btn ghost" onclick="openNoteFor()">+ OMDÖME</button>` : ''}
         ${d.notes ? (d.notes.length ? d.notes.map(n=>`<div class="card notecard">
           <div class="tiny muted">${n.date ? esc(longDate(n.date))+' '+n.start+'–'+n.end+' · ' : ''}${esc(n.author||'')} · ${esc(new Date(n.at).toLocaleDateString('sv-SE'))}</div>
@@ -2477,13 +2668,6 @@ function paintArtist(){
   openSheet(`${X}<h2>${esc(a.n)}</h2><div class="sub">Kund${isPart(a)?' och cirkeldeltagare':''}${a.producer && byId(a.producer) ? ' · producent ' + esc(byId(a.producer).n) : ''}</div>
     <div class="seg ${tabs.length>4?'many':''}" role="tablist" style="margin:14px 0">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="apTab='${k}';paintArtist()">${n}</button>`).join('')}</div>
     ${d.err ? `<div class="warn">${esc(d.err)}</div>` : ''}${body}`);
-}
-function critText(c){
-  c = c||{}; const p = [];
-  if(+c.minEarned) p.push(`${fmtP(c.minEarned)} intjänade poäng`);
-  if(+c.minSessions12) p.push(`${c.minSessions12} betalda pass senaste året`);
-  if(+c.minHours12) p.push(`${fmtH(+c.minHours12)} timmar senaste året`);
-  return p.join(', ') || 'inga krav';
 }
 const STAT_SV = {'ny':'Ny', 'aktiv':'Aktiv', 'återkommande':'Återkommande', 'inaktiv':'Inaktiv'};
 function intelPanel(x){
@@ -2521,15 +2705,6 @@ async function saveNoteFor(){
   try{ await rw('add_artist_note', {p_booking:document.getElementById('nbB').value, p_note:note}); toast('Omdömet sparat'); openArtistProfile(apId, 'notes'); }
   catch(e){ toast(e.message); }
 }
-function openRedeemFor(){
-  const cat = apData.cat || {rewards:[]}, s1 = apData.sum || {available:0};
-  openSheet(`${X}<h2>Lös in åt ${esc((byId(apId)||{}).n||'')}</h2><div class="sub">${fmtP(s1.available)} poäng</div>
-    ${cat.rewards.filter(w=>w.active!==false).map(w=>`<div class="member" style="cursor:default"><div class="grow"><div class="mname">${esc(w.title)}</div><div class="mrole">${fmtP(w.cost)} poäng</div></div>
-      <button class="btn slim" style="width:auto;flex:none;padding:9px 13px" ${s1.available>=w.cost?'':'disabled'} onclick="redeemFor('${w.id}')">LÖS IN</button></div>`).join('') || '<div class="empty">Inga belöningar än.</div>'}`);
-}
-async function redeemFor(rid){
-  try{ await rw('redeem_reward', {p_reward:rid, p_member:apId}); toast('Inlöst'); openArtistProfile(apId, 'rewards'); }catch(e){ toast(e.message); }
-}
 function openAdjust(){
   openSheet(`${X}<h2>Justera saldo</h2><div class="sub">${esc((byId(apId)||{}).n||'')} · loggas med anledning</div>
     <label class="lbl" for="ajP">POÄNG (MINUS FÖR ATT DRA AV)</label><input id="ajP" inputmode="numeric" placeholder="t.ex. 200 eller -100">
@@ -2542,101 +2717,196 @@ async function saveAdjust(){
 }
 
 /* ---------- Mer → Rewards (admin och artist_intel) ---------- */
-let rwTab = 'redeem', rwAdmin = {}, intelList = null, intelF = {status:'', level:'', producer:'', follow:false, sort:'name'};
+let rwTab = 'claims', rwAdmin = {}, intelList = null, intelF = {status:'', level:'', producer:'', follow:false, sort:'name'};
 async function loadRwAdmin(){
   try{
-    const [cat, pend] = await Promise.all([rw('rewards_catalog', {}), rw('pending_redemptions', {})]);
-    rwAdmin = {cat, pend}; if(rwTab==='intel' || !intelList) intelList = await rw('artist_intel', {});
+    const [cat, claims, refs] = await Promise.all([rw('rewards_catalog', {}), rw('pending_claims', {}), rw('referrals_admin', {})]);
+    rwAdmin = {cat, claims, refs}; if(rwTab==='intel' || !intelList) intelList = await rw('artist_intel', {});
   }catch(e){ rwAdmin = {err:e.message}; }
   if(view==='rewards') render();
 }
 function vRewards(){
   if(!canIntel()) return `<div class="empty">Rewards syns bara för admin.</div>`;
   if(!rwAdmin.cat && !rwAdmin.err){ loadRwAdmin(); }
-  const adm = can('manageCrew'), tabs = [['redeem','Inlösen'],['rewards','Belöningar'],['levels','Nivåer'],['points','Poäng'],['intel','Intelligence']]
+  const adm = can('manageCrew'), d = rwAdmin, t = rwTab;
+  const tabs = [['claims','Uttag'],['stats','Statistik'],['levels','Nivåer'],['points','Regler'],['refs','Värvningar'],['intel','Intelligence']]
     .concat(adm ? [['access','Access']] : []);
-  const d = rwAdmin, t = rwTab;
   const body = d.err ? `<div class="warn">${esc(d.err)}</div>` : !d.cat ? '<div class="skel" style="height:160px"></div>'
-    : t==='redeem' ? (d.pend.length ? d.pend.map(r=>`<div class="member" style="cursor:default">
-        <div class="grow" style="min-width:0"><div class="mname">${esc(r.title)}</div><div class="mrole">${esc(r.name)} · ${fmtP(r.cost)} poäng · ${esc(new Date(r.at).toLocaleDateString('sv-SE'))}</div></div>
-        ${adm ? `<button class="btn slim" style="width:auto;flex:none;padding:8px 12px" onclick="handleRedeem(${r.id},'delivered')">UTLÄMNAD</button>
-          <button class="btn ghost slim" style="width:auto;flex:none;padding:8px 12px" onclick="handleRedeem(${r.id},'cancelled')">MAKULERA</button>` : ''}</div>`).join('')
-      : '<div class="empty">Inga inlösningar väntar.</div>')
-    : t==='rewards' ? `${adm?`<button class="btn" onclick="openRewardEdit()">+ NY BELÖNING</button>`:''}
-        <div style="margin-top:12px">${d.cat.rewards.map(w=>`<button class="member" ${adm?`onclick="openRewardEdit('${w.id}')"`:''}>
-          <div class="grow"><div class="mname">${esc(w.title)}${w.active===false?' <span class="badge warn">AV</span>':''}</div><div class="mrole">${fmtP(w.cost)} poäng${w.description?' · '+esc(w.description):''}</div></div></button>`).join('') || '<div class="empty">Inga belöningar än — ni bestämmer dem tillsammans.</div>'}</div>`
-    : t==='levels' ? `${adm?`<button class="btn" onclick="openLevelEdit()">+ NY NIVÅ</button>`:''}
-        <div style="margin-top:12px">${d.cat.levels.map(l=>`<button class="member" ${adm?`onclick="openLevelEdit('${l.id}')"`:''}>
-          <div class="grow"><div class="mname">${esc(l.name)}${l.active===false?' <span class="badge warn">AV</span>':''}</div><div class="mrole">${critText(l.criteria)}${l.perks?' · '+esc(l.perks):''}</div></div></button>`).join('')}</div>
-        <div class="note">Nivån räknas fram automatiskt: den högsta nivå vars alla krav artisten uppfyller. Gränserna är exempel — ändra dem.</div>`
+    : t==='claims' ? claimsPanel(adm)
+    : t==='stats' ? statsPanel()
+    : t==='levels' ? `${(d.cat.levels||[]).map((l,i)=>`<button class="mrow" ${adm ? `onclick="openLevelEdit('${l.id}')"` : ''}><i>${String(i+1).padStart(2,'0')}</i>
+          <span class="grow"><b>${esc(l.name)}${l.active===false ? ' <span class="badge warn">AV</span>' : ''}</b>
+          <em>${fmtP(+(l.criteria||{}).minPoints || 0)} poäng · ${nt((l.benefits||[]).length, 'förmån', 'förmåner')}</em></span><span class="chev" aria-hidden="true">›</span></button>`).join('')}
+        ${adm ? `<button class="btn ghost" style="margin-top:14px" onclick="openLevelEdit()">+ NY NIVÅ</button>` : ''}
+        <div class="note">Nivån räknas fram av poängen, och uppnådda nivåer behålls. Varje förmån låses upp en gång när kunden når nivån.</div>`
     : t==='points' ? pointsCfgPanel(adm)
+    : t==='refs' ? refsPanel()
     : t==='access' && adm ? accessCfgPanel()
     : intelPanelList();
-  return `<div class="h1">Rewards</div><div class="sub">Poäng, belöningar, nivåer, Artist Intelligence och Bando HQ Access.</div>
-    <div class="seg many" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="rwTab='${k}';${k==='intel'?'loadRwAdmin();':''}render()">${n}${k==='redeem'&&d.pend&&d.pend.length?` <span class="dot-n">${d.pend.length}</span>`:''}</button>`).join('')}</div>
+  const waiting = (d.claims||[]).length;
+  return `<div class="h1">Rewards</div><div class="sub">Bando Rewards: uttag, lönsamhet, nivåer, regler och värvningar — och Artist Intelligence.</div>
+    <div class="seg many" role="tablist" style="margin-bottom:var(--s4)">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}"
+      onclick="rwTab='${k}';${k==='intel'?'loadRwAdmin();':''}render()">${n}${k==='claims' && waiting ? ` <span class="dot-n">${waiting}</span>` : ''}</button>`).join('')}</div>
     ${body}`;
 }
-async function handleRedeem(id, st){
-  if(!confirm(st==='cancelled' ? 'Makulera? Poängen går tillbaka till artisten.' : 'Markera som utlämnad?')) return;
-  try{ await rw('handle_redemption', {p_id:id, p_status:st}); toast(st==='cancelled' ? 'Makulerad — poängen är tillbaka' : 'Utlämnad'); loadRwAdmin(); }catch(e){ toast(e.message); }
+/* ---- Uttag: kundernas belöningar att godkänna ---- */
+const claimSuggest = (c, bk) => { const bn = c.benefit || {};
+  if(c.minutes > 0) return Math.round(c.minutes / 60 * rateFor(c.name));
+  if(bn.kind==='discount' && bn.scope==='session' && bk) return Math.round(dur(bk) * rateFor(c.name) * (+bn.pct || 0) / 100);
+  return ''; };
+function claimsPanel(adm){
+  const cs = rwAdmin.claims || [];
+  if(!cs.length) return '<div class="empty">Inga belöningar väntar på godkännande.</div>';
+  return cs.map(c=>{
+    const bk = c.booking_id ? (S.bookings.find(x=>x.id===c.booking_id) || c.booking) : null, bn = c.benefit || {};
+    const free = c.minutes > 0 && bk ? freeAt(bk.studio, bk.date, bk.end, toHm((toMin(bk.end) + c.minutes) % 1440), c.booking_id) : null;
+    const opt = bn.kind==='choice' ? ((bn.options||[]).find(o=>o.id===c.choice) || {}).title : '';
+    return `<div class="card claim">
+      <div class="mname">${esc(c.name)}</div><div class="mrole">${esc(c.level_name||'')} · ${esc(new Date(c.at).toLocaleDateString('sv-SE'))}</div>
+      <div class="live-title" style="font-size:19px;margin-top:8px">${esc(c.title)}</div>
+      ${opt ? `<div class="kv"><span>VALD BONUS</span><b>${esc(opt)}</b></div>` : ''}
+      ${bk ? `<div class="kv"><span>PASS</span><b>${esc(longDate(bk.date))} ${bk.start}–${bk.end}${bk.studio ? ' · ' + esc(S.studios[bk.studio]||'') : ''}</b></div>` : ''}
+      ${c.minutes > 0 ? `<div class="kv"><span>EXTRA TID</span><b>${c.minutes} min · ${free===false ? '<span style="color:var(--bad2)">studion är upptagen efter</span>'
+        : '<span style="color:var(--ok2)">studion är ledig efter</span>'}</b></div>` : ''}
+      ${c.note ? `<div class="kv"><span>MEDDELANDE</span><b style="font-weight:500">${esc(c.note)}</b></div>` : ''}
+      ${adm ? `<label class="lbl" for="cv${c.id}">VAD FÖRMÅNEN KOSTAR BANDO (KR)</label>
+        <input id="cv${c.id}" inputmode="numeric" value="${claimSuggest(c, bk)}" placeholder="t.ex. rabatten i kronor">
+        ${bn.capKr ? `<div class="tiny muted" style="margin-top:4px">Tak ${fmtP(bn.capKr)} kr${bn.note ? ' · ' + esc(bn.note) : ''}</div>` : ''}
+        <div class="row" style="gap:8px;margin-top:12px"><button class="btn slim" style="flex:1" onclick="decideClaim(${c.id}, true)" ${free===false ? 'disabled' : ''}>GODKÄNN</button>
+          <button class="btn ghost slim" style="flex:1" onclick="decideClaim(${c.id}, false)">NEKA</button></div>` : ''}
+    </div>`; }).join('');
 }
-function openRewardEdit(id){
-  const w = id ? (rwAdmin.cat.rewards||[]).find(x=>x.id===id) : null;
-  openSheet(`${X}<h2>${w?'Belöning':'Ny belöning'}</h2>
-    <label class="lbl" for="rwT">NAMN</label><input id="rwT" value="${esc(w?w.title:'')}" maxlength="60">
-    <label class="lbl" for="rwD">BESKRIVNING</label><input id="rwD" value="${esc(w?w.description||'':'')}" maxlength="140">
-    <label class="lbl" for="rwC">POÄNGKRAV</label><input id="rwC" inputmode="numeric" value="${w?w.cost:''}">
-    <label class="consent" style="margin-top:12px"><input type="checkbox" id="rwA" ${!w||w.active!==false?'checked':''}><span>Aktiv — artisterna kan lösa in den</span></label>
-    <button class="btn" style="margin-top:20px" onclick="saveRewardEdit('${w?w.id:''}')">SPARA</button>
-    ${w?`<button class="btn danger" style="margin-top:9px" onclick="delRewardEdit('${w.id}')">TA BORT</button>`:''}`);
+async function decideClaim(id, ok){
+  let reason = null;
+  if(!ok){ reason = prompt('Varför? Kunden får se svaret.'); if(reason===null) return; }
+  const v = ok ? +(String(document.getElementById('cv' + id).value || '0').replace(/\s/g,'')) : 0;
+  if(ok && !(v >= 0)) return toast('Skriv värdet i kronor');
+  try{ await rw('handle_claim', {p_id:id, p_approve:ok, p_value_kr:v, p_reason:reason}); toast(ok ? 'Godkänd — kunden får veta' : 'Nekad — kunden får veta');
+    rwStatsKey = ''; if(!PREVIEW_LOGIN) sync(true); loadRwAdmin(); }catch(e){ toast(e.message); }
 }
-async function saveRewardEdit(id){
-  const v = x => document.getElementById(x).value.trim();
-  try{ await rw('save_reward', {p:{id:id||null, title:v('rwT'), description:v('rwD'), cost:parseInt(v('rwC'),10)||0, active:document.getElementById('rwA').checked}});
-    closeSheet(); toast('Sparad'); loadRwAdmin(); }catch(e){ toast(e.message); }
+/* ---- Statistik: lönsamheten per vecka, månad eller år ---- */
+let rwStats = null, rwStatsKey = '', rsPer = 'month', rsOff = 0;
+function rsRange(off){
+  const now = new Date();
+  if(rsPer==='week'){ const f = addDays(monday(now), off * 7); return {f:iso(f), t:iso(addDays(f, 6)), label:'VECKA ' + weekNo(f)}; }
+  if(rsPer==='year'){ const y = now.getFullYear() + off; return {f:y + '-01-01', t:y + '-12-31', label:String(y)}; }
+  const f = new Date(now.getFullYear(), now.getMonth() + off, 1);
+  return {f:iso(f), t:iso(new Date(f.getFullYear(), f.getMonth() + 1, 0)), label:MONTH_SV[f.getMonth()].toUpperCase() + (f.getFullYear()!==now.getFullYear() ? ' ' + f.getFullYear() : '')};
 }
-async function delRewardEdit(id){ if(!confirm('Ta bort belöningen? Inlösta behåller namn och poäng.')) return;
-  try{ await rw('delete_reward', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
+function loadRwStats(){
+  const k = rsPer + ':' + rsOff; if(rwStatsKey===k || rwStatsKey==='…' + k) return;
+  rwStatsKey = '…' + k; const r = rsRange(rsOff);
+  rw('rewards_stats', {p_from:r.f, p_to:r.t}).then(x=>{ if(rwStatsKey==='…' + k){ rwStats = x; rwStatsKey = k; if(view==='rewards') render(); } })
+    .catch(e=>{ rwStatsKey = ''; toast(e.message); });
+}
+const kpiS = (label, val, unit) => `<div class="kpi"><em>${label}</em><b>${fmtP(val)}${unit ? `<u>${unit}</u>` : ''}</b></div>`;
+function statsPanel(){
+  loadRwStats();
+  const r = rsRange(rsOff), st = rwStatsKey === rsPer + ':' + rsOff ? rwStats : null;
+  const head = `<div class="seg">${[['week','VECKA'],['month','MÅNAD'],['year','ÅR']].map(([k,l])=>
+      `<button class="${rsPer===k?'on':''}" onclick="rsPer='${k}';rsOff=0;render()">${l}</button>`).join('')}</div>
+    <div class="weeknav"><button onclick="rsOff--;render()" aria-label="Föregående">${IC.l}</button>
+      <div class="wk">${r.label}${rsOff===0 ? '<small>NU</small>' : ''}</div>
+      <button onclick="rsOff++;render()" aria-label="Nästa" ${rsOff>=0 ? 'disabled style="opacity:.35"' : ''}>${IC.r}</button></div>`;
+  if(!st) return head + '<div class="skel" style="height:220px;margin-top:12px"></div>';
+  const net = st.revenue - st.discount, mxL = Math.max(1, ...st.levels.map(l=>l.n)), mxD = Math.max(1, ...st.discountByLevel.map(l=>l.kr));
+  return head + `<div class="kpis ses-kpis" style="margin-top:12px">
+      ${kpiS('KUNDER', st.customers)}${kpiS('INTJÄNADE POÄNG', st.earned)}${kpiS('AVDRAG', st.penalties, 'p')}
+      ${kpiS('VANLIG BS', st.bs)}${kpiS('PAKET BS', st.pkgBs)}${kpiS('NYA VIA VÄRVNING', st.referrals)}
+      ${kpiS('INTÄKTER', st.revenue, 'kr')}${kpiS('RABATTER', st.discount, 'kr')}${kpiS('NETTO', net, 'kr')}</div>
+    <div class="eyebrow">KUNDER PER NIVÅ<span class="ln"></span><span style="color:var(--mut2)">i dag</span></div>
+    <div class="card">${st.levels.map(l=>`<div class="agp"><div class="agp-h"><b>${esc(l.name)}</b><span class="agp-n">${l.n}</span></div>
+      <div class="bar thin"><i data-fill="rsl:${esc(l.name)}" style="width:${l.n / mxL * 100}%"></i></div></div>`).join('')}</div>
+    <div class="eyebrow">RABATTER PER NIVÅ<span class="ln"></span><span style="color:var(--mut2)">${fmtP(st.discount)} kr</span></div>
+    ${st.discountByLevel.length ? `<div class="card">${st.discountByLevel.map(l=>`<div class="agp"><div class="agp-h"><b>${esc(l.name)}</b>
+      <span class="agp-n">${fmtP(l.kr)} kr · ${nt(l.n, 'uttag', 'uttag')}</span></div>
+      <div class="bar thin"><i data-fill="rsd:${esc(l.name)}" style="width:${l.kr / mxD * 100}%"></i></div></div>`).join('')}</div>` : '<div class="empty">Inga godkända belöningar i perioden.</div>'}
+    ${st.topRewards.length ? `<div class="eyebrow">MEST ANVÄNDA BELÖNINGAR<span class="ln"></span></div>
+      <div class="card">${st.topRewards.map(x=>`<div class="agp"><div class="agp-h"><b style="font-weight:500;min-width:0">${esc(x.title)}</b>
+        <span class="agp-n" style="white-space:nowrap">${nt(x.n, 'gång', 'gånger')} · ${fmtP(x.kr)} kr</span></div></div>`).join('')}</div>` : ''}
+    <div class="note">Intäkter = betalda kundpass i perioden × timpriset i prislistan (gratistid räknas inte). Rabatter = värdet ni satte när belöningen godkändes.
+      ${st.revenue ? `Rabatterna motsvarar <b>${Math.round(st.discount / st.revenue * 100)} %</b> av intäkterna.` : ''}
+      ${st.referralPoints ? `Värvningsbonus utbetald: ${fmtP(st.referralPoints)} poäng.` : ''}${st.waiting ? ` ${nt(st.waiting, 'belöning väntar', 'belöningar väntar')} på godkännande.` : ''}</div>`;
+}
+/* ---- Värvningar ---- */
+function refsPanel(){
+  const rs = rwAdmin.refs || [];
+  return rs.length ? `<div class="card">${rs.map(r=>`<div class="kv"><span>${esc(r.name)} <span class="muted">via ${esc(r.referrer_name)}</span></span>
+      <b>${r.points ? '+' + fmtP(r.points) + ' p · ' + fmtDay(r.paid_at) : '<span class="muted">väntar på första sessionen</span>'}</b></div>`).join('')}</div>
+    <div class="note">Den som värvade får sina poäng när den nya artistens första betalda session är avslutad — en gång per ny artist.</div>`
+    : '<div class="empty">Inga värvningar än.</div>';
+}
+/* ---- Nivåer och förmåner ---- */
+let benSeq = 0;
+function benRow(bn){
+  bn = bn || {kind:'discount', scope:'session', uses:1}; const k = 'bn' + (++benSeq), sel = (o, v) => Object.entries(o).map(([x,t])=>`<option value="${x}" ${v===x?'selected':''}>${t}</option>`).join('');
+  const num = v => v==null ? '' : esc(String(v));
+  return `<div class="card benrow" data-id="${esc(bn.id||'')}">
+    <label class="lbl" for="${k}t">FÖRMÅN</label><input id="${k}t" class="bT" value="${esc(bn.title||'')}" maxlength="140" placeholder="t.ex. 20 % rabatt på ett sessionspaket">
+    <div class="two end"><div><label class="lbl" for="${k}k">TYP</label><select id="${k}k" class="bK">${sel(BEN_KIND, bn.kind)}</select></div>
+      <div><label class="lbl" for="${k}s">GÄLLER</label><select id="${k}s" class="bS">${sel(BEN_SCOPE, bn.scope||'other')}</select></div></div>
+    <div class="two end"><div><label class="lbl" for="${k}p">RABATT %</label><input id="${k}p" class="bP" inputmode="numeric" value="${num(bn.pct)}"></div>
+      <div><label class="lbl" for="${k}m">EXTRA MINUTER</label><input id="${k}m" class="bMin" inputmode="numeric" value="${num(bn.minutes)}"></div></div>
+    <div class="two end"><div><label class="lbl" for="${k}u">ANTAL GÅNGER</label><input id="${k}u" class="bU" inputmode="numeric" value="${num(bn.uses||1)}"></div>
+      <div><label class="lbl" for="${k}c">TAK (KR)</label><input id="${k}c" class="bC" inputmode="numeric" value="${num(bn.capKr)}"></div></div>
+    <div class="two end"><div><label class="lbl" for="${k}ms">MINST SESSIONS</label><input id="${k}ms" class="bMs" inputmode="numeric" value="${num(bn.minSessions)}"></div>
+      <div><label class="lbl" for="${k}w">INOM DAGAR</label><input id="${k}w" class="bW" inputmode="numeric" value="${num(bn.windowDays)}"></div></div>
+    <label class="lbl" for="${k}o">VALFRI BONUS — ETT ALTERNATIV PER RAD</label><textarea id="${k}o" class="bO" style="min-height:56px">${esc((bn.options||[]).map(o=>o.title).join('\n'))}</textarea>
+    <label class="lbl" for="${k}n">VILLKOR (VISAS FÖR KUNDEN)</label><input id="${k}n" class="bN" value="${esc(bn.note||'')}" maxlength="200">
+    <button type="button" class="linkbtn" style="margin:8px 0 0" onclick="this.closest('.benrow').remove()">Ta bort förmånen</button></div>`;
+}
 function openLevelEdit(id){
-  const l = id ? (rwAdmin.cat.levels||[]).find(x=>x.id===id) : null, c = (l&&l.criteria)||{};
-  openSheet(`${X}<h2>${l?'Nivå':'Ny nivå'}</h2>
-    <label class="lbl" for="lvN">NAMN</label><input id="lvN" value="${esc(l?l.name:'')}" maxlength="30">
-    <label class="lbl" for="lvR">ORDNING (0 = LÄGST)</label><input id="lvR" inputmode="numeric" value="${l?l.rank:''}">
-    <div class="eyebrow">KRITERIER<span class="ln"></span></div>
-    <label class="lbl" for="lvE">INTJÄNADE POÄNG (TOTALT)</label><input id="lvE" inputmode="numeric" value="${c.minEarned||''}">
-    <label class="lbl" for="lvS">BETALDA PASS SENASTE ÅRET</label><input id="lvS" inputmode="numeric" value="${c.minSessions12||''}">
-    <label class="lbl" for="lvH">TIMMAR SENASTE ÅRET</label><input id="lvH" inputmode="numeric" value="${c.minHours12||''}">
-    <label class="lbl" for="lvP">FÖRMÅNER</label><textarea id="lvP">${esc(l?l.perks||'':'')}</textarea>
-    <label class="consent" style="margin-top:12px"><input type="checkbox" id="lvA" ${!l||l.active!==false?'checked':''}><span>Aktiv</span></label>
-    <button class="btn" style="margin-top:20px" onclick="saveLevelEdit('${l?l.id:''}')">SPARA</button>
-    ${l?`<button class="btn danger" style="margin-top:9px" onclick="delLevelEdit('${l.id}')">TA BORT</button>`:''}`);
+  const l = id ? (rwAdmin.cat.levels||[]).find(x=>x.id===id) : null, c = (l && l.criteria) || {};
+  benSeq = 0;
+  openSheet(`${X}<h2>${l ? esc(l.name) : 'Ny nivå'}</h2><div class="sub">Ändringar gäller nya upplåsningar — det kunderna redan låst upp står kvar.</div>
+    <label class="lbl" for="lvN">NAMN</label><input id="lvN" value="${esc(l ? l.name : '')}" maxlength="30" placeholder="t.ex. Bando Rising">
+    <div class="two end"><div><label class="lbl" for="lvM">POÄNG FÖR NIVÅN</label><input id="lvM" inputmode="numeric" value="${c.minPoints || ''}"></div>
+      <div><label class="lbl" for="lvR">ORDNING (1 = LÄGST)</label><input id="lvR" inputmode="numeric" value="${l ? l.rank : ''}"></div></div>
+    <div class="eyebrow">FÖRMÅNER<span class="ln"></span></div>
+    <div id="bens">${((l && l.benefits) || []).map(benRow).join('')}</div>
+    <button class="linkbtn" onclick="document.getElementById('bens').insertAdjacentHTML('beforeend', benRow())">+ förmån</button>
+    <label class="consent" style="margin-top:12px"><input type="checkbox" id="lvA" ${!l || l.active!==false ? 'checked' : ''}><span>Aktiv</span></label>
+    <button class="btn" style="margin-top:20px" onclick="saveLevelEdit('${l ? l.id : ''}')">SPARA</button>
+    ${l ? `<button class="btn danger" style="margin-top:9px" onclick="delLevelEdit('${l.id}')">TA BORT NIVÅN</button>` : ''}`);
 }
+const slug = t => String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 30) || 'x';
 async function saveLevelEdit(id){
-  const n = x => { const v = parseInt(document.getElementById(x).value,10); return v > 0 ? v : undefined; };
-  const crit = {minEarned:n('lvE'), minSessions12:n('lvS'), minHours12:n('lvH')}; Object.keys(crit).forEach(k=>crit[k]===undefined && delete crit[k]);
-  try{ await rw('save_level', {p:{id:id||null, name:document.getElementById('lvN').value.trim(), rank:parseInt(document.getElementById('lvR').value,10)||0,
-      criteria:crit, perks:document.getElementById('lvP').value.trim(), active:document.getElementById('lvA').checked}});
+  const old = id ? ((rwAdmin.cat.levels||[]).find(x=>x.id===id) || {}).benefits || [] : [];
+  const int = (el, sel) => { const v = parseInt(String(el.querySelector(sel).value).replace(/\s/g,''), 10); return v > 0 ? v : undefined; };
+  const benefits = [...document.querySelectorAll('#bens .benrow')].map(r=>{
+    const title = r.querySelector('.bT').value.trim(), kind = r.querySelector('.bK').value, prev = old.find(o=>o.id===r.dataset.id) || {};
+    const opts = kind==='choice' ? r.querySelector('.bO').value.split('\n').map(x=>x.trim()).filter(Boolean)
+      .map(t=>({id:((prev.options||[]).find(o=>o.title===t) || {}).id || slug(t), title:t})) : undefined;
+    const bn = {id:r.dataset.id || slug(title) + '-' + uid().slice(-4), title, kind, scope:r.querySelector('.bS').value, pct:int(r,'.bP'), minutes:int(r,'.bMin'),
+      uses:int(r,'.bU') || 1, capKr:int(r,'.bC'), minSessions:int(r,'.bMs'), windowDays:int(r,'.bW'), options:opts, note:r.querySelector('.bN').value.trim() || undefined};
+    Object.keys(bn).forEach(k=>bn[k]===undefined && delete bn[k]); return bn; });
+  if(benefits.some(b=>!b.title)) return toast('Varje förmån behöver ett namn');
+  const mp = parseInt(document.getElementById('lvM').value, 10);
+  if(!(mp > 0)) return toast('Ange hur många poäng nivån kräver');
+  try{ await rw('save_level', {p:{id:id || null, name:document.getElementById('lvN').value.trim(), rank:parseInt(document.getElementById('lvR').value, 10) || 0,
+      criteria:{minPoints:mp}, benefits, active:document.getElementById('lvA').checked}});
     closeSheet(); toast('Sparad'); loadRwAdmin(); }catch(e){ toast(e.message); }
 }
-async function delLevelEdit(id){ if(!confirm('Ta bort nivån?')) return; try{ await rw('delete_level', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
+async function delLevelEdit(id){ if(!confirm('Ta bort nivån? Det kunderna redan låst upp står kvar.')) return; try{ await rw('delete_level', {p_id:id}); closeSheet(); loadRwAdmin(); }catch(e){ toast(e.message); } }
 function pointsCfgPanel(adm){
   const c = rcfg(), dis = adm ? '' : 'disabled', b = c.bonuses, rf = c.referral, num = v => esc(String(v==null ? '' : v));
-  return `<div class="card"><div class="studio-name">POÄNGTRAPPAN</div>
-      <div class="tiny muted" style="margin-top:6px">Ett avslutat och betalt pass ger poängen för det högsta steget dess längd når.</div>
-      <div id="tiers">${c.tiers.map((t,i)=>`<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" value="${t.hours}" aria-label="Timmar" ${adm?'':'disabled'}>
-        <input class="tP" inputmode="numeric" value="${t.points}" aria-label="Poäng" ${adm?'':'disabled'}></div>`).join('')}</div>
-      ${adm?`<button class="linkbtn" onclick="addTier()">+ steg</button>`:''}</div>
+  return `<div class="eyebrow" style="margin-top:0">POÄNG<span class="ln"></span></div>
+    <div class="two end"><div><label class="lbl" for="rpH">POÄNG PER BETALD TIMME</label><input id="rpH" inputmode="numeric" value="${num(c.perHour)}" ${dis}></div>
+      <div><label class="lbl" for="rpG">BELÖNINGAR GÄLLER (MÅNADER)</label><input id="rpG" inputmode="numeric" value="${num(c.expiryMonths)}" ${dis}></div></div>
+    <div class="two end"><div><label class="lbl" for="rpL">AVDRAG SEN AVBOKNING</label><input id="rpL" inputmode="numeric" value="${num(c.lateCancel)}" ${dis}></div>
+      <div><label class="lbl" for="rpT">… INOM SÅ MÅNGA TIMMAR</label><input id="rpT" inputmode="numeric" value="${num(c.lateHours)}" ${dis}></div></div>
+    <div class="tiny muted" style="margin-top:6px">Vanlig BS och Paket BS ger poäng när passet avslutas som betalt. Artist Sessions (%) och extra gratistid ger inga poäng.</div>
     <div class="eyebrow">BONUSPOÄNG<span class="ln"></span></div>
-    <div class="tiny muted">Ges en gång var till artisten. 0 = av.</div>
+    <div class="tiny muted">Avstängda i Bando Rewards 2.0 (0 = av). Ges en gång var om ni slår på dem.</div>
     <div class="two end"><div><label class="lbl" for="bnW">VÄLKOMSTBONUS</label><input id="bnW" inputmode="numeric" value="${num(b.welcome)}" ${dis}></div>
       <div><label class="lbl" for="bnF">FÖRSTA SESSIONEN</label><input id="bnF" inputmode="numeric" value="${num(b.first)}" ${dis}></div></div>
     <div class="two end"><div><label class="lbl" for="bnR">ÅTERKOMMANDE</label><input id="bnR" inputmode="numeric" value="${num(b.recurring)}" ${dis}></div>
       <div><label class="lbl" for="bnC">SESSIONS SAMMA MÅNAD</label><input id="bnC" inputmode="numeric" value="${num(b.recurringCount)}" ${dis}></div></div>
-    <div class="eyebrow">VÄRVA EN VÄN<span class="ln"></span></div>
-    <label class="consent"><input type="checkbox" id="rfOn" ${refOn()?'checked':''} ${dis}><span>På — artisterna kan bjuda in vänner till Bando HQ Access</span></label>
-    <div class="two end"><div><label class="lbl" for="rfP">POÄNG PER VÄN</label><input id="rfP" inputmode="numeric" value="${num(rf.points)}" ${dis}></div>
+    <div class="eyebrow">VÄRVA EN ARTIST<span class="ln"></span></div>
+    <label class="consent"><input type="checkbox" id="rfOn" ${refOn()?'checked':''} ${dis}><span>På — kunderna har en värvningslänk och kan bjuda in med e-post</span></label>
+    <div class="two end"><div><label class="lbl" for="rfP">POÄNG PER NY ARTIST</label><input id="rfP" inputmode="numeric" value="${num(rf.points)}" ${dis}></div>
       <div><label class="lbl" for="rfM">MAX ÖPPNA INBJUDNINGAR</label><input id="rfM" inputmode="numeric" value="${num(rf.maxOpen)}" ${dis}></div></div>
-    <div class="tiny muted" style="margin-top:6px">Poängen kommer när vännens första betalda session är avslutad.</div>
+    <div class="tiny muted" style="margin-top:6px">Poängen kommer när den nya artistens första betalda session är avslutad.</div>
     <div class="eyebrow">KAMPANJER<span class="ln"></span></div>
     <div class="tiny muted">Poängen för sessions inom datumen gångras med faktorn. Överlappar två gäller den högsta.</div>
     <div id="camps">${c.campaigns.map(x=>campRow(x, adm)).join('') || (adm ? '' : '<div class="empty">Inga kampanjer.</div>')}</div>
@@ -2661,12 +2931,11 @@ function campRow(c, adm){
       ${adm ? `<button type="button" class="iconbtn" onclick="this.closest('.camprow').remove()" aria-label="Ta bort kampanjen">×</button>` : ''}</div></div>`;
 }
 function addCampaign(){ document.getElementById('camps').insertAdjacentHTML('beforeend', campRow({multiplier:2}, true)); }
-function addTier(){ document.getElementById('tiers').insertAdjacentHTML('beforeend', `<div class="two" style="margin-top:8px"><input class="tH" inputmode="decimal" aria-label="Timmar" placeholder="timmar"><input class="tP" inputmode="numeric" aria-label="Poäng" placeholder="poäng"></div>`); }
 function savePointsCfg(){
-  const hs = [...document.querySelectorAll('.tH')].map(x=>Number(String(x.value).replace(',','.'))), ps = [...document.querySelectorAll('.tP')].map(x=>parseInt(x.value,10));
-  const tiers = hs.map((h,i)=>({hours:h, points:ps[i]})).filter(t=>t.hours>0 && t.points>=0).sort((a,b)=>a.hours-b.hours);
-  const n = id => parseInt(document.getElementById(id).value,10);
-  if(!tiers.length || !(n('rcA')>0) || !(n('rcM')>0) || !(n('rcW')>0)) return toast('Kontrollera siffrorna');
+  const n = id => parseInt(document.getElementById(id).value,10), tiers = rcfg().tiers;
+  const perHour = n('rpH'), lateCancel = n('rpL'), lateHours = n('rpT'), expiryMonths = n('rpG');
+  if(!(perHour >= 0) || !(lateCancel >= 0) || !(lateHours >= 0) || !(expiryMonths >= 1)) return toast('Kontrollera poängen — hela tal, minst 1 månad');
+  if(!(n('rcA')>0) || !(n('rcM')>0) || !(n('rcW')>0)) return toast('Kontrollera siffrorna');
   const z = id => { const v = String(document.getElementById(id).value).trim(); return v==='' ? 0 : /^\d+$/.test(v) ? +v : NaN; };
   const bonuses = {welcome:z('bnW'), first:z('bnF'), recurring:z('bnR'), recurringCount:z('bnC')};
   if(Object.values(bonuses).some(x=>!Number.isFinite(x)) || !(bonuses.recurringCount >= 1)) return toast('Kontrollera bonuspoängen — hela tal, minst 1 session');
@@ -2677,7 +2946,7 @@ function savePointsCfg(){
     .filter(x=>x.label || x.from || x.to);
   const bad = campaigns.find(x=>!x.label || !ISO_D.test(x.from) || !ISO_D.test(x.to) || x.to < x.from || !(x.multiplier > 1 && x.multiplier <= 10));
   if(bad) return toast(!bad.label ? 'Kampanjen behöver ett namn' : `Kontrollera ${bad.label}: datum, och en faktor över 1 (högst 10)`);
-  S.rewardsCfg = {tiers, activeDays:n('rcA'), recurringMin:n('rcM'), recurringWindow:n('rcW'), bonuses, referral, campaigns, up:Date.now()};
+  S.rewardsCfg = {tiers, perHour, lateCancel, lateHours, expiryMonths, activeDays:n('rcA'), recurringMin:n('rcM'), recurringWindow:n('rcW'), bonuses, referral, campaigns, up:Date.now()};
   save(); sync(true); render(); toast('Sparat');
 }
 function intelPanelList(){
@@ -3089,8 +3358,10 @@ async function approveAccess(id){
     let tok;
     if(PREVIEW_LOGIN){
       tok = localToken();
+      /* värvningskoden från länken: den som värvade (aldrig sig själv) */
+      const rf = x.ref ? accounts().find(a=>a.r==='customer' && a.active!==false && a.refCode===x.ref && String(a.email||'').toLowerCase()!==String(x.email).toLowerCase()) : null;
       S.invites.push({token:tok, role:'customer', circle_id:null, expires_at:Date.now()+30*864e5, max_uses:1, uses:0, closed:false,
-        created:Date.now(), created_by:me().id, name:x.name, email:x.email, phone:x.phone||'', interests:x.interests||[], request_id:x.id});
+        created:Date.now(), created_by:me().id, name:x.name, email:x.email, phone:x.phone||'', interests:x.interests||[], request_id:x.id, referrer:rf ? rf.id : null});
       Object.assign(x, {status:'approved', invite:tok, handled_by:me().id}); save();
     } else {
       tok = (await sbRpc('approve_access', {p_id:id, p_url:appUrl()})).invite;
@@ -8421,9 +8692,10 @@ function mineBtn(b){
 async function cancelMine(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(tooLate(b)) return openLate(id);
-  const req = b.status==='request';
-  if(!confirm(req ? 'Ta tillbaka förfrågan?' : `Avboka ${longDate(b.date).toLowerCase()} ${b.start}–${b.end}?`)) return;
-  if(!await act('cancel_my_booking', {p_booking:id}, ()=>{ b.del = true; b.up = Date.now(); save(); })) return;
+  const req = b.status==='request', late = !req && me().r==='customer' && lateWindow(b) && rtop('lateCancel', 500) > 0;
+  if(!confirm(req ? 'Ta tillbaka förfrågan?' : `Avboka ${longDate(b.date).toLowerCase()} ${b.start}–${b.end}?` + (late
+    ? `\n\nDet är mindre än ${rtop('lateHours', 24)} timmar kvar — avbokningen ger −${fmtP(rtop('lateCancel', 500))} poäng i Bando Rewards.` : ''))) return;
+  if(!await act('cancel_my_booking', {p_booking:id}, ()=>{ if(late) rwLocal._late(b, me().id); b.del = true; b.up = Date.now(); save(); })) return;
   render(); toast(req ? 'Förfrågan borttagen' : 'Avbokad · crewet får veta'); sync(true);
 }
 /* Den kunden hör av sig till är sin producent; deltagaren sin cirkelledare. */
@@ -9956,10 +10228,26 @@ function openDetail(id){
       <button class="btn danger" style="margin-top:9px" onclick="del('${b.id}')">TA BORT</button>`
       : `<div class="note">Passet är ${esc(b.who)}:s. Bara de och managern kan ändra det.</div>`}`);
 }
-async function del(id){
+/* Crewet tar bort ett kundpass inom lateHours: fråga om kunden avbokade sent (−lateCancel, late_cancel). */
+const lateDelAsk = b => !!customerOf(b) && !b.circleId && !isMeeting(b) && !b.status && lateWindow(b) && rtop('lateCancel', 500) > 0
+  && (isAdminRole(me().r) || mayClose(b));
+function openLateDel(b){
+  openSheet(`${X}<h2>Ta bort passet</h2><div class="sub">${esc(b.who)} · ${esc(longDate(b.date))} ${b.start}–${b.end}</div>
+    <div class="note">Passet börjar om mindre än ${rtop('lateHours', 24)} timmar.</div>
+    <label class="consent" style="margin-top:14px"><input type="checkbox" id="ldLate" checked>
+      <span><b>Sen avbokning från kunden</b> — ger −${fmtP(rtop('lateCancel', 500))} poäng i Bando Rewards. Bocka ur om det inte var kundens avbokning.</span></label>
+    <button class="btn danger" style="margin-top:20px" onclick="delLate('${b.id}')">TA BORT PASSET</button>`);
+}
+async function delLate(id){
+  const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  if(document.getElementById('ldLate').checked){ try{ await rw('late_cancel', {p_booking:id}); }catch(e){ return toast(e.message); } }
+  return del(id, true);
+}
+async function del(id, asked){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(!can('delBooking',b)) return toast('Du kan bara ta bort dina egna pass');
-  if(!confirm(b.circleId ? 'Ställa in cirkelpasset?' : isMeeting(b) ? 'Ta bort mötet? Deltagarna får veta.' : 'Ta bort passet?')) return;
+  if(!asked && lateDelAsk(b)) return openLateDel(b);
+  if(!asked && !confirm(b.circleId ? 'Ställa in cirkelpasset?' : isMeeting(b) ? 'Ta bort mötet? Deltagarna får veta.' : 'Ta bort passet?')) return;
   if(b.circleId){
     if(isLocked(b)) return toast(LOCKED_MSG);
     if(b.status==='done') return toast('Passet är genomfört — ångra det först om det inte blev av');

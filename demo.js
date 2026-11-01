@@ -165,14 +165,29 @@ window.bandohqDemo = function(o){
         created:Date.now()-2*864e5, created_by:'k1', referrer:'k1', name:'Lea Novak', email:'lea.novak@exempel.se', phone:'', interests:[]}]),
     courses,
     /* Bando Rewards (förhandslägets "server", se rwLocal i index.html) */
-    rw:{seq:20, levelHist:[], redemptions:[],
-      levels:[{id:'lv_member',name:'Member',rank:0,criteria:{},perks:'',active:true},{id:'lv_silver',name:'Silver',rank:1,criteria:{minEarned:1000},perks:'10 % rabatt på studiotid',active:true},
-              {id:'lv_gold',name:'Gold',rank:2,criteria:{minEarned:3000,minSessions12:10},perks:'',active:true},{id:'lv_platinum',name:'Platinum',rank:3,criteria:{minEarned:6000,minSessions12:20},perks:'',active:true}],
-      rewards:[{id:'rw1',title:'Bando-hoodie',description:'Hämtas i studion',cost:500,active:true},{id:'rw2',title:'Gratis mixpass',description:'3 timmar med en producent',cost:2000,active:true}],
-      points:[{id:1,member_id:'k1',booking_id:'k0b',kind:'earn',points:100,note:'Studiotid',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
-              {id:2,member_id:'k1',kind:'bonus',points:100,note:'Välkomstbonus',ref:'welcome',by_id:'k1',at:new Date(Date.now()-40*864e5).toISOString()},
-              {id:4,member_id:'k1',booking_id:'k0b',kind:'bonus',points:200,note:'Första sessionen',ref:'first',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
-              {id:5,member_id:'k2',kind:'bonus',points:100,note:'Välkomstbonus',ref:'welcome',by_id:'k2',at:new Date(Date.now()-1*864e5).toISOString()}],
+    /* Bando Rewards 2.0: Studio Nord AB har nått Bando Rising — en belöning använd, en väntar på
+       godkännande (extra tid på passet imorgon), en kvar. Nivåerna läggs in av rwState (RW_LEVELS). */
+    rw:{seq:40, redemptions:[], rewards:[],
+      levelHist:[{member_id:'k1', level_id:'lv_access', level_name:'Bando Access', rank:1, at:new Date(Date.now()-60*864e5).toISOString()},
+                 {member_id:'k1', level_id:'lv_rising', level_name:'Bando Rising', rank:2, at:new Date(Date.now()-12*864e5).toISOString()}],
+      points:[{id:1,member_id:'k1',kind:'earn',points:6600,note:'22 sessioner i år',by_id:'rkay',at:new Date(Date.now()-14*864e5).toISOString()},
+              {id:2,member_id:'k1',booking_id:'k0b',kind:'earn',points:300,note:'Studiotid',by_id:'rkay',at:new Date(Date.now()-5*864e5).toISOString()},
+              {id:4,member_id:'k1',kind:'penalty',points:-500,note:'Sen avbokning',ref:'late:demo',by_id:'k1',at:new Date(Date.now()-30*864e5).toISOString()},
+              {id:5,member_id:'k1',kind:'bonus',points:500,note:'Värva en artist: Lea Novak',ref:'referral:demo',by_id:'rkay',at:new Date(Date.now()-3*864e5).toISOString()}],
+      unlocks:[{id:21,member_id:'k1',level_id:'lv_access',level_name:'Bando Access',benefit_id:'access-pkg20',title:'20 % rabatt på ett sessionspaket med minst 4 sessions',
+                benefit:{id:'access-pkg20',kind:'discount',pct:20,scope:'package',minSessions:4,uses:1},uses_total:1,uses_left:0,
+                unlocked_at:new Date(Date.now()-60*864e5).toISOString(),expires_at:new Date(Date.now()+305*864e5).toISOString()},
+               {id:22,member_id:'k1',level_id:'lv_rising',level_name:'Bando Rising',benefit_id:'rising-extra30',title:'30 minuter extra studiotid på 3 sessions',
+                benefit:{id:'rising-extra30',kind:'extra_time',minutes:30,scope:'session',uses:3},uses_total:3,uses_left:3,
+                unlocked_at:new Date(Date.now()-12*864e5).toISOString(),expires_at:new Date(Date.now()+353*864e5).toISOString()},
+               {id:23,member_id:'k1',level_id:'lv_rising',level_name:'Bando Rising',benefit_id:'rising-mix25',title:'25 % rabatt på mix & master för en låt',
+                benefit:{id:'rising-mix25',kind:'discount',pct:25,scope:'mixmaster',uses:1},uses_total:1,uses_left:1,
+                unlocked_at:new Date(Date.now()-12*864e5).toISOString(),expires_at:new Date(Date.now()+353*864e5).toISOString()}],
+      claims:[{id:31,unlock_id:21,member_id:'k1',benefit_id:'access-pkg20',title:'20 % rabatt på ett sessionspaket med minst 4 sessions',level_name:'Bando Access',
+               booking_id:null,choice:null,note:'Paket med 4 sessions i september',minutes:0,status:'approved',value_kr:2040,
+               at:new Date(Date.now()-40*864e5).toISOString(),handled_by:'az',handled_at:new Date(Date.now()-39*864e5).toISOString()},
+              {id:32,unlock_id:22,member_id:'k1',benefit_id:'rising-extra30',title:'30 minuter extra studiotid på 3 sessions',level_name:'Bando Rising',
+               booking_id:'k2b',choice:null,note:null,minutes:30,status:'waiting',value_kr:0,at:new Date(Date.now()-2*864e5).toISOString()}],
       notes:[{id:3,member_id:'k1',booking_id:'k0b',author_id:'rkay',created_at:new Date(Date.now()-5*864e5).toISOString(),went:'Fokuserad session — två tagningar räckte',
               created:'Vers 1 och refrängen',strengths:'Melodier och röstkontroll',develop:'Detaljer i texten',next:'Mixa refrängen och spela in vers 2',other:''}],
       crm:{k1:{projects:'EP till våren',goals:'Första egna spelningen',followup:D(10),followup_note:'Boka mixpass'}}},
@@ -185,7 +200,6 @@ window.bandohqDemo = function(o){
          sv_answers:null, final_project_url:null, created_by:'az', created_at:new Date(Date.now()-9*864e5).toISOString(), ended_at:null}],
       notes:[{assignment_id:'ea_demo1', month:1, learned:'Produktionskedjan från idé till export, och hur ljudspår och MIDI hänger ihop i DAW:en.',
               created:'Ett gemensamt trumloop på 8 takter som alla byggt vidare på.', updated_at:new Date(Date.now()-12*864e5).toISOString()}]},
-    /* en pågående kampanj (Mer → Rewards → Poäng) */
-    rewardsCfg:{campaigns:[{id:'k_demo',label:'Dubbla poäng i höst',from:D(-7),to:D(21),multiplier:2}],up:1}};
+    rewardsCfg:{campaigns:[],up:1}};
     return S;
 };
