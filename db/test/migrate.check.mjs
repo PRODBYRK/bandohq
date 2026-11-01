@@ -44,9 +44,13 @@ console.log(JSON.stringify({acc, key}));
 /* producenter per artist: kundens producent blev första i listan */
 const prods = (await db.query(`select producers from members where id='k1'`)).rows[0].producers;
 console.log(JSON.stringify({prods}));
-/* Rewards: gamla poäng kvar, och kunden som redan registrerat sig fick välkomstbonusen — en gång */
+/* Rewards 2.0: gamla poäng kvar (välkomstbonusen är avstängd som standard), de sex nivåerna ersätter
+   exempelnivåerna, och tabellerna för belöningarna finns */
 const pts = (await db.query(`select kind, points, ref from points where member_id='k1' order by id`)).rows;
-console.log(JSON.stringify({pts}));
-const okPts = pts.length===2 && pts[0].kind==='earn' && pts[0].points===100 && pts[1].kind==='bonus' && pts[1].ref==='welcome' && pts[1].points===100;
+const lv = (await db.query(`select string_agg(name, ',' order by rank) n from levels`)).rows[0].n;
+const rwt = (await db.query(`select count(*)::int n from pg_tables where tablename in ('reward_unlocks','reward_claims')`)).rows[0].n;
+console.log(JSON.stringify({pts, lv, rwt}));
+const okPts = pts.length===1 && pts[0].kind==='earn' && pts[0].points===100
+  && lv==='Bando Access,Bando Rising,Bando Verified,Bando Pro,Bando Elite,Bando Legacy' && rwt===2;
 const ok = okPts && JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===1 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
 console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);
