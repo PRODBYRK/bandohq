@@ -445,7 +445,51 @@ alter table invites add column if not exists request_id text;
 alter table points add column if not exists ref text;
 create unique index if not exists points_ref_uq on points (member_id, ref) where ref is not null;
 alter table points drop constraint if exists points_kind_check;
-alter table points add constraint points_kind_check check (kind in ('earn','reversal','redeem','refund','adjust','bonus'));
+alter table points add constraint points_kind_check check (kind in ('earn','reversal','redeem','refund','adjust','bonus','penalty'));
+-- ---------------------------------------------------------------------
+--  BANDO REWARDS 2.0 (2026-11): poäng är inte pengar. Nivåerna låser upp belöningar
+--  (levels.benefits), som tas ut en gång var (reward_unlocks) och godkänns av admin
+--  (reward_claims, med värdet i kronor för lönsamhetsstatistiken).
+-- ---------------------------------------------------------------------
+alter table levels add column if not exists benefits jsonb not null default '[]';
+create table if not exists reward_unlocks (
+  id          bigserial primary key,
+  member_id   text not null references members(id) on delete cascade,
+  level_id    text,
+  level_name  text,
+  benefit_id  text not null,
+  title       text not null,
+  benefit     jsonb not null default '{}',
+  uses_total  int not null default 1,
+  uses_left   int not null default 1,
+  unlocked_at timestamptz not null default now(),
+  expires_at  timestamptz not null,
+  unique (member_id, benefit_id)
+);
+create table if not exists reward_claims (
+  id         bigserial primary key,
+  unlock_id  bigint not null references reward_unlocks(id) on delete cascade,
+  member_id  text not null references members(id) on delete cascade,
+  benefit_id text not null,
+  title      text not null,
+  level_name text,
+  booking_id text,
+  choice     text,
+  note       text,
+  minutes    int not null default 0,
+  status     text not null default 'waiting' check (status in ('waiting','approved','declined')),
+  value_kr   numeric not null default 0,
+  reason     text,
+  at         timestamptz not null default now(),
+  handled_by text,
+  handled_at timestamptz
+);
+/* belöningar kombineras inte: högst ett uttag per pass */
+create unique index if not exists reward_claims_booking_uq on reward_claims (booking_id) where booking_id is not null and status <> 'declined';
+/* värva en artist: kundens personliga kod i länken bandohq.se/access?ref=KOD */
+alter table members add column if not exists ref_code text;
+create unique index if not exists members_ref_code_uq on members (ref_code) where ref_code is not null;
+alter table access_requests add column if not exists ref_member text;
 alter table members add column if not exists referred_by text;
 alter table invites add column if not exists referrer text;
 create index if not exists invites_referrer_idx on invites (referrer) where referrer is not null;

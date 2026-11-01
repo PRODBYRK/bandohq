@@ -14,7 +14,9 @@ alter table records enable row level security;
 alter table leads enable row level security;
 alter table outbox enable row level security;
 alter table push_subs enable row level security;
-alter table live_tokens enable row level security;   -- bara via funktionerna (save_live_token, live_due)
+alter table live_tokens enable row level security;
+alter table reward_unlocks enable row level security;  -- Rewards 2.0: bara via funktionerna
+alter table reward_claims enable row level security;   -- bara via funktionerna (save_live_token, live_due)
 alter table live_sent enable row level security;
 alter table login_fails enable row level security;
 alter table circle_membership enable row level security;
@@ -181,6 +183,7 @@ begin
   new.team := old.team; new.producer := old.producer; new.username := old.username;
   new.perms := old.perms; new.producers := old.producers;     /* artistens producenter väljer admin */
   new.referred_by := old.referred_by;                         /* värva en vän: sätts bara av register_access */
+  new.ref_code := old.ref_code;                               /* värvningskoden: bara my_ref_code */
   /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
   new.participant := old.participant; new.interests := old.interests;
   new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
