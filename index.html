@@ -2303,6 +2303,7 @@ function openCheck(id, edit){
     <div class="sub">${ckWhen(b)}</div>
     <div class="row" style="margin-top:14px"><span class="tiny muted grow">Obligatorisk efter varje session</span><span class="agp-n" id="ckN"></span></div>
     <div class="bar thin"><i id="ckBar" data-fill="sk:${b.id}" style="width:0%"></i></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button type="button" class="chip" id="ckAll" onclick="ckToggleAll()">MARKERA ALLA</button></div>
     <div class="ckl">${CHECK_ITEMS.map(([k,l])=>`<div class="task" data-k="${k}">
       <button class="tick" role="checkbox" aria-checked="false" aria-label="${esc(l)}" data-tick="ck-${k}" onclick="ckToggle('${k}')"></button>
       <button type="button" class="grow task-t plan-t" onclick="ckToggle('${k}')">${esc(l)}</button></div>`).join('')}</div>
@@ -2323,6 +2324,13 @@ function ckToggle(k){
   if(row && ckSet.has(k)){ popTick = 'ck-' + k; }
   ckPaint();
 }
+/* allt i ordning: bocka av alla elva på en gång (en gång till avmarkerar dem) */
+function ckToggleAll(){
+  if(!ckSet) return;
+  const keys = CHECK_ITEMS.map(([k])=>k);
+  if(ckSet.size === keys.length) ckSet.clear(); else keys.forEach(k=>ckSet.add(k));
+  ckPaint();
+}
 function ckPaint(first){
   if(!ckSet) return;
   document.querySelectorAll('.ckl .task').forEach(t=>{ const on = ckSet.has(t.dataset.k);
@@ -2330,6 +2338,7 @@ function ckPaint(first){
   const n = ckSet.size, all = CHECK_ITEMS.length, cmt = (ckEl('ckC')||{value:''}).value.trim();
   const dmg = !!(ckEl('ckD')||{}).checked, dtxt = (ckEl('ckDT')||{value:''}).value.trim();
   ckEl('ckN').textContent = n + '/' + all;
+  ckEl('ckAll').textContent = n===all ? 'AVMARKERA ALLA' : 'MARKERA ALLA';
   ckEl('ckBar').style.width = (n/all*100) + '%';
   ckEl('ckDW').style.display = dmg ? '' : 'none';
   const ok = (n===all || !!cmt) && (!dmg || !!dtxt), go = ckEl('ckGo');

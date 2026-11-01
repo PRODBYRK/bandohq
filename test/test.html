@@ -2210,6 +2210,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const banner = /Studiokontroll saknas/.test(document.getElementById('view').innerHTML);
     openCheck('k1');
     const items = document.querySelectorAll('.ckl .task').length, off0 = document.getElementById('ckGo').disabled;
+    document.getElementById('ckAll').click();
+    const allOn = document.getElementById('ckN').textContent==='11/11' && document.getElementById('ckGo').textContent==='SKICKA IN' && /AVMARKERA/.test(document.getElementById('ckAll').textContent);
+    document.getElementById('ckAll').click(); const allOff = document.getElementById('ckN').textContent==='0/11' && document.getElementById('ckGo').disabled;
     CHECK_ITEMS.slice(0, 10).forEach(([k])=>ckToggle(k));
     const off10 = document.getElementById('ckGo').disabled;
     document.getElementById('ckC').value = 'Dörren gick inte att låsa'; ckPaint();
@@ -2246,13 +2249,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     signIn(byName('Kim Kund')); await wait(200); localStorage.removeItem('bandohq_conf_k3'); render();
     const cv = document.getElementById('view').innerHTML, lit1 = !!document.querySelector('.conf-h.lit');
     render(); const lit2 = !!document.querySelector('.conf-h.lit');
-    return {banner, items, off0, off10, dev, full, done:/STUDIOKONTROLL INSKICKAD/.test(done) && /ck-sign lit/.test(done) && /RKAY/.test(done),
+    return {banner, items, off0, off10, dev, full, allOn, allOff, done:/STUDIOKONTROLL INSKICKAD/.test(done) && /ck-sign lit/.test(done) && /RKAY/.test(done),
       ok1: !!(checkOf('k1') && checkOf('k1').all_ok), bannerAfter, deny, noTxt, needTxt, k2:!!(checkOf('k2') && !checkOf('k2').all_ok && checkOf('k2').damage),
       more:/STUDIO/.test(more) && /Sessionsstatistik/.test(more), missing, devRows:/SKADA/.test(devRows) && /ADREY/.test(devRows),
       det:/STUDIOKONTROLL/.test(det) && /Saknas/.test(det) && /FYLL I STUDIOKONTROLLEN/.test(det), kp, inherit, k0, kA, kN, kM,
       cust:/SESSION BEKRÄFTAD ✅/.test(cv) && /Råsundavägen 102/.test(cv) && (cv.match(/class="rrow"/g)||[]).length===5 && /Max 2 extra personer/.test(cv), lit1, lit2};`);
   ok('IDAG påminner producenten om studiokontrollen som saknas', r.banner===true, r);
   ok('arket har elva punkter, och skickas inte in tomt', r.items===11 && r.off0===true && r.off10===true, r);
+  ok('"Markera alla" bockar av alla elva — och avmarkerar dem igen', r.allOn===true && r.allOff===true, r);
   ok('en punkt som inte gick: kommentar → skickas in som avvikelse', r.dev===true, r);
   ok('alla elva bockade: SKICKA IN, 11/11', r.full===true, r);
   ok('inskickad: skylten tänds med namn, kontrollen är sparad och passet lämnar listan', r.done && r.ok1 && r.bannerAfter==='k4,k5,k6', r);
