@@ -2532,6 +2532,7 @@ $$;
 create or replace function bs_check_needed(d jsonb) returns boolean
 language sql stable as $$
   select coalesce(d->>'status','') in ('', 'done') and coalesce(d->>'studio','') <> '' and coalesce(d->>'busy','') = ''
+     and coalesce(d->>'type','') <> 'meeting'
      and coalesce(d->>'date','') ~ '^\d{4}-\d\d-\d\d$'
 $$;
 

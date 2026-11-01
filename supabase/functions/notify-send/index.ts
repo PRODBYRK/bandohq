@@ -158,7 +158,7 @@ const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfråg
   cancel: 'Avbokat', level: 'Ny nivå', reward: 'Inlösen', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ',
   welcome: 'Välkommen till Bando HQ', access: 'Ny registrering', 'access-req': 'Förfrågan om Bando HQ Access',
   'invite-access': 'Bando HQ Access', points: 'Bando Rewards', edu: 'Bando Education',
-  confirmed: 'Session bekräftad', check: 'Studiokontroll' };
+  confirmed: 'Session bekräftad', check: 'Studiokontroll', meeting: 'Möte' };
 const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked', 'cancel'];
 /* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
 export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no', 'welcome', 'access',

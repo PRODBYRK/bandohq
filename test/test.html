@@ -2303,6 +2303,51 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('"Minska genomskinlighet" eller valet i profilen ger det vanliga utseendet', r.offAcc && r.offPref, r);
   ok('profilen har Liquid Glass och Dynamic Island', r.prof===true, r);
   ok('Dynamic Island av i profilen tar bort Live Activity; passet slut tar bort det', r.endAll && r.endPast, r.calls);
+  log('\n── RKAY som manager och producent, samarbetssessioner och möten ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    const wait = ms => new Promise(r=>setTimeout(r,ms));
+    const rk = byName('RKAY'); bump(Object.assign(rk, {r:'manager', perms:['producer','artist_intel']})); save();
+    signIn(byName('RKAY')); await wait(60);
+    const mgr = {dash:can('dashboard'), grant:can('grantManager'), prod:isProducer(byName('RKAY')), inCrew:crew().some(c=>c.n==='RKAY'),
+      label:roleLabel(byName('RKAY')), nav:moreViews().includes('dash')};
+    /* samarbete: RKAY bokar med ADREY */
+    const t = addDays(new Date(), 1), d = iso(t);
+    S.bookings.push(bump({id:'co1', studio:'A', date:d, start:'12:00', end:'15:00', who:'RKAY', with:['ADREY'], title:'Co-write', status:'', del:false}));
+    S.bookings.push(bump({id:'so1', studio:'B', date:d, start:'12:00', end:'15:00', who:'RKAY', with:[], title:'Solo', status:'', del:false}));
+    save(); signIn(byName('ADREY')); go('today'); await wait(40);
+    const today = document.getElementById('view').innerHTML.split('DINA NÄSTA PASS')[1] || '';
+    fWho = 'ADREY'; selDate = d; weekStart = monday(t); go('week'); const week = document.getElementById('view').innerHTML; fWho = null;
+    openMe(); const prof = document.getElementById('sheetBody').innerHTML; closeSheet();
+    const collab = {today:/Co-write/.test(today) && !/Solo/.test(today), week:/Co-write/.test(week) && /SAMARBETE/.test(week) && !/Solo/.test(week),
+      prof:/2 · 6 h totalt|1 · 3 h totalt/.test(prof) && /samarbete/.test(prof), solo:isCollab(S.bookings.find(b=>b.id==='so1'))};
+    /* möte: i studio A krockar med Co-write, på annan plats går det */
+    signIn(byName('RKAY')); await wait(40);
+    openMeeting(null, d);
+    document.getElementById('mTitle').value = 'Planering'; pickMeetPlace('A');
+    document.getElementById('mStart').value = '13:00'; document.getElementById('mEnd').value = '14:00';
+    document.querySelector('.chip.mwith[data-w="ADREY"]').click(); checkMeeting();
+    const blocked = document.getElementById('mSave').disabled && /upptagen/.test(document.getElementById('mClash').textContent);
+    pickMeetPlace(''); document.getElementById('mPlace').value = 'Kontoret'; checkMeeting();
+    const warn = !document.getElementById('mSave').disabled && /har redan något inbokat/.test(document.getElementById('mClash').textContent);
+    saveMeeting(); await wait(20);
+    const mt = S.bookings.find(b=>b.type==='meeting');
+    /* ett möte i en studio gör studion upptagen för ett pass */
+    S.bookings.push(bump({id:'mt2', type:'meeting', studio:'B', place:'', date:iso(addDays(t,1)), start:'10:00', end:'11:00', who:'RKAY', with:[], title:'Kundmöte', status:'', del:false}));
+    const studioBlocked = !freeAt('B', iso(addDays(t,1)), '10:30', '12:00');
+    const offsite = freeAt('A', d, '16:00', '17:00') && clash({studio:'', date:d, start:'13:00', end:'14:00'}).length===0;
+    /* möten räknas aldrig som sessioner */
+    const excluded = !sessions().some(isMeeting) && !checkable(mt) && !planSessions(monday(t)).some(isMeeting);
+    selDate = d; go('week'); const wk2 = document.getElementById('view').innerHTML;
+    openDetail(mt.id); const det = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {mgr, collab, blocked, warn, mt:mt && mt.place==='Kontoret' && mt.with.join()==='ADREY' && mt.studio==='', studioBlocked, offsite, excluded,
+      card:/MÖTE/.test(wk2) && /Planering/.test(wk2), det:/DELTAGARE/.test(det) && /Kontoret/.test(det) && /ÄNDRA MÖTET/.test(det)};`);
+  ok('RKAY som manager: samma rättigheter som managern — och fortfarande producent', r.mgr.dash && r.mgr.grant && r.mgr.prod && r.mgr.inCrew && r.mgr.nav && /Manager · producent/.test(r.mgr.label), r.mgr);
+  ok('samarbete: passet syns hos båda producenterna, i IDAG, schemat och profilen', r.collab.today && r.collab.week && r.collab.prof && r.collab.solo===false, r.collab);
+  ok('möte i en upptagen studio stoppas; på annan plats går det, med varning om krock för deltagaren', r.blocked && r.warn && r.mt, r);
+  ok('ett möte i en studio gör studion upptagen, ett möte på annan plats inte', r.studioBlocked && r.offsite, r);
+  ok('möten räknas aldrig som sessioner (statistik, studiokontroll, veckoplan)', r.excluded===true, r);
+  ok('mötet syns i schemat och har ett eget detaljark', r.card && r.det, r);
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

@@ -139,6 +139,9 @@ main{padding:6px calc(16px + var(--safeR)) 24px calc(16px + var(--safeL));max-wi
 .empty .linkbtn.inline{display:inline-block;margin-top:8px}
 .card .empty,.flags .empty{border-top:0;padding:18px 8px}
 .card .empty::before{display:none}
+.pill.meetpill{box-shadow:inset 0 0 0 1px var(--line2);color:var(--txt)}
+.bk.meet:before{background:repeating-linear-gradient(180deg,var(--tube) 0 6px,transparent 6px 10px)}
+.pill.collab{box-shadow:inset 0 0 0 1px rgba(255,106,216,.5);color:var(--tube)}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:var(--r-sm);
   font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
 
@@ -1273,6 +1276,8 @@ const live  = () => S.bookings.filter(b => !b.del);
    får inte blockera tiden, annars låser obesvarade förslag studion i tysthet.
    Allt som rör krockar, "pågår nu" och statistik ska gå genom booked(). */
 const booked = () => live().filter(b => b.status !== 'request' && b.status !== 'declined');
+/* pass i studion — möten (type 'meeting') räknas aldrig i statistiken, studiokontrollen eller poängen */
+const sessions = () => booked().filter(b => b.type !== 'meeting');
 const requests = () => live().filter(b => b.status === 'request');
 const lfile = () => S.files.filter(f => !f.del);
 
@@ -2113,7 +2118,7 @@ let checks = null, checksAt = 0, checksFor = '', ckSet = null;
 const ckEl = id => document.getElementById(id);
 const checkOf = id => (checks||[]).find(c=>c.booking===id) || null;
 /* pass som ska ha en kontroll (bs_check_needed): bokade pass i en studio */
-const checkable = b => !b.del && ['', 'done'].includes(b.status||'') && !!b.studio && !b.busy && /^\d{4}-\d\d-\d\d$/.test(b.date||'');
+const checkable = b => !b.del && !isMeeting(b) && ['', 'done'].includes(b.status||'') && !!b.studio && !b.busy && /^\d{4}-\d\d-\d\d$/.test(b.date||'');
 const needsCheck = b => checkable(b) && b.date >= CHECK_FROM && endAt(b) <= new Date();
 function checkResponsible(b){
   if(b.circleId){ const c = S.circles.find(x=>x.id===b.circleId); return (b.leaderId && byId(b.leaderId)) || (c && byName(c.leader)) || null; }
@@ -2267,7 +2272,7 @@ function stRange(off){
 const sesWith = b => crewOn(b).concat(b.closedBy ? [b.closedBy] : []);
 function sesStats(off){
   const r = stRange(off);
-  const list = booked().filter(b=>sesDone(b) && inRange(b, r) && (!stProd || sesWith(b).includes(stProd))).sort((a,b)=>startAt(b)-startAt(a));
+  const list = sessions().filter(b=>sesDone(b) && inRange(b, r) && (!stProd || sesWith(b).includes(stProd))).sort((a,b)=>startAt(b)-startAt(a));
   const n = {bs:0, pkg:0, artist:0, other:0}; list.forEach(b=>n[sesKind(b)]++);
   return {r, list, n, total:list.length, bsAll:n.bs + n.pkg};
 }
@@ -3535,6 +3540,13 @@ const nt = (n, sing, plur) => n + ' ' + (n===1 ? sing : plur);
 
 /* Alla producenter som var med på ett pass: den som bokade + de i with. */
 const crewOn = b => [b.who].concat(b.with||[]).filter(Boolean);
+/* Är personen med i passet (bokat det eller är med)? Ett samarbete är ett pass med två eller fler
+   producenter — då syns passet och timmarna hos var och en av dem. */
+const onSession = (b, n) => !!n && crewOn(b).some(x=>String(x).toLowerCase()===String(n).toLowerCase());
+const collabOf = b => crewOn(b).filter(n=>isProducer(byName(n)));
+const isCollab = b => !isMeeting(b) && collabOf(b).length >= 2;
+/* Möte i schemat (type 'meeting'): crewet, i en studio eller på annan plats. Räknas aldrig som session. */
+const isMeeting = b => !!b && b.type==='meeting';
 /* Alla pass en person var med på, oavsett om hen bokade eller var med. */
 const sessionsWith = n => booked().filter(b => crewOn(b).includes(n));
 
@@ -3721,6 +3733,7 @@ const kb  = n => n<1024 ? n+' B' : n<1048576 ? (n/1024).toFixed(0)+' kB'
 /* ===================== KROCKAR ===================== */
 function clash(b, ignoreId){
   const s=startAt(b), e=endAt(b);
+  if(!b.studio) return [];                       /* möte på annan plats: ingen studio att krocka i */
   return booked().filter(x => x.id!==ignoreId && x.studio===b.studio && startAt(x)<e && endAt(x)>s);
 }
 function freeAt(studio, date, start, end, ignoreId){
@@ -5342,7 +5355,7 @@ const weekTasks = (mon, who) => lagenda().filter(a=>a.kind==='week' && a.week===
 /* ---------- VECKOPLANEN ----------
    Studions tider och vilka vi kör med, inskrivet som veckans agenda. Sedan
    är det upp till var och en: bocka i "Kört" när passet är gjort. */
-const planSessions = mon => booked().filter(b=>!b.circleId && !b.leadId && !(b.paid && !isTeamRole((byName(b.who)||{}).r))
+const planSessions = mon => sessions().filter(b=>!b.circleId && !b.leadId && !(b.paid && !isTeamRole((byName(b.who)||{}).r))
   && b.date>=iso(mon) && b.date<iso(addDays(mon,7))).sort((a,b)=>startAt(a)-startAt(b));
 function planRow(b){
   const mine = can('markRan', b), a = artistById(b.artistId), past = startAt(b) <= new Date();
@@ -5358,10 +5371,10 @@ function planRow(b){
 }
 function weekPlanSection(mon){
   const ss = planSessions(mon), ran = ss.filter(b=>b.ran).length;
-  const people = crew().filter(c=>ss.some(b=>b.who===c.n));
+  const people = crew().filter(c=>ss.some(b=>onSession(b, c.n)));
   return `<div class="eyebrow">VECKANS PLAN · STUDIOTIDER<span class="ln"></span>
       <span style="color:var(--mut2)">${ran}/${ss.length} körda</span></div>
-    ${ss.length ? `<div class="card agcard">${people.map(c=>{ const mine = ss.filter(b=>b.who===c.n), r = mine.filter(b=>b.ran).length;
+    ${ss.length ? `<div class="card agcard">${people.map(c=>{ const mine = ss.filter(b=>onSession(b, c.n)), r = mine.filter(b=>b.ran).length;
       return `<div class="agp"><div class="agp-h"><i class="sw" style="background:${c.c}"></i><b style="color:${c.g}">${esc(c.n)}</b>
         <span class="agp-n">${r}/${mine.length} körda</span></div>
         <div class="bar thin"><i data-fill="plan:${esc(c.n)}" style="width:${mine.length?r/mine.length*100:0}%"></i></div>
@@ -6491,10 +6504,10 @@ function vToday(){
   const today = iso(new Date());
   const m = me();
   const todays = booked().filter(b=>b.date===today).sort((a,b)=>startAt(a)-startAt(b));
-  const mine = booked().filter(b=>b.who===m.n && endAt(b)>new Date())
+  const mine = booked().filter(b=>onSession(b, m.n) && endAt(b)>new Date())
                      .sort((a,b)=>startAt(a)-startAt(b)).slice(0,3);
   const d=new Date();
-  const wk = booked().filter(b=>startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
+  const wk = sessions().filter(b=>startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
   const wkH = wk.reduce((a,b)=>a+dur(b),0);
   return `
     <div class="h1">${DAY2[d.getDay()]} <b class="dnum">${d.getDate()}</b> ${MON[d.getMonth()]}</div>
@@ -6528,7 +6541,7 @@ function weekAgendaCard(){
   const shared = all.filter(a=>!a.who), plan = planSessions(mon);
   const person = (name, color, list, av) => {
     const d = list.filter(a=>a.done).length, open = list.filter(a=>!a.done);
-    const ps = plan.filter(b=>b.who===name), pr = ps.filter(b=>b.ran).length;
+    const ps = plan.filter(b=>onSession(b, name)), pr = ps.filter(b=>b.ran).length;
     return `<div class="agp">
       <div class="agp-h">${av||''}<b style="color:${color}">${esc(name)}</b>
         <span class="agp-n">${ps.length?`pass ${pr}/${ps.length} · `:''}${list.length?d+'/'+list.length:'–'}</span></div>
@@ -6572,7 +6585,7 @@ function liveCard(s, idx){
 function vWeek(){
   const days = [...Array(7)].map((_,i)=>addDays(weekStart,i));
   const t = iso(new Date());
-  const shown = booked().filter(b => (!fWho||b.who===fWho) && (!fStudio||b.studio===fStudio));
+  const shown = booked().filter(b => (!fWho||onSession(b, fWho)) && (!fStudio||b.studio===fStudio));
   const grid = days.map(d=>{
     const k=iso(d), list=shown.filter(b=>b.date===k);
     const dots=[...new Set(list.map(b=>b.studio))].map(s=>`<i style="background:${SC[s]};box-shadow:0 0 6px ${SC[s]}"></i>`).join('');
@@ -6652,11 +6665,12 @@ function myAgendaPanel(){
 function shiftWeek(n){ weekStart = addDays(weekStart, n*7); selDate = iso(weekStart); render(); }
 
 function bkCard(b, showDate, idx){
+  if(isMeeting(b)) return meetCard(b, showDate);
   const past = endAt(b) < new Date();
   const on = startAt(b)<=new Date() && endAt(b)>new Date();
   const m = me();
   const nf = lfile().filter(f=>f.bookingId===b.id && can('viewFile',f)).length;
-  return `<button class="bk ${past?'past':''} ${m&&b.who===m.n?'mine':''}"
+  return `<button class="bk ${past?'past':''} ${m&&onSession(b, m.n)?'mine':''}"
     style="--k:${col(b.who)};--kg:${glow(b.who)}" onclick="openDetail('${b.id}')">
     <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
     <div class="grow">
@@ -6669,6 +6683,7 @@ function bkCard(b, showDate, idx){
         ${showDate&&!relDay(b.date)?'· '+longDate(b.date):''}
         ${on?'<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">NU</span>':''}
         ${b.paid?'<span class="pill" style="box-shadow:inset 0 0 0 1px var(--line2);color:var(--mut)">BETALD</span>':''}
+        ${isCollab(b)?'<span class="pill collab">SAMARBETE</span>':''}
         ${b.circleId?`<span class="pill" style="background:rgba(255,106,216,.15);color:var(--pur3)">CIRKEL${
           b.status==='done'?' ✓':''}</span>`:''}
       </div>
@@ -6725,7 +6740,7 @@ function vTeam(){
         : `<b style="color:var(--mut2)">–</b><span>PRIVAT</span>`}</div>
     </button>`;
   }).join('');
-  const wk = booked().filter(b=>startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
+  const wk = sessions().filter(b=>startAt(b)>=weekStart && startAt(b)<addDays(weekStart,7));
   return `
     <div class="h1">Crew</div>
     <div class="sub">${nt(producers().length,'producent','producenter')} · ${nt(crew().filter(c=>c.r==='admin').length,'admin','admins')} · ${nt(crew().filter(c=>c.r==='manager').length,'manager','managers')}
@@ -7292,7 +7307,7 @@ function refreshInvites(force){
 }
 const invCreated = i => +new Date(i.created_at || i.created || 0);
 /* "Producent · cirkelledare" — leder man en cirkel syns det, oavsett roll. */
-const roleLabel = a => ROLE_NAME[a.r] + (a.r!=='leader' && lcircle().some(c=>c.leader===a.n) ? ' · cirkelledare' : '');
+const roleLabel = a => ROLE_NAME[a.r] + (isAdminRole(a.r) && isProducer(a) ? ' · producent' : '') + (a.r!=='leader' && lcircle().some(c=>c.leader===a.n) ? ' · cirkelledare' : '');
 function inviteStatus(a){
   const i = (invList||[]).filter(x=>x.member_id===a.id).sort((x,y)=>invCreated(y)-invCreated(x))[0];
   if(!i) return {txt:'inte inbjuden', open:false};
@@ -7385,7 +7400,7 @@ function revenue(list){ return list.filter(b=>b.paid).reduce((a,b)=>a+dur(b)*rat
 
 function vDash(){
   const r = periodRange(period), rp = periodRange(period, true);
-  const cur = booked().filter(b=>inRange(b,r)), prev = booked().filter(b=>inRange(b,rp));
+  const cur = sessions().filter(b=>inRange(b,r)), prev = sessions().filter(b=>inRange(b,rp));
   const H = l => l.reduce((a,b)=>a+dur(b),0);
   const hours = H(cur), pHours = H(prev);
   const days = Math.max(1, Math.round((r.to-r.from)/864e5));
@@ -7629,7 +7644,7 @@ function table(cur, prev){
   const rows = crew().map(c=>{
     const l = cur.filter(b=>crewOn(b).includes(c.n));
     const h = l.reduce((a,b)=>a+dur(b),0);
-    const last = booked().filter(b=>crewOn(b).includes(c.n) && startAt(b)<=new Date())
+    const last = sessions().filter(b=>crewOn(b).includes(c.n) && startAt(b)<=new Date())
       .sort((a,b)=>startAt(b)-startAt(a))[0];
     return {c, n:l.length, h, avg: l.length?h/l.length:0,
       files: lbeats().filter(f=>f.who===c.n).length,
@@ -8919,7 +8934,7 @@ function openMe(){
     return;
   }
   const mgr = can('dashboard');
-  const mineH = live().filter(b=>b.who===m.n).reduce((a,b)=>a+dur(b),0);
+  const mineL = sessions().filter(b=>onSession(b, m.n)), mineH = mineL.reduce((a,b)=>a+dur(b),0);
   openSheet(`${X}
     <div class="row" style="gap:14px;margin:6px 0 4px">
       ${avatar(m,52)}
@@ -8928,7 +8943,7 @@ function openMe(){
           S.session.email?' · '+esc(S.session.email):''}</div></div>
     </div>
     <div style="margin-top:18px">
-      <div class="kv"><span>DINA PASS</span><b>${live().filter(b=>b.who===m.n).length} · ${hh(mineH)} h totalt</b></div>
+      <div class="kv"><span>DINA PASS</span><b>${mineL.length} · ${hh(mineH)} h totalt${mineL.some(isCollab) ? ` · ${mineL.filter(isCollab).length} samarbeten` : ''}</b></div>
       <div class="kv"><span>DINA BEATS</span><b>${lbeats().filter(b=>b.who===m.n).length}</b></div>
       <div class="kv"><span>SYNK</span><b><span class="row" style="justify-content:flex-end">
         <i class="syncdot ${syncState}"></i><span data-syncmsg>${esc(syncMsg||'—')}</span></span></b></div>
@@ -9050,7 +9065,7 @@ function inSession(b, m){
 }
 function mySessionNow(){
   const m = me(); if(!m) return null; const t = new Date();
-  return booked().filter(b=>!b.busy && b.studio && startAt(b)<=t && endAt(b)>t && inSession(b, m))
+  return sessions().filter(b=>!b.busy && b.studio && startAt(b)<=t && endAt(b)>t && inSession(b, m))
     .sort((a,b)=>startAt(a)-startAt(b))[0] || null;
 }
 async function liveTick(){
@@ -9522,6 +9537,7 @@ function openForm(id, date, circleId, asCustomer){
   const m = me(); if(!m) return;
   editId = id || null;
   const b = id ? S.bookings.find(x=>x.id===id) : null;
+  if(isMeeting(b)) return openMeeting(id);
   if(b && !can('editBooking',b)) return toast('Du kan bara ändra dina egna pass');
   const d = b ? b.date : (date || selDate || iso(new Date()));
   const pr = presets(), p0 = pr[1] || pr[0] || ['13:00','16:00'];
@@ -9538,6 +9554,7 @@ function openForm(id, date, circleId, asCustomer){
     <h2>${b?'Ändra pass':circ?'Boka session':'Boka studio'}</h2>
     <div class="sub">${circ?esc(circ.n)+' · ledare '+esc(circ.leader||'–')
       :b?'Uppdatera bokningen':'Kolla att tiden är ledig innan du sparar'}</div>
+    ${!b && !circ && !cust && isCrewRole(m.r) ? kindSeg('session', d) : ''}
 
     <label class="lbl">STUDIO</label>
     <div class="studiopick">
@@ -9633,6 +9650,126 @@ function shiftEnd(){
   if(ok(s.value)) s.dataset.prev = s.value;
   checkForm();
 }
+/* ---------- MÖTEN I SCHEMAT ----------
+   Ett möte är en bokning med type 'meeting': crewet, i en studio (som då är upptagen) eller på
+   annan plats. Det räknas aldrig som en session — ingen statistik, studiokontroll eller poäng. */
+function meetCard(b, showDate){
+  const past = endAt(b) < new Date(), on = startAt(b)<=new Date() && !past, m = me();
+  return `<button class="bk meet ${past?'past':''} ${m&&onSession(b, m.n)?'mine':''}" style="--k:var(--tube);--kg:var(--glow)" onclick="openDetail('${b.id}')">
+    <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
+    <div class="grow">
+      <div class="bk-title">${esc(b.title||'Möte')}</div>
+      <div class="bk-sub">
+        <span class="pill meetpill">MÖTE</span>
+        ${b.studio ? `<span class="sdot" style="--s:${SC[b.studio]}">${esc(S.studios[b.studio])}</span>` : `<span>${esc(b.place||'Annan plats')}</span>`}
+        <span>${crewOn(b).map(n=>`<span style="color:${glow(n)}">${esc(n)}</span>`).join(' <span style="color:var(--mut2)">+</span> ')}</span>
+        ${showDate&&!relDay(b.date)?'· '+longDate(b.date):''}
+        ${on?'<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">NU</span>':''}
+      </div>
+      ${b.note?`<div class="bk-note">${esc(b.note)}</div>`:''}
+    </div></button>`;
+}
+function openMeetingDetail(b){
+  openSheet(`${X}
+    <h2>${esc(b.title||'Möte')}</h2>
+    <div class="sub">Möte · ${longDate(b.date)}${relDay(b.date)?' · '+relDay(b.date):''}</div>
+    <div style="margin-top:16px">
+      <div class="kv"><span>PLATS</span><b>${b.studio ? `<span style="color:${SC[b.studio]}">${esc(S.studios[b.studio])}</span>` : esc(b.place||'Annan plats')}</b></div>
+      <div class="kv"><span>TID</span><b>${b.start}–${b.end}</b></div>
+      <div class="kv"><span>BOKAT AV</span><b style="color:${glow(b.who)}">${esc(b.who)}</b></div>
+      ${(b.with||[]).length?`<div class="kv"><span>DELTAGARE</span><b>${b.with.map(n=>`<span style="color:${glow(n)}">${esc(n)}</span>`).join(', ')}</b></div>`:''}
+      ${b.note?`<div class="kv"><span>ANTECKNING</span><b style="font-weight:500;color:var(--mut)">${esc(b.note)}</b></div>`:''}
+    </div>
+    ${can('editBooking', b) ? `<button class="btn" style="margin-top:22px" onclick="openMeeting('${b.id}')">ÄNDRA MÖTET</button>
+      <button class="btn danger" style="margin-top:9px" onclick="del('${b.id}')">TA BORT MÖTET</button>` : ''}`);
+}
+const kindSeg = (on, d) => `<div class="seg" style="margin:14px 0 0">
+    <button type="button" class="${on==='session'?'on':''}" onclick="${on==='session'?'':`openForm(null,'${d}')`}">STUDIOPASS</button>
+    <button type="button" class="${on==='meeting'?'on':''}" onclick="${on==='meeting'?'':`openMeeting(null,'${d}')`}">MÖTE</button></div>`;
+const meetPlace = b => b.studio ? (S.studios[b.studio]||'') : (b.place||'Annan plats');
+function openMeeting(id, date){
+  const m = me(); if(!m || !isCrewRole(m.r)) return;
+  const b = id ? S.bookings.find(x=>x.id===id) : null;
+  if(b && !can('editBooking', b)) return toast('Bara den som bokade mötet eller admin kan ändra det');
+  editId = id || null;
+  const nh = (()=>{ const t = new Date(); t.setMinutes(0,0,0); t.setHours(t.getHours()+1); return toHm(t.getHours()*60); })();
+  const v = Object.assign({type:'meeting', studio:'', place:'', date:date || selDate || iso(new Date()), start:nh, end:plusH(nh, 1),
+    who:m.n, with:[], title:'', note:''}, b||{});
+  openSheet(`${X}
+    <h2>${b?'Ändra möte':'Boka möte'}</h2>
+    <div class="sub">${b?'Uppdatera mötet':'Deltagarna får en notis — ett möte i en studio gör studion upptagen'}</div>
+    ${b ? '' : kindSeg('meeting', v.date)}
+    <label class="lbl" for="mTitle">VAD GÄLLER MÖTET</label>
+    <input id="mTitle" value="${esc(v.title)}" placeholder="t.ex. Planering inför släppet, Crewmöte" maxlength="60" oninput="checkMeeting()">
+    <label class="lbl">PLATS</label>
+    <div class="chips wrap" id="mPlaceChips">${[['A',S.studios.A],['B',S.studios.B],['','ANNAN PLATS']].map(([k,l])=>
+      `<button type="button" class="chip ${v.studio===k?'on':''}" data-s="${k}" onclick="pickMeetPlace('${k}')">${k?`<i class="sw" style="background:${SC[k]}"></i>`:''}${esc(String(l).toUpperCase())}</button>`).join('')}</div>
+    <input id="mPlace" value="${esc(v.place||'')}" placeholder="Var? t.ex. Kontoret, Zoom-länk" maxlength="80" style="margin-top:8px;${v.studio?'display:none':''}">
+    <label class="lbl">DATUM</label>
+    <input type="date" id="mDate" value="${v.date}" onchange="checkMeeting()">
+    <label class="lbl">TID</label>
+    <div class="two"><input type="time" id="mStart" value="${v.start}" onchange="meetLen()"><input type="time" id="mEnd" value="${v.end}" onchange="checkMeeting()"></div>
+    <div class="chips" style="margin-top:8px">${[[30,'30 MIN'],[60,'1 H'],[90,'1,5 H'],[120,'2 H']].map(([n,l])=>
+      `<button type="button" class="chip" onclick="meetLen(${n})">${l}</button>`).join('')}</div>
+    <label class="lbl">DELTAGARE</label>
+    <div class="chips wrap">${crew().filter(c=>c.n!==v.who).map(c=>`<button type="button" class="chip mwith ${(v.with||[]).includes(c.n)?'on':''}"
+      data-w="${esc(c.n)}" onclick="this.classList.toggle('on');checkMeeting()"><i class="sw" style="background:${c.c}"></i>${esc(c.n)}</button>`).join('')}</div>
+    <div class="tiny muted" style="margin-top:6px">${esc(v.who)} bokar mötet och är med.</div>
+    <label class="lbl" for="mNote">ANTECKNING</label>
+    <textarea id="mNote" maxlength="300" placeholder="Agenda, länk, vad man ska ta med">${esc(v.note||'')}</textarea>
+    <input type="hidden" id="mStudio" value="${v.studio}">
+    <div id="mClash"></div>
+    <button class="btn" id="mSave" style="margin-top:20px" onclick="saveMeeting()">${b?'SPARA MÖTET':'BOKA MÖTET'}</button>
+    ${b && can('delBooking', b) ? `<button class="btn danger" style="margin-top:9px" onclick="del('${b.id}')">TA BORT MÖTET</button>` : ''}`);
+  checkMeeting();
+}
+function pickMeetPlace(s){
+  document.getElementById('mStudio').value = s;
+  document.querySelectorAll('#mPlaceChips .chip').forEach(c=>c.classList.toggle('on', c.dataset.s===s));
+  document.getElementById('mPlace').style.display = s ? 'none' : '';
+  afterPaint(); checkMeeting();
+}
+function meetLen(min){
+  const s = document.getElementById('mStart').value, e = document.getElementById('mEnd');
+  if(min) e.value = plusH(s, min/60); else if(e.value <= s) e.value = plusH(s, 1);
+  checkMeeting();
+}
+function readMeeting(){
+  const g = id => (document.getElementById(id)||{value:''}).value;
+  const studio = g('mStudio');
+  return {type:'meeting', studio, place:studio ? '' : g('mPlace').trim(), date:g('mDate'), start:g('mStart'), end:g('mEnd'),
+    title:g('mTitle').trim(), note:g('mNote').trim(), with:[...document.querySelectorAll('.chip.mwith.on')].map(c=>c.dataset.w),
+    paid:false, circleId:'', artistId:''};
+}
+/* Studion måste vara ledig; en deltagare som redan har pass eller möte då får en varning, inget stopp. */
+function meetingProblems(f){
+  if(!f.title) return {stop:'Skriv vad mötet gäller'};
+  if(!f.date || !f.start || !f.end || f.start===f.end) return {stop:'Välj datum, start och slut'};
+  if(f.studio && clash(f, editId).length) return {stop:`${S.studios[f.studio]} är upptagen den tiden`};
+  const who = editId ? (S.bookings.find(x=>x.id===editId)||{}).who : me().n;
+  const busy = [who].concat(f.with).filter(n=>booked().some(b=>b.id!==editId && onSession(b, n) && startAt(b) < endAt(f) && endAt(b) > startAt(f)));
+  return {warn: busy.length ? `${busy.join(', ')} har redan något inbokat då.` : ''};
+}
+function checkMeeting(){
+  const box = document.getElementById('mClash'), btn = document.getElementById('mSave'); if(!box) return;
+  const r = meetingProblems(readMeeting());
+  box.innerHTML = r.stop ? `<div class="warn">${esc(r.stop)}</div>` : r.warn ? `<div class="note">${esc(r.warn)}</div>` : '';
+  btn.disabled = !!r.stop;
+}
+function saveMeeting(){
+  const f = readMeeting(), r = meetingProblems(f);
+  if(r.stop) return toast(r.stop);
+  if(editId){
+    const b = S.bookings.find(x=>x.id===editId);
+    if(!b || !can('editBooking', b)) return toast('Bara den som bokade mötet eller admin kan ändra det');
+    bump(Object.assign(b, f));
+  } else S.bookings.push(bump(Object.assign({id:uid(), who:me().n, status:'', del:false, present:[], hours:null}, f)));
+  const was = !!editId;
+  save(); closeSheet();
+  selDate = f.date; weekStart = monday(fromIso(f.date));
+  render(); toast(was ? 'Mötet är ändrat' : 'Mötet är bokat'); sync(true);
+}
+
 function readForm(){
   return {studio:document.getElementById('fStudio').value, date:document.getElementById('fDate').value,
     start:document.getElementById('fStart').value, end:document.getElementById('fEnd').value,
@@ -9785,6 +9922,7 @@ async function saveBookingRemote(f, rep){
 /* ---------- DETALJ ---------- */
 function openDetail(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
+  if(isMeeting(b)) return openMeetingDetail(b);
   const fs = lfile().filter(f=>f.bookingId===b.id && can('viewFile',f));
   openSheet(`${X}
     <h2>${esc(b.title||'Session')}</h2>
@@ -9793,6 +9931,7 @@ function openDetail(id){
       <div class="kv"><span>STUDIO</span><b style="color:${SC[b.studio]}">${esc(S.studios[b.studio])}</b></div>
       <div class="kv"><span>TID</span><b>${b.start}–${b.end} · ${hh(dur(b))} h</b></div>
       <div class="kv"><span>BOKAD AV</span><b style="color:${glow(b.who)}">${esc(b.who)}</b></div>
+      ${isCollab(b)?`<div class="kv"><span>SAMARBETE</span><b>${collabOf(b).map(esc).join(' + ')} · timmarna räknas på alla</b></div>`:''}
       ${(b.with||[]).length?`<div class="kv"><span>MED</span><b>${b.with.map(n=>
         `<span style="color:${glow(n)}">${esc(n)}</span>`).join(', ')}</b></div>`:''}
       ${b.artistId&&artistById(b.artistId)?`<div class="kv"><span>ARTIST</span><b>${esc(artistById(b.artistId).n)}</b></div>`:''}
@@ -9820,7 +9959,7 @@ function openDetail(id){
 async function del(id){
   const b = S.bookings.find(x=>x.id===id); if(!b) return;
   if(!can('delBooking',b)) return toast('Du kan bara ta bort dina egna pass');
-  if(!confirm(b.circleId ? 'Ställa in cirkelpasset?' : 'Ta bort passet?')) return;
+  if(!confirm(b.circleId ? 'Ställa in cirkelpasset?' : isMeeting(b) ? 'Ta bort mötet? Deltagarna får veta.' : 'Ta bort passet?')) return;
   if(b.circleId){
     if(isLocked(b)) return toast(LOCKED_MSG);
     if(b.status==='done') return toast('Passet är genomfört — ångra det först om det inte blev av');

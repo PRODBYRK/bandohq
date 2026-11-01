@@ -77,6 +77,18 @@ begin
      De som fick orderbekräftelsen får veta det — och kundens producent (eller admins),
      så att crewet ser att tiden är ledig igen. */
   if new.del then
+    /* ett inställt möte: deltagarna får veta (inte den som ställde in) */
+    if new.kind = 'booking' and tg_op = 'UPDATE' and not old.del and coalesce(old.data->>'type','') = 'meeting'
+       and coalesce(old.data->>'date','') ~ '^\d{4}-\d\d-\d\d$' and (old.data->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date then
+      d := old.data;
+      for mid in select distinct x from unnest(array[bs_member_by_name(d->>'who')]
+                   || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x)) x
+                 where x is not null and x is distinct from actor loop
+        perform bs_notify(mid, null, 'Inställt möte: ' || coalesce(nullif(d->>'title',''), 'Möte'),
+          'Mötet ' || bs_when(d) || ' (' || coalesce(nullif(d->>'title',''), 'Möte') || ') är inställt.', 'meeting', 'meeting-del:' || new.id || ':' || mid);
+      end loop;
+      return new;
+    end if;
     if new.kind = 'booking' and tg_op = 'UPDATE' and not old.del and coalesce(old.data->>'status','') = ''
        and coalesce(old.data->>'date','') ~ '^\d{4}-\d\d-\d\d$'
        and (old.data->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date
@@ -104,6 +116,25 @@ begin
 
   if new.kind = 'booking' then
     if coalesce(d->>'date','') !~ '^\d{4}-\d\d-\d\d$' then return new; end if;
+    /* möte: deltagarna får en notis när det bokas eller flyttas — inget av sessionernas flöden */
+    if coalesce(d->>'type','') = 'meeting' then
+      if (d->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date
+         and (o is null or (o->>'date', o->>'start', o->>'end', coalesce(o->>'studio',''), coalesce(o->>'place',''))
+                is distinct from (d->>'date', d->>'start', d->>'end', coalesce(d->>'studio',''), coalesce(d->>'place','')))
+      then
+        line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_studio(d->>'studio')
+                                            else coalesce(nullif(d->>'place',''), 'annan plats') end;
+        for mid in select distinct x from unnest(array[bs_member_by_name(d->>'who')]
+                     || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x)) x
+                   where x is not null and x is distinct from actor loop
+          perform bs_notify(mid, null, 'Möte: ' || coalesce(nullif(d->>'title',''), 'Möte') || ' · ' || bs_when(d),
+            coalesce((select name from members where id = actor), d->>'who', 'Någon') || ' har bokat ett möte med dig: '
+            || coalesce(nullif(d->>'title',''), 'Möte') || ' — ' || line || '.' || coalesce(E'\n\n' || nullif(d->>'note',''), ''),
+            'meeting', 'meeting:' || new.id || ':' || mid || ':' || md5(line));
+        end loop;
+      end if;
+      return new;
+    end if;
     rq := d->>'reqBy';
     rqname := coalesce((select name from members where id = rq), d->>'who', 'Någon');
 

@@ -1446,6 +1446,21 @@ ok('en token Apple säger är borta tas bort', !(await one(`select 1 x from live
 await as(db,U.ku1,()=>rpc('remove_live_tokens',{}));
 ok('Dynamic Island av: mina tokens tas bort, inte andras', !(await one(`select 1 x from live_tokens where member_id='ku1'`)) && !!(await one(`select 1 x from live_tokens where member_id='rkay'`)));
 }
+/* ============ MÖTEN I SCHEMAT ============ */
+{
+head('Möten: deltagarna får en notis, och ett möte är aldrig en session');
+await q(`delete from outbox where kind='meeting'`);
+const d = (await one(`select to_char(current_date + 3,'YYYY-MM-DD') d`)).d;
+await R('booking','mt1',{id:'mt1', type:'meeting', studio:'', place:'Kontoret', date:d, start:'10:00', end:'11:00', who:'RKAY', with:['PR2'], title:'Planering', status:'', circleId:''});
+const got = (await q(`select member_id, subject from outbox where kind='meeting' order by member_id`)).map(r=>r.member_id + ':' + /^Möte: Planering/.test(r.subject));
+ok('den som bokat och deltagarna får "Möte: …"', got.join()==='pr2:true,rkay:true', got);
+ok('ett möte behöver ingen studiokontroll och startar ingen Live Activity', (await one(`select bs_check_needed(data) n from records where id='mt1'`)).n===false);
+ok('ingen orderbekräftelse som för ett pass', !(await one(`select 1 x from outbox where kind='booked' and body like '%Planering%'`)));
+await q(`update records set data = data || '{"start":"13:00","end":"14:00"}', up = up + 1 where id='mt1'`);
+ok('flyttas mötet får deltagarna veta igen', (await q(`select 1 from outbox where kind='meeting' and member_id='pr2'`)).length===2);
+await q(`update records set del = true, up = up + 1 where id='mt1'`);
+ok('ett inställt möte meddelas', !!(await one(`select 1 x from outbox where kind='meeting' and subject like 'Inställt möte%' and member_id='pr2'`)));
+}
 /* ============ SÄKERHETSGRANSKNINGEN 2026-10-23: NULL får aldrig släppa igenom ============ */
 {
 head('Behörigheter: anrop utan konto eller med tomma fält släpps aldrig igenom');
