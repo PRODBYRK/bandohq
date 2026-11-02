@@ -207,7 +207,7 @@ create table if not exists records (
 -- v8: media = galleriet. Regeln byts ut så att en äldre installation får det nya värdet.
 alter table records drop constraint if exists records_kind_check;
 alter table records add constraint records_kind_check check (kind in ('booking','circle','curriculum',
-  'artist','release','beat','agenda','goal','plan','file','setting','media','course'));
+  'artist','release','beat','agenda','goal','plan','file','setting','media','course','cnote'));
 create index if not exists records_up_idx on records (up);
 create index if not exists records_ts_idx on records (ts);
 create or replace function bs_touch() returns trigger language plpgsql as $$
@@ -490,6 +490,9 @@ create unique index if not exists reward_claims_booking_uq on reward_claims (boo
 alter table members add column if not exists ref_code text;
 create unique index if not exists members_ref_code_uq on members (ref_code) where ref_code is not null;
 alter table access_requests add column if not exists ref_member text;
+/* Cirkelmodellen (2026-11): när deltagaren kan — vardag dag/kväll, helg dag/kväll (wd-day, wd-eve, we-day, we-eve).
+   Tilldelningen matchar mot gruppens fasta tid. */
+alter table members add column if not exists avail text[] not null default '{}';
 alter table members add column if not exists referred_by text;
 alter table invites add column if not exists referrer text;
 create index if not exists invites_referrer_idx on invites (referrer) where referrer is not null;

@@ -148,8 +148,9 @@ begin
       ids := array[bs_member_by_name(d->>'who'), rq]
           || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x);
       if coalesce(d->>'circleId','') <> '' then
-        ids := ids || array(select jsonb_array_elements_text(coalesce(data->'members','[]'))
-                              from records where kind='circle' and id = d->>'circleId');
+        /* cirkelträff: ledaren och de som är planerade enligt rotationen */
+        ids := ids || bs_planned_ids(new.id);
+        line := line || coalesce(' · planerade: ' || nullif(bs_planned_names(new.id), ''), '');
       end if;
       win := floor(extract(epoch from now()) / 120);
       for mid in select distinct x from unnest(ids) x where x is not null loop
@@ -320,8 +321,8 @@ begin
         || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(b.data->'with','[]')) x);
     title := coalesce(nullif(b.data->>'title',''), 'Session');
     if coalesce(b.data->>'circleId','') <> '' then
-      ids := ids || array(select jsonb_array_elements_text(coalesce(data->'members','[]'))
-                            from records where kind='circle' and id = b.data->>'circleId');
+      ids := ids || bs_planned_ids(b.id);
+      title := title || coalesce(E'\n\n' || 'Planerade enligt rotationen: ' || nullif(bs_planned_names(b.id), ''), '');
     end if;
     for mid in select distinct x from unnest(ids) x where x is not null loop
       perform bs_notify(mid, null, 'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end'),
@@ -333,14 +334,74 @@ begin
   end loop;
   return n;
 end $$;
+/* Rapporteringen i SV:s e-tjänst: en genomförd träff utan ledarens kvittens ("Rapportering
+   inskickad"). Två dagar före tidsgränsen (reportDays, 14) får ledaren och Gio (behörigheten
+   circles — finns ingen, admin) en påminnelse; på dagen en brådskande. Efter det syns den som
+   försenad i appen. Varje nivå skickas en gång per träff (dedupe-nyckeln). */
+create or replace function report_reminders() returns int
+language plpgsql security definer set search_path = public as $$
+declare dl int := greatest(1, coalesce((bs_ccfg('reportDays'))::text::int, 14)); tod date := (now() at time zone 'Europe/Stockholm')::date;
+        b record; c jsonb; lid text; age int; lvl text; n int := 0; mid text; subj text; body text; adm text[];
+begin
+  adm := array(select id from members where active and 'circles' = any(perms));
+  if cardinality(adm) = 0 then adm := array(select id from members where active and role::text in ('manager','admin')); end if;
+  for b in select r.id, r.data from records r
+            where r.kind = 'booking' and not r.del and r.data->>'status' = 'done' and coalesce(r.data->>'circleId','') <> ''
+              and not (r.data ? 'receipt') and coalesce(r.data->>'date','') ~ '^\d{4}-\d\d-\d\d$' loop
+    age := tod - (b.data->>'date')::date;
+    if age < dl - 2 or age > dl then continue; end if;
+    lvl := case when age >= dl then 'urgent' else 'warn' end;
+    select data into c from records where kind = 'circle' and id = b.data->>'circleId';
+    lid := coalesce(nullif(b.data->>'leaderId',''), (select id from members where lower(name) = lower(c->>'leader') and active limit 1));
+    subj := case when lvl = 'urgent' then 'Brådskande: rapportera ' else 'Påminnelse: rapportera ' end || coalesce(c->>'n', 'träffen') || ' · ' || bs_when(b.data);
+    body := 'Träffen ' || bs_when(b.data) || ' med ' || coalesce(c->>'n', 'gruppen') || ' är inte rapporterad i SV:s e-tjänst ('
+      || age || ' dagar sedan, tidsgränsen är ' || dl || ' dagar). Rapportera i e-tjänsten och tryck sedan "Rapportering inskickad" i BANDOHQ.';
+    for mid in select distinct x from unnest(array[lid] || adm) x where x is not null loop
+      perform bs_notify(mid, null, subj, body, 'report', 'rep-' || lvl || ':' || b.id || ':' || mid);
+      n := n + 1;
+    end loop;
+  end loop;
+  return n;
+end $$;
+/* Inför fredagsmötet (torsdag kväll): varje ledare med orapporterade träffar, och Gio med en sammanfattning. */
+create or replace function friday_reminders(p_day date default null) returns int
+language plpgsql security definer set search_path = public as $$
+declare tod date := coalesce(p_day, (now() at time zone 'Europe/Stockholm')::date); l record; n int := 0; mid text; tot int; adm text[];
+begin
+  if extract(isodow from tod) <> 4 then return 0; end if;
+  for l in select coalesce(nullif(r.data->>'leaderId',''), m.id) lid, count(*) k, min(r.data->>'date') oldest
+             from records r left join records c on c.kind = 'circle' and c.id = r.data->>'circleId'
+             left join members m on lower(m.name) = lower(c.data->>'leader')
+            where r.kind = 'booking' and not r.del and r.data->>'status' = 'done' and coalesce(r.data->>'circleId','') <> '' and not (r.data ? 'receipt')
+            group by 1 loop
+    if l.lid is null then continue; end if;
+    perform bs_notify(l.lid, null, 'Inför fredagsmötet: ' || l.k || case when l.k = 1 then ' träff' else ' träffar' end || ' att rapportera',
+      'Du har ' || l.k || case when l.k = 1 then ' genomförd träff' else ' genomförda träffar' end || ' som inte är rapporterade i SV:s e-tjänst — den äldsta från '
+      || to_char(l.oldest::date, 'YYYY-MM-DD') || '. Rapportera och kvittera i BANDOHQ före fredagsmötet.', 'report', 'fri:' || tod || ':' || l.lid);
+    n := n + 1;
+  end loop;
+  select count(*) into tot from records where kind = 'booking' and not del and data->>'status' = 'done' and coalesce(data->>'circleId','') <> '' and not (data ? 'receipt');
+  adm := array(select id from members where active and 'circles' = any(perms));
+  if tot > 0 then
+    foreach mid in array adm loop
+      perform bs_notify(mid, null, 'Fredagsmötet: ' || tot || ' orapporterade träffar', 'Inför fredagsmötet: ' || tot
+        || ' genomförda träffar är inte rapporterade i SV:s e-tjänst. Öppna Cirklar → Fredag i BANDOHQ.', 'report', 'fri-gio:' || tod || ':' || mid);
+      n := n + 1;
+    end loop;
+  end if;
+  return n;
+end $$;
+revoke all on function report_reminders(), friday_reminders(date) from public, anon, authenticated;
 /* Körs varje timme av pg_cron; gör något först från kl 17 svensk tid.
    Dubbletter stoppas av dedupe-nyckeln, så det gör inget att den körs flera gånger. */
 create or replace function reminders_tick() returns int
 language plpgsql security definer set search_path = public as $$
 declare n int := studio_check_reminders();            -- studiokontrollen: varje timme, efter passet
 begin
+  if extract(hour from now() at time zone 'Europe/Stockholm') < 9 then return n; end if;
+  n := n + report_reminders();                          -- rapporteringen i SV:s e-tjänst: dag 12 och 14
   if extract(hour from now() at time zone 'Europe/Stockholm') < 17 then return n; end if;
-  return n + reminders();
+  return n + reminders() + friday_reminders();
 end $$;
 
 -- ---------------------------------------------------------------------

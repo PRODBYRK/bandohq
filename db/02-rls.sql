@@ -64,6 +64,12 @@ create or replace function bs_is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce(bs_my_role()::text in ('manager','admin'), false)
 $$;
+/* Cirkeladmin: admin, eller behörigheten circles (Gio) — ser och fördelar alla grupper och
+   deltagare, sätter fas och följer rapporteringen. */
+create or replace function bs_circle_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(bs_is_admin() or exists (select 1 from members where user_id = auth.uid() and active and 'circles' = any(perms)), false)
+$$;
 create or replace function bs_is_camera() returns boolean
 language sql stable security definer set search_path = public as $$
   select coalesce(bs_my_role()::text = 'camera', false)
@@ -94,7 +100,9 @@ language sql stable security definer set search_path = public as $$
         when p_kind in ('goal','plan') then bs_is_manager()
              or (p_kind = 'goal' and p_data->>'owner' = bs_my_id())
              or (p_kind = 'plan' and p_id = bs_my_id())
-        when p_kind = 'circle' then bs_is_admin() or bs_leads_circle(p_data)
+        when p_kind = 'circle' then bs_circle_admin() or bs_leads_circle(p_data)
+        /* fredagsmötet: Polkis besked och åtgärdspunkterna — Gio och admin */
+        when p_kind = 'cnote' then bs_circle_admin()
         else true end
     when bs_is_camera() then p_kind in ('booking','artist','agenda','media','setting')
       /* målsättningen: kamerateamet har sin egen, som alla i teamet */
@@ -111,6 +119,8 @@ create or replace function bs_can_write(p_kind text, p_id text, p_data jsonb) re
 language sql stable security definer set search_path = public as $$
   select coalesce(case
     when bs_is_admin() then bs_can_read(p_kind, p_id, p_data)
+    when bs_is_crew() and p_kind in ('circle','cnote') and bs_circle_admin() then true
+    when bs_is_crew() and p_kind = 'cnote' then false
     when bs_is_crew() then bs_can_read(p_kind, p_id, p_data)
          and p_kind not in ('circle','curriculum','course')
          and not (p_kind = 'booking' and coalesce(p_data->>'circleId','') <> '')
@@ -134,7 +144,7 @@ language sql stable security definer set search_path = public as $$ select bs_ca
    teamet (crew + kamera). Alla ser sig själva. */
 drop policy if exists members_read on members;
 create policy members_read on members for select to authenticated
-  using (bs_is_admin() or user_id = auth.uid()
+  using (bs_circle_admin() or user_id = auth.uid()
       or (bs_is_crew() and (role::text <> 'participant' or bs_leads_member(id)))
       or (bs_is_camera() and role::text in ('manager','admin','producer','camera')));
 
@@ -184,6 +194,7 @@ begin
   new.perms := old.perms; new.producers := old.producers;     /* artistens producenter väljer admin */
   new.referred_by := old.referred_by;                         /* värva en vän: sätts bara av register_access */
   new.ref_code := old.ref_code;                               /* värvningskoden: bara my_ref_code */
+  new.avail := old.avail;                                     /* tiderna: register_access och set_my_avail */
   /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
   new.participant := old.participant; new.interests := old.interests;
   new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
@@ -231,9 +242,9 @@ create policy records_update on records for update to authenticated
 
 -- ---------- cirklarnas tabeller ----------
 drop policy if exists membership_read on circle_membership;
-create policy membership_read on circle_membership for select to authenticated using (bs_is_admin());
+create policy membership_read on circle_membership for select to authenticated using (bs_circle_admin());
 drop policy if exists signups_read on circle_signups;
-create policy signups_read on circle_signups for select to authenticated using (bs_is_admin());
+create policy signups_read on circle_signups for select to authenticated using (bs_circle_admin());
 -- (anmälningar kommer bara via circle_signup och hanteras via place_signup / reject_signup;
 --  bs_secrets har ingen policy alls)
 /* Kontrollstatus: admin, och ledaren för passet (ser sina egna pass status). */
@@ -243,7 +254,7 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from records where kind = 'booking' and id = p_booking and data->>'leaderId' = bs_my_id())
 $$;
 create policy reports_read on session_reports for select to authenticated
-  using (bs_is_admin() or bs_leads_booking(booking_id));
+  using (bs_circle_admin() or bs_leads_booking(booking_id));
 drop policy if exists history_read on record_history;
 create policy history_read on record_history for select to authenticated using (bs_is_admin());
 /* förfrågningar om Access: crewet (admin och producenter) ser dem och svarar via funktionerna */

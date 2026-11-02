@@ -17,7 +17,7 @@ window.bandohqDemo = function(o){
     A('rkay','RKAY','producer','#7c3aed','#a855f7','rkay@bandocollective.com'),
     A('adrey','ADREY','producer','#0284c7','#38bdf8','adrey@bandocollective.com'),
     A('v2k','V2K','producer','#d97706','#fbbf24','v2k@bandocollective.com'),
-    Object.assign(A('gio','GIOVANNI','producer','#db2777','#f472b6','gio@bandocollective.com'),{perms:['education']}),
+    Object.assign(A('gio','GIOVANNI','producer','#db2777','#f472b6','gio@bandocollective.com'),{perms:['education','circles']}),
     A('pkl','PKL','producer','#047857','#34d399','pkl@bandocollective.com'),
     A('lead1','Sofia Marks','leader','#6633b8','#9d5cf5','sofia@exempel.se','070-555 11 22'),
     ACC(A('p1','William Ek','participant','#6633b8','#9d5cf5','william@exempel.se','070-000 01'),['production','mixing'],'040212-••••'),
@@ -42,9 +42,9 @@ window.bandohqDemo = function(o){
     body:'Eget uttryck\nLåtskrivning\nScennärvaro\nSläppa musik',from:'2026-09-01',del:false,up:1}];
   const circles=[
    {id:'c1',n:'Musikproduktion – Grupp 1',subject:'Musikproduktion',leader:'RKAY',curriculumId:'cu1',courseId:'kmp',courseSince:D(-15),
-    members:['p1','p2','p3'],active:true,del:false,up:1},
+    members:['p1','p2'],roles:{'2':'p1','3':'p2'},confirmed:{p1:1},slot:{day:4,start:'18:00'},studio:'A',active:true,del:false,up:1},
    {id:'c2',n:'Artistutveckling – Grupp 2',subject:'Artistutveckling',leader:'Sofia Marks',curriculumId:'cu2',courseId:'kau',courseSince:D(-15),
-    members:['p1','p4'],active:true,del:false,up:1}];
+    members:['p3','p4'],roles:{'2':'p3','3':'p4'},confirmed:{p3:1,p4:1},active:true,del:false,up:1}];
   /* utbildningssystemet: två kurser (förkortade — hela startinnehållet ligger i kurser.js) */
   const LS = (p, t) => t.map((x,i)=>({id:p+i, title:x[0], content:x[1], goals:x[2], exercises:x[3]}));
   const courses=[
@@ -84,17 +84,20 @@ window.bandohqDemo = function(o){
   Object.assign(bookings[bookings.length-1], {closed:true, closedBy:'RKAY', closedAt:Date.now()-5*864e5});
   let n=0;
   for(let w=1;w<=14;w++){
-    B('g'+(n++),'A',D(-7*w),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1','done',3,['p1','p2','p3']);
-    if(w%2) B('g'+(n++),'B',D(-7*w+1),'17:00','20:00','Sofia Marks','Artistutveckling – Grupp 2','c2','done',3,['p1','p4']);
+    B('g'+(n++),'A',D(-7*w),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1','done',3,['p1','p2']);
+    if(w%2) B('g'+(n++),'B',D(-7*w+1),'17:00','20:00','Sofia Marks','Artistutveckling – Grupp 2','c2','done',3,['p3','p4']);
   }
   /* de första passen har gått igenom kursens första lektioner */
   const doneIn = cid => bookings.filter(b=>b.circleId===cid && b.status==='done' && b.date>=D(-15)).sort((a,b)=>a.date<b.date?-1:1);
   doneIn('c1').slice(0,2).forEach((b,i)=>Object.assign(b, {lessonId:'mp1'+i, lessonTitle:courses[0].levels[0].lessons[i].title}));
   doneIn('c2').slice(0,1).forEach(b=>Object.assign(b, {lessonId:'au10', lessonTitle:courses[1].levels[0].lessons[0].title}));
+  /* rapporteringen i SV:s e-tjänst: de äldre är kvitterade (och de äldsta verifierade av Gio), den senaste veckan inte */
+  bookings.filter(b=>b.circleId && b.status==='done' && b.date < D(-8)).forEach(b=>{ b.receipt = {by:b.who, at:Date.now()-5*864e5};
+    if(b.date < D(-40)) b.svVerified = {by:'GIOVANNI', at:Date.now()-3*864e5}; });
   B('u1','A',D(3),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1');
   const PR=['RKAY','ADREY','V2K','GIOVANNI','PKL'];
   for(let i=1;i<=40;i++) B('cp'+i, i%2?'A':'B', D(-i-1), i%3?'13:00':'10:00', i%3?'16:00':'13:00', PR[i%5], 'Session');
-  B('r1','',D(6),'18:00','21:00','Sofia Marks','Artistutveckling – Grupp 2','c2','request',null,[],false,'p1');
+  B('r1','',D(6),'18:00','21:00','Sofia Marks','Artistutveckling – Grupp 2','c2','request',null,[],false,'p3');
   B('r2','',D(8),'17:00','20:00','Sofia Marks','Artistutveckling – Grupp 2','c2','request',null,[],false,'p4');
   B('kr1','',D(2),'12:00','15:00','Studio Nord AB','Studiotid','','request',null,[],true,'k1');
   /* veckoplanen: några pass i veckan markerade som körda */

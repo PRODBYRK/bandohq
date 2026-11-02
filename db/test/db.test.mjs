@@ -168,6 +168,8 @@ const ap = await as(db,U.sofia,()=>rpc('answer_request',{p_booking:req.id,p_appr
 ok('ledaren godkänner mot ledig studio', ap.status==='' && ap.studio==='B', ap);
 ok('ledaren bokar ett pass själv', (await as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-15',p_start:'18:00',p_end:'21:00',p_studio:'A'}))).status==='');
 ok('men inte i en krockande tid', /upptagen/.test(await boom(()=>as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-01',p_start:'19:00',p_end:'20:00',p_studio:'A'})))||''));
+ok('en framtida träff kan inte markeras genomförd', /inte varit än/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['will'])})))||''));
+await q(`update records set data = data || '{"date":"2026-10-27"}' where id='s1'`);   // träffen har varit
 ok('närvaro för någon utanför cirkeln nekas', /inte med i cirkeln/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['nora'])})))||''));
 ok('orimliga timmar nekas', /0,5 och 24/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:40,p_present:JSON.stringify(['will'])})))||''));
 const dn = await as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['will'])}));
@@ -244,7 +246,9 @@ ok('förfrågan → mejl till ledaren', rs.length===1 && rs[0].member_id==='sofi
 await as(db,U.sofia,()=>rpc('answer_request',{p_booking:rq2.id,p_approve:true,p_studio:'B'}));
 const bkd = await box('booked:%');
 const c1m = (await one(`select data->'members' m from records where id='c1'`)).m;
-ok('godkänd → orderbekräftelse till alla i sessionen (ledaren och hela cirkeln)', bkd.map(r=>r.member_id).sort().join()===['sofia',...c1m].sort().join() && c1m.includes('will') && c1m.length===3, [bkd.map(r=>r.member_id), c1m]);
+const plan2 = (await one(`select bs_planned($1) p`,[rq2.id])).p;
+ok('godkänd → orderbekräftelse till ledaren och de planerade enligt rotationen (och den som föreslog tiden)', bkd.map(r=>r.member_id).sort().join()===[...new Set(['sofia','will',...plan2.ids])].sort().join()
+   && plan2.ids.length>=1 && plan2.ids.every(x=>c1m.includes(x)) && c1m.length===3, [bkd.map(r=>r.member_id), plan2, c1m]);
 ok('bekräftelsen har tid och studio, och ämnet "Bokningsbekräftelse"', /tis 8 dec 18:00-21:00 · THE BOOTH · Grupp 1/.test(bkd[0].body) && /^Bokningsbekräftelse: tis 8 dec/.test(bkd[0].subject), bkd[0]);
 ok('bekräftelsen väntar två minuter så att flera pass hinner samlas', new Date(bkd[0].send_after) > new Date(Date.now()+60000));
 ok('inget separat "godkänd"-mejl', (await box('ans:%')).length===0);
@@ -588,16 +592,22 @@ head('cirklarna: ledar-id, krockar, timbank, historik och anmälningar');
 U.lea = await user('lea@b.se'); U.lars = await user('lars@b.se');
 await M('lea', U.lea, 'leader', 'Lea Ström', 'lea@b.se', null);
 await M('lars', U.lars, 'leader', 'Lars Berg', 'lars@b.se', null);
-for (const [id,n] of [['pa','Pia Ask'],['pb','Per Bo'],['pc','Pål Ceder'],['pd','Pim Dahl']]) await M(id, null, 'participant', n, id+'@b.se', null);
+for (const [id,n] of [['pa','Pia Ask'],['pb','Per Bo'],['pc','Pål Ceder'],['pd','Pim Dahl'],['pe','Pär Ek']]) await M(id, null, 'participant', n, id+'@b.se', null);
+ok('en ny deltagare kan inte läggas i två grupper', /Per Bo är redan med i Prod 1/.test(await boom(()=>C(()=>rpc('push_records',{rows:JSON.stringify([
+  {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pb']},up:1},
+  {kind:'circle',id:'k2',data:{id:'k2',n:'Art 1',subject:'Artistutveckling',leader:'Lars Berg',members:['pb','pc']},up:1}])})))||''));
+/* grupper från före spärren kan ha en deltagare i två grupper — krockkontrollen ska klara det */
+await q(`alter table records disable trigger records_circle_guard`);
 await C(()=>rpc('push_records',{rows:JSON.stringify([
   {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pb']},up:1},
   {kind:'circle',id:'k2',data:{id:'k2',n:'Art 1',subject:'Artistutveckling',leader:'Lars Berg',members:['pb','pc']},up:1}])}));
+await q(`alter table records enable trigger records_circle_guard`);
 const mem0 = await q(`select circle_id, member_id from circle_membership where circle_id in ('k1','k2') and left_at is null order by 1,2`);
 ok('medlemshistoriken får en rad per deltagare när cirkeln skapas', mem0.length===4, mem0);
 
 const b1 = await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-23',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
 ok('cirkelpasset får ledarens id', b1.leaderId==='lea', b1);
-ok('ett cirkelpass är 3 timmar', /cirkelpass är 3 timmar/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-24',p_start:'10:00',p_end:'12:00',p_studio:'A'})))||''));
+ok('ett cirkelpass är 3 timmar', /bokas 3 timmar/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-24',p_start:'10:00',p_end:'12:00',p_studio:'A'})))||''));
 ok('ledaren kan inte ha två pass samtidigt', /Krock: Lea Ström har redan Prod 1 10:00–13:00/.test(await boom(()=>as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-11-23',p_start:'11:00',p_end:'14:00',p_studio:'B'})))||''));
 ok('en deltagare kan inte vara i två cirklar samtidigt', /Krock: Per Bo är med i Prod 1 10:00–13:00/.test(await boom(()=>as(db,U.lars,()=>rpc('book_circle_session',{p_circle:'k2',p_date:'2026-11-23',p_start:'12:00',p_end:'15:00',p_studio:'B'})))||''));
 ok('men utan gemensamma deltagare går det', (await as(db,U.lars,()=>rpc('book_circle_session',{p_circle:'k2',p_date:'2026-11-23',p_start:'13:00',p_end:'16:00',p_studio:'B'}))).status==='');
@@ -630,7 +640,10 @@ const mv = await as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_
 ok('ledaren flyttar passet — slutet räknas ut (3 timmar)', mv.start==='14:30' && mv.end==='17:30' && mv.studio==='A', mv);
 ok('inte till en krockande tid', /Krock/.test(await boom(()=>as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-27',p_start:'11:00',p_studio:'B'})))||''));
 ok('någon annan ledare kan inte flytta det', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.lars,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-23',p_start:'09:00',p_studio:'B'})))||''));
+await q(`update records set data = data || '{"date":"2026-10-26"}' where id=$1`,[b1.id]);
 await as(db,U.lea,()=>rpc('complete_session',{p_booking:b1.id,p_hours:3,p_present:JSON.stringify(['pa','pb'])}));
+await q(`update records set data = data || '{"date":"2026-11-24"}' where id=$1`,[b1.id]);   // (för kontrollen nedan: ett pass som inte varit än)
+await q(`delete from record_history where rec_id=$1 and by_id is null`,[b1.id]);   // testets egna datumflyttar
 ok('ett genomfört pass går inte att flytta', /redan genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-24',p_start:'10:00',p_studio:'A'})))||''));
 ok('eller ställa in', /genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('cancel_circle_session',{p_booking:b1.id})))||''));
 const b2 = await as(db,U.lea,()=>rpc('book_circle_session',{p_circle:'k1',p_date:'2026-12-03',p_start:'10:00',p_end:'13:00',p_studio:'A'}));
@@ -651,7 +664,8 @@ const dup = await C(()=>rpc('find_duplicates',{p_name:'pia  ask',p_email:'',p_ph
 ok('dubblettkontrollen hittar samma namn (oavsett stora bokstäver och mellanslag)', dup.length===1 && dup[0].id==='pa' && dup[0].why==='samma namn', dup);
 ok('och samma e-post', (await C(()=>rpc('find_duplicates',{p_name:'Någon Annan',p_email:'PB@b.se',p_phone:''})))[0].why==='samma e-post');
 ok('en deltagare får inget svar', (await as(db,U.lea,()=>rpc('find_duplicates',{p_name:'Pia Ask',p_email:'',p_phone:''}))).length===0);
-ok('ledaren lägger till en deltagare i sin cirkel', (await as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pc'}))).members.includes('pc'));
+ok('ledaren lägger till en deltagare i sin cirkel', (await as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pe'}))).members.includes('pe'));
+ok('men inte någon som redan är med i en annan grupp', /Pål Ceder är redan med i Art 1/.test(await boom(()=>as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pc'})))||''));
 ok('men inte i någon annans', /Bara admin eller cirkelns ledare/.test(await boom(()=>as(db,U.lars,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'pd'})))||''));
 ok('och bara cirkeldeltagare', /inte cirkeldeltagare/.test(await boom(()=>as(db,U.lea,()=>rpc('add_circle_member',{p_circle:'k1',p_member:'rkay'})))||''));
 
@@ -725,7 +739,7 @@ ok('raderas en person ligger den rapporterade ögonblicksbilden kvar (med namnet
 head('cirklarna: kurser och lektioner');
 await C(()=>rpc('push_records',{rows:JSON.stringify([
   {kind:'course',id:'kp',data:{id:'kp',subject:'Musikproduktion',levels:[{title:'Grund',lessons:[{id:'l1',title:'DAW-grunder'},{id:'l2',title:'Trummor'}]},{title:'Fördjupning',lessons:[{id:'l3',title:'Mix'}]}]},up:1},
-  {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pc'],courseId:'kp'},up:9e12}])}));
+  {kind:'circle',id:'k1',data:{id:'k1',n:'Prod 1',subject:'Musikproduktion',leader:'Lea Ström',members:['pa','pb'],courseId:'kp'},up:9e12}])}));
 ok('producenter kan inte skapa eller ändra kurser', (await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([{kind:'course',id:'kx',data:{id:'kx'},up:1}])})))===0);
 await past('cx5', {date:'2026-10-06', status:'', hours:null, present:[]});
 const ls1 = await as(db,U.lea,()=>rpc('complete_session',{p_booking:'cx5',p_hours:3,p_present:'["pa"]',p_lesson:'l1'}));
@@ -877,12 +891,15 @@ const v1 = await as(db,AU.a1,()=>rpc('my_view',{}));
 ok('prislistan: åtta studiopaket (1 session 1 500 kr … 8 sessions 6 500 kr) och mix & master 1 500 kr/låt',
    v1.access.packages.length===8 && v1.access.packages[0].price===1500 && v1.access.packages[0].hours===3 && v1.access.packages[7].price===6500
    && v1.access.packages[7].hours===24 && v1.access.services[0].price===1500 && v1.access.notes.length===2, v1.access.packages);
-ok('kundvyn har priserna och förmånerna, profilen och ingen grupp än', v1.access.services.length===5 && v1.access.perks.length===6
-   && v1.profile.pnr===true && v1.profile.consent===true && v1.circle===null && v1.group.length===0, {c:v1.circle, p:v1.profile});
+ok('kundvyn har priserna och förmånerna, profilen och gruppen hon tilldelades', v1.access.services.length===5 && v1.access.perks.length===6
+   && v1.profile.pnr===true && v1.profile.consent===true && v1.circle?.id==='k1', {c:v1.circle, p:v1.profile});
 ok('och kontot i vyn innehåller inget personnummer', !JSON.stringify(v1).includes(P1.slice(-4) + '"') && !('pnr_enc' in v1.me));
 ok('samma inloggning kan inte registrera ett konto till', (await reg(AU.a1,{p_pnr:P2})).completed===true
    && (await one(`select count(*)::int n from members where user_id=$1`,[AU.a1])).n===1);
 await reg(AU.a1, {});      // tillbaka till P1
+ok('registreringen placerar automatiskt i en grupp med samma ämne och ledig plats', Object.values((await one(`select data->'roles' r from records where id='k1'`)).r).includes(r1.id));
+ok('och ledaren får veta och ombeds bekräfta', (await one(`select count(*)::int n from outbox where dedupe_key=$1`,['placed:k1:'+r1.id])).n===1);
+await AD(()=>rpc('place_member',{p_member:r1.id,p_circle:null,p_from:'k1'}));   // ur gruppen igen
 
 head('Access: dubbletter');
 const r2 = await reg(AU.a2, {p_name:'Annan Person', p_phone:'0739990001'});
@@ -1591,6 +1608,150 @@ ok('en inloggning utan konto kan inte lösa in', /inte pengar|Bara kunder/.test(
 const fn = await q(`select p.proname, has_function_privilege('anon', p.oid, 'execute') a from pg_proc p join pg_namespace n on n.oid=p.pronamespace
   where n.nspname='public' and p.proname in ('answer_request','request_session','book_circle_session','complete_session')`);
 ok('funktionerna är stängda för anonyma', fn.length===4 && fn.every(f=>!f.a), fn);
+}
+/* ============ CIRKELMODELLEN 2026-11 ============ */
+{
+head('Cirkelmodellen: grupper om fem, tilldelning, rotation, rapportering');
+for (const k of ['gl','gio','g2','g9']) U[k] = await user(k+'@cm.se');
+await M('gl', U.gl, 'leader', 'Gina Ledare', 'gl@cm.se', null);
+await M('gio', U.gio, 'producer', 'Gio Test', 'gio@cm.se', null);
+await q(`update members set perms = '{circles}' where id='gio'`);
+await M('g2', U.g2, 'participant', 'Två Tvåsson', 'g2@cm.se', null);
+for (const [id,n] of [['g3','Tre Tresson'],['g4','Fyra Fyrsson'],['g5','Fem Femsson'],['g6','Sex Sexsson'],['g7','Sju Sjusson']]) await M(id, null, 'participant', n, id+'@cm.se', null);
+const GIO = fn => as(db, U.gio, fn), GL = fn => as(db, U.gl, fn);
+const gx = {id:'gx', n:'Studiogrupp X', subject:'Musikproduktion', leader:'Gina Ledare', members:[], slot:{day:2, start:'18:00'}};
+ok('Gio (behörigheten circles) skapar en grupp', (await GIO(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gx',data:gx,up:1}])})))===1);
+ok('en vanlig producent kan inte', (await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gy',data:{id:'gy',n:'Y'},up:1}])})))===0);
+for (const g of ['g2','g3','g4','g5']) await GIO(()=>rpc('place_member',{p_member:g, p_circle:'gx', p_from:null}));
+const cx = (await one(`select data from records where id='gx'`)).data;
+ok('deltagarna får roll 2–5 i tur och ordning (ledaren är 1)', JSON.stringify(cx.roles)==='{"2":"g2","3":"g3","4":"g4","5":"g5"}', cx.roles);
+ok('högst fem personer med ledaren', /full \(5 personer med ledaren\)/.test(await boom(()=>GIO(()=>rpc('place_member',{p_member:'g6', p_circle:'gx', p_from:null})))||''));
+ok('ledaren får veta om varje ny deltagare', (await q(`select 1 from outbox where dedupe_key like 'placed:gx:%' and member_id='gl'`)).length===4);
+ok('bara Rasmus och Gio placerar', /Bara Rasmus och Gio/.test(await boom(()=>GL(()=>rpc('place_member',{p_member:'g6', p_circle:'gx', p_from:null})))||''));
+ok('deltagaren kan inte bekräfta sig själv', /Bara gruppens ledare/.test(await boom(()=>as(db,U.g2,()=>rpc('confirm_member',{p_circle:'gx',p_member:'g2'})))||''));
+await GL(()=>rpc('confirm_member',{p_circle:'gx',p_member:'g2'}));
+ok('ledaren bekräftar deltagaren', !!(await one(`select data->'confirmed'->'g2' t from records where id='gx'`)).t);
+for (let i=1;i<=4;i++) await GIO(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gx'+i,data:{id:'gx'+i,n:'Extra '+i,leader:'Gina Ledare',members:[]},up:1}])}));
+ok('högst fem aktiva grupper per ledare', (await one(`select count(*)::int n from records where kind='circle' and data->>'leader'='Gina Ledare' and not del`)).n===5
+   && /leder redan 5 grupper/.test(await boom(()=>q(`insert into records(kind,id,data,up) values('circle','gx6',$1,1)`,[JSON.stringify({id:'gx6',n:'Sjätte',leader:'Gina Ledare',members:[]})]))||''));
+ok('ingen dubbeltilldelning via placeringen heller', /Två Tvåsson är redan med i Studiogrupp X/.test(await boom(()=>GIO(()=>rpc('place_member',{p_member:'g2', p_circle:'gx1', p_from:null})))||''));
+await GIO(()=>rpc('place_member',{p_member:'g5', p_circle:'gx1', p_from:'gx'}));
+ok('Gio flyttar en deltagare — rollen blir ledig i den gamla gruppen', (await one(`select data->'roles' r from records where id='gx'`)).r['5']===undefined
+   && (await one(`select data->'roles' r from records where id='gx1'`)).r['2']==='g5');
+await GIO(()=>rpc('place_member',{p_member:'g5', p_circle:'gx', p_from:'gx1'}));
+ok('och tillbaka — första lediga rollen', (await one(`select data->'roles'->>'5' r from records where id='gx'`)).r==='g5');
+
+/* rotationen */
+const gb = (id, date, o) => R('booking', id, Object.assign({id, studio:'B', date, start:'18:00', end:'21:30', who:'Gina Ledare', title:'Studiogrupp X',
+  circleId:'gx', status:'', hours:null, present:[], paid:false, with:[], artistId:''}, o));
+await gb('gp1','2026-10-20'); await gb('gp2','2026-10-27'); await gb('gf1','2026-12-01'); await gb('gf2','2026-12-08');
+const P = async id => (await one(`select bs_planned($1) p`,[id])).p;
+ok('fas 1: träff 1 är 1+2+3, träff 2 är 1+4+5, träff 3 är 1+2+4', JSON.stringify((await P('gp1')).ids)==='["g2","g3"]'
+   && JSON.stringify((await P('gp2')).ids)==='["g4","g5"]' && JSON.stringify((await P('gf1')).ids)==='["g2","g4"]', [await P('gp1'), await P('gp2'), await P('gf1')]);
+const dn1 = await GL(()=>rpc('complete_session',{p_booking:'gp1',p_hours:3,p_present:'[]'}));
+ok('planerad närvaro blir aldrig faktisk närvaro', dn1.present.length===0 && JSON.stringify(dn1.rot.ids)==='["g2","g3"]', dn1);
+ok('gruppens rotation går ett steg', (await one(`select data->'rot'->>'1' s from records where id='gx'`)).s==='1');
+ok('de kommande träffarna planeras likadant efter att en träff genomförts', JSON.stringify((await P('gp2')).ids)==='["g4","g5"]' && JSON.stringify((await P('gf1')).ids)==='["g2","g4"]');
+await q(`update records set del = true, up = up + 1 where id='gp2'`);
+ok('en inställd träff räknas inte som ett genomfört steg', JSON.stringify((await P('gf1')).ids)==='["g4","g5"]', await P('gf1'));
+await GL(()=>rpc('complete_session',{p_booking:'gp1',p_hours:null,p_present:null}));
+ok('ångrad träff: rotationen backar och träffen planeras som förut', (await one(`select data->'rot'->>'1' s from records where id='gx'`)).s==='0'
+   && JSON.stringify((await P('gp1')).ids)==='["g2","g3"]' && JSON.stringify((await P('gf1')).ids)==='["g4","g5"]');
+await GL(()=>rpc('complete_session',{p_booking:'gp1',p_hours:3,p_present:'["g2"]'}));
+ok('närvaron är bara den ledaren markerar', JSON.stringify((await one(`select data->'present' p from records where id='gp1'`)).p)==='["g2"]');
+await GL(()=>rpc('set_rotation_next',{p_circle:'gx',p_step:2}));
+ok('ledaren justerar nästa träff (steg 3: 1+2+4)', JSON.stringify((await P('gf1')).ids)==='["g2","g4"]' && JSON.stringify((await P('gf2')).ids)==='["g3","g5"]');
+ok('bara steg som finns', /mellan 1 och 6/.test(await boom(()=>GL(()=>rpc('set_rotation_next',{p_circle:'gx',p_step:6})))||''));
+
+/* deltagarbyte */
+ok('ett byte kräver en anledning', /varför/.test(await boom(()=>GL(()=>rpc('swap_planned',{p_booking:'gf1',p_out:'g2',p_in:'g3',p_reason:''})))||''));
+ok('bara kommande träffar', /kommande/.test(await boom(()=>GL(()=>rpc('swap_planned',{p_booking:'gp1',p_out:'g2',p_in:'g3',p_reason:'Sjuk'})))||''));
+ok('bara någon som inte redan är planerad', /annan deltagare/.test(await boom(()=>GL(()=>rpc('swap_planned',{p_booking:'gf1',p_out:'g2',p_in:'g4',p_reason:'Sjuk'})))||''));
+const sw = await GL(()=>rpc('swap_planned',{p_booking:'gf1',p_out:'g2',p_in:'g3',p_reason:'Sjuk'}));
+ok('dokumenterat byte: nya planen, historiken och notiser till båda', JSON.stringify(sw.ids)==='["g3","g4"]'
+   && (await one(`select note from record_history where rec_id='gf1' and op='deltagarbyte'`)).note==='Två Tvåsson → Tre Tresson: Sjuk'
+   && (await q(`select 1 from outbox where dedupe_key in ('swap-in:gf1:g3','swap-out:gf1:g2')`)).length===2, sw);
+ok('bytet påverkar inte nästa träffs rotation', JSON.stringify((await P('gf2')).ids)==='["g3","g5"]');
+
+/* fas 2 */
+ok('ledaren kan inte byta fas', /Bara Rasmus och Gio/.test(await boom(()=>GL(()=>rpc('set_circle_phase',{p_circle:'gx',p_phase:2,p_note:null})))||''));
+await GIO(()=>rpc('set_circle_phase',{p_circle:'gx',p_phase:2,p_note:'Besked från Polki 2026-11-02'}));
+ok('Gio aktiverar fas 2: ledaren och tre deltagare — 1+2+3+4, sedan 1+2+3+5', JSON.stringify((await P('gf1')).ids)==='["g2","g3","g4"]'
+   && JSON.stringify((await P('gf2')).ids)==='["g2","g3","g5"]' && (await P('gf2')).phase===2, [await P('gf1'), await P('gf2')]);
+ok('ledaren och deltagarna får veta', (await q(`select member_id from outbox where dedupe_key like 'phase:gx:2:%' order by 1`)).map(r=>r.member_id).join()==='g2,g3,g4,g5,gl');
+ok('fas 1:s rotation står kvar (börjar inte om)', (await one(`select data->'rot'->>'1' s from records where id='gx'`)).s==='2');
+
+/* faktisk tid och granskning */
+await R('booking','gclash',{id:'gclash', studio:'B', date:'2026-10-20', start:'21:30', end:'23:00', who:'RKAY', title:'Mix', circleId:'', status:''});
+const rv = await GL(()=>rpc('complete_session',{p_booking:'gp1',p_hours:3,p_present:'["g2"]',p_actual_start:'18:30',p_actual_end:'22:00'}));
+ok('en krock i den faktiska tiden flaggas för granskning — bokad tid står kvar', /Rummet/.test(rv.reviewFlag) && rv.start==='18:00' && rv.end==='21:30'
+   && rv.actualStart==='18:30' && rv.actualEnd==='22:00' && +rv.hours===3, rv);
+ok('faktisk tid måste vara hela', /faktisk start och slut/.test(await boom(()=>GL(()=>rpc('complete_session',{p_booking:'gp1',p_hours:3,p_present:'[]',p_actual_start:'18:30'})))||''));
+
+/* SV:s e-tjänst: ledarens kvittens och Gios verifiering */
+ok('kvittens bara för genomförda träffar', /genomförda/.test(await boom(()=>GL(()=>rpc('report_receipt',{p_booking:'gf1',p_undo:false})))||''));
+const rr = await GL(()=>rpc('report_receipt',{p_booking:'gp1',p_undo:false}));
+ok('ledaren kvitterar "Rapportering inskickad" med namn och tid', rr.receipt.by==='Gina Ledare' && rr.receipt.at>0 && !rr.svVerified, rr);
+ok('deltagaren kan inte kvittera', /Bara gruppens ledare/.test(await boom(()=>as(db,U.g2,()=>rpc('report_receipt',{p_booking:'gp1',p_undo:false})))||''));
+ok('ledaren kan inte markera verifierat av SV', /Bara Rasmus och Gio/.test(await boom(()=>GL(()=>rpc('sv_verify',{p_booking:'gp1',p_ok:true})))||''));
+const sv = await GIO(()=>rpc('sv_verify',{p_booking:'gp1',p_ok:true}));
+ok('Gio markerar verifierat av SV — separat från kvittensen', sv.svVerified.by==='Gio Test' && sv.receipt.by==='Gina Ledare', sv);
+await GIO(()=>rpc('set_report_status',{p_circle:'gx',p_period:'2026-10',p_status:'hjalp',p_comment:'Inloggningen till e-tjänsten saknas',p_responsible:'Gio'}));
+const rs = (await one(`select data->'report'->'2026-10' r from records where id='gx'`)).r;
+ok('status per grupp och period med kommentar, ansvarig och vem som ändrade', rs.status==='hjalp' && rs.responsible==='Gio' && rs.by==='Gio Test' && /e-tjänsten/.test(rs.comment), rs);
+ok('bara giltiga statusar', /Ogiltig status/.test(await boom(()=>GL(()=>rpc('set_report_status',{p_circle:'gx',p_period:'2026-10',p_status:'klart',p_comment:null,p_responsible:null})))||''));
+
+/* en vanlig sparning från appen skriver inte över det funktionerna äger */
+const stale = Object.assign({}, cx, {n:'Studiogrupp X2', rot:{"1":0}, phase:1, confirmed:{}, report:{}, roles:{"2":"g9"}});
+await GIO(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gx',data:stale,up:9e12}])}));
+const gx2 = (await one(`select data from records where id='gx'`)).data;
+ok('en sparning med gamla värden ändrar namnet men inte rotation, fas, bekräftelser, rapport eller roller', gx2.n==='Studiogrupp X2'
+   && gx2.rot['1']===2 && gx2.phase===2 && !!gx2.confirmed.g2 && gx2.report['2026-10'].status==='hjalp' && gx2.roles['2']==='g2', gx2);
+await GIO(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gx',data:Object.assign({}, gx2, {members:['g2','g3','g5']}),up:9e12+1}])}));
+const gx3 = (await one(`select data from records where id='gx'`)).data;
+ok('tas någon bort ur medlemslistan släpper den sin roll och bekräftelse — de andra behåller sina', JSON.stringify(gx3.roles)==='{"2":"g2","3":"g3","5":"g5"}', gx3.roles);
+await GL(()=>rpc('add_circle_member',{p_circle:'gx',p_member:'g4'}));
+ok('ledaren lägger tillbaka en deltagare — den får första lediga rollen', (await one(`select data->'roles'->>'4' r from records where id='gx'`)).r==='g4');
+
+await R('booking','gk1',{id:'gk1', studio:'A', date:'2026-12-20', start:'17:00', end:'19:00', who:'Gina Ledare', title:'Mix', circleId:'', status:''});
+await R('booking','gk2',{id:'gk2', studio:'A', date:'2026-12-20', start:'20:00', end:'23:00', who:'Tre Tresson', title:'Inspelning', circleId:'', status:''});
+const kk = (await one(`select bs_circle_conflict($1, null) k`,[JSON.stringify({circleId:'gx', leaderId:'gl', date:'2026-12-20', start:'18:00', end:'21:30'})])).k;
+ok('krockkontrollen visar alla överlapp — ledaren och deltagaren', /Gina Ledare har redan Mix 17:00–19:00/.test(kk) && /Tre Tresson har Inspelning 20:00–23:00/.test(kk) && kk.split('; ').length===2, kk);
+
+/* automatisk tilldelning */
+await q(`update members set interests='{production}', avail='{we-day}' where id in ('g6','g7')`);
+await q(`update records set data = data || '{"active":false}' where kind='circle' and id <> 'gx'`);   // gx är full
+await GIO(()=>rpc('push_records',{rows:JSON.stringify([{kind:'circle',id:'gz',data:{id:'gz',n:'Helggruppen',subject:'Musikproduktion',leader:'Lea Ström',members:[],slot:{day:6,start:'11:00'}},up:1}])}));
+ok('tilldelning: samma ämne och en tid personen kan', (await one(`select bs_auto_assign('g6') c`)).c==='gz');
+await q(`update records set data = data || '{"slot":{"day":3,"start":"18:00"}}' where id='gz'`);
+ok('ingen passande tid → väntelista och Gio får veta', (await one(`select bs_auto_assign('g7') c`)).c===null
+   && !!(await one(`select 1 x from outbox where dedupe_key='queue:g7:gio'`)));
+ok('den som redan har en grupp tilldelas inte igen', (await one(`select bs_auto_assign('g6') c`)).c===null);
+await as(db,U.g2,()=>rpc('set_my_avail',{p_avail:'["wd-eve","nonsens","we-day"]'}));
+ok('tiderna sparas bara med giltiga värden', (await one(`select avail from members where id='g2'`)).avail.join()==='wd-eve,we-day');
+}
+/* ============ CIRKELMODELLEN: PÅMINNELSER OCH FREDAGSMÖTET ============ */
+{
+head('Cirkelmodellen: påminnelser om rapporteringen och fredagsmötet');
+const day = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('sv-SE', {timeZone:'Europe/Stockholm'}); };
+const RB2 = (id, ago, o) => R('booking', id, Object.assign({id, studio:'B', date:day(ago), start:'10:00', end:'13:00', who:'Gina Ledare', title:'Studiogrupp X',
+  circleId:'gx', leaderId:'gl', status:'done', hours:3, present:['g2'], with:[], artistId:'', paid:false}, o));
+await RB2('rr11', 11); await RB2('rr12', 12); await RB2('rr14', 14); await RB2('rr15', 15); await RB2('rrok', 12, {receipt:{by:'Gina Ledare', at:1}});
+await q(`select report_reminders()`); await q(`select report_reminders()`);
+const rr = await q(`select dedupe_key k from outbox where dedupe_key like 'rep-%' order by 1`);
+ok('dag 12: påminnelse till ledaren och Gio; dag 14: brådskande — en gång, inte för kvitterade eller dag 11/15', JSON.stringify(rr.map(x=>x.k))===JSON.stringify(
+  ['rep-urgent:rr14:gio','rep-urgent:rr14:gl','rep-warn:rr12:gio','rep-warn:rr12:gl']), rr);
+const thu = (await one(`select (current_date + ((4 - extract(isodow from current_date)::int + 7) % 7))::text d`)).d;
+ok('inte fredagspåminnelse andra dagar än torsdag', (await one(`select friday_reminders((date '${thu}' + 1)) n`)).n===0);
+await q(`select friday_reminders(date '${thu}')`);
+const fr = await q(`select member_id, subject from outbox where dedupe_key like 'fri%${thu}%' order by 1`);
+ok('torsdag: ledaren får "Inför fredagsmötet" och Gio en sammanfattning', fr.some(x=>x.member_id==='gl' && /Inför fredagsmötet/.test(x.subject))
+   && fr.some(x=>x.member_id==='gio' && /Fredagsmötet:/.test(x.subject)), fr);
+const note = {kind:'cnote', id:'n1', data:{id:'n1', type:'polki', text:'Fas 2 kan starta för Studiogrupp X', date:'2026-11-02', next:'Aktivera fas 2', by:'Gio Test'}, up:1};
+ok('Gio sparar Polkis besked', (await as(db,U.gio,()=>rpc('push_records',{rows:JSON.stringify([note])})))===1);
+ok('en vanlig producent kan varken skriva eller läsa det', (await as(db,U.rkay,()=>rpc('push_records',{rows:JSON.stringify([Object.assign({}, note, {id:'n2', data:{id:'n2'}})])})))===0
+   && (await as(db,U.rkay,()=>q(`select 1 from records where kind='cnote'`))).length===0);
+ok('ledaren inte heller', (await as(db,U.gl,()=>q(`select 1 from records where kind='cnote'`))).length===0);
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

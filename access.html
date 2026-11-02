@@ -159,6 +159,8 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
 .chip[aria-pressed="true"] i::after { content: ""; position: absolute; left: 4.5px; top: 1px; width: 5px; height: 9px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { border-color: rgba(255, 255, 255, 0.6); color: #fff; } .chip[aria-pressed="true"]:hover { border-color: var(--tube); } }
 @media (max-width: 559px) { .chip { width: 100%; } }
+.chips--left { justify-content: flex-start; margin: 10px 0 0; max-width: none; }
+@media (max-width: 559px) { .chips--left .chip { width: auto; flex: 1 1 calc(50% - 10px); } }
 .chips-count { margin-top: 18px; text-align: center; font-weight: 600; font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--mute); }
 .chips-count b { color: var(--tube); font-weight: 600; }
 
@@ -349,6 +351,9 @@ const DEFAULT_INTERESTS = [
 ].map(([id, label]) => ({id, label}));
 let INTERESTS = DEFAULT_INTERESTS.slice();
 const picked = new Set();
+/* när personen kan träffa sin grupp — gruppen väljs automatiskt efter ämne, tid och lediga platser */
+const AVAIL = [['wd-day', 'Vardagar dagtid'], ['wd-eve', 'Vardagar kväll'], ['we-day', 'Helger dagtid'], ['we-eve', 'Helger kväll']];
+const availSel = new Set();
 
 /* ---------- kontrollerna (speglar bs_phone, bs_pnr och register_access) ---------- */
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -520,6 +525,10 @@ const consentBox = (text, gdpr) => `<div class="f f--full">
     </label>
     <span class="err" id="e_consent" role="alert"></span>
   </div>`;
+const availBox = () => `<div class="f f--full"><span class="lbl" id="l_avail">När kan du träffa din grupp?</span>
+    <div class="chips chips--left" id="avail" role="group" aria-labelledby="l_avail">${AVAIL.map(([id, n]) =>
+      `<button type="button" class="chip" data-id="${id}" aria-pressed="${availSel.has(id)}"><i aria-hidden="true"></i>${n}</button>`).join('')}</div>
+    <span class="err" id="e_avail" role="alert"></span></div>`;
 const pickedBox = () => `<div class="f f--full"><span class="lbl" id="l_interests">Inriktning</span>
     <div class="picked none" id="picked" aria-labelledby="l_interests"></div>
     <span class="err" id="e_interests" role="alert"></span></div>`;
@@ -578,6 +587,7 @@ function render(){
           'Behövs för rapporteringen av studiecirklarna. Lagras krypterat.', full ? '' : 'f--full')}
         ${full ? field('password', 'Lösenord', `type="password" autocomplete="new-password" minlength="8" maxlength="72" required value="${esc(draft.password)}"`, 'Minst 8 tecken, med både bokstäver och siffror.') : ''}
         ${pickedBox()}
+        ${availBox()}
         ${consentBox('Jag godkänner att Bando Collective behandlar mina uppgifter så här, och att jag blir deltagare i Bandos studiocirklar.',
           `<span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer, dina inriktningar och ditt
               personnummer för att ge dig tillgång till Bando HQ och för att driva studiecirklarna.</span>
@@ -592,6 +602,11 @@ function render(){
       <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
     </form>`;
     paintPicked();
+    $('avail').addEventListener('click', e => {
+      const b = e.target.closest('.chip'); if(!b) return;
+      const id = b.dataset.id; availSel.has(id) ? availSel.delete(id) : availSel.add(id);
+      b.setAttribute('aria-pressed', availSel.has(id)); if(availSel.size) setErr('avail', '');
+    });
     wire(['name','email','phone','pnr','password']);
   }
   if(stage === 'code'){
@@ -642,6 +657,7 @@ function firstError(errs, order){
   if(!first) return false;
   showMsg('');
   if(first === 'interests'){ $('picked').scrollIntoView({block:'center', behavior:'smooth'}); }
+  else if(first === 'avail'){ $('avail').scrollIntoView({block:'center', behavior:'smooth'}); }
   else { const i = $('f_' + first); if(i){ i.focus(); i.scrollIntoView({block:'center', behavior:'smooth'}); } }
   return true;
 }
@@ -681,8 +697,9 @@ async function submit(){
   const full = mode === 'new', errs = {};
   ['name', 'phone', 'pnr'].concat(full ? ['email', 'password'] : []).forEach(k => { errs[k] = CHECK[k](draft[k], draft); });
   errs.interests = picked.size ? '' : 'Välj minst en inriktning';
+  errs.avail = availSel.size ? '' : 'Välj minst en tid du kan';
   errs.consent = draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter';
-  if(firstError(errs, ['name','email','phone','pnr','password','interests','consent'])) return;
+  if(firstError(errs, ['name','email','phone','pnr','password','interests','avail','consent'])) return;
   busy = true; render();
   try{
     if(!full){ await finish(); return; }
@@ -729,13 +746,13 @@ async function resend(){
 /* ---------- 4–5: profilen och vidare till appen ---------- */
 async function finish(){
   const args = {p_name: cleanName(draft.name), p_phone: draft.phone, p_pnr: draft.pnr, p_interests: [...picked],
-    p_consent: true, p_url: APP, p_invite: INVITE || null};
+    p_consent: true, p_url: APP, p_invite: INVITE || null, p_avail: [...availSel]};
   let r;
   if(PREVIEW){
     /* appen tar emot registreringen när den öppnas (förhandsläget, inget lämnar webbläsaren) */
     const p = pnr12(draft.pnr);
     localStorage.setItem('bandohq_access_preview', JSON.stringify({name: args.p_name, email: draft.email, phone: phoneE164(draft.phone),
-      interests: args.p_interests, pnr: p.slice(2, 8) + '-••••', invite: INVITE, at: Date.now()}));
+      interests: args.p_interests, avail: args.p_avail, pnr: p.slice(2, 8) + '-••••', invite: INVITE, at: Date.now()}));
     r = {ok: true, name: args.p_name};
   } else {
     try{ r = await rpc('register_access', args); }
