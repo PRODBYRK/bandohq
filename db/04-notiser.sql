@@ -37,6 +37,11 @@ create or replace function bs_studio(p text) returns text
 language sql stable security definer set search_path = public as $$
   select coalesce((select data->>p from records where kind='setting' and id='studios'), 'studio ' || coalesce(p,''))
 $$;
+/* Rummet för ett pass: studions namn, eller den övriga studion (X) som skrivits in i place. */
+create or replace function bs_room(d jsonb) returns text
+language sql stable security definer set search_path = public as $$
+  select case when d->>'studio' = 'X' then coalesce(nullif(trim(d->>'place'),''), 'övrig studio') else bs_studio(d->>'studio') end
+$$;
 /* ", THE BOOTH" — eller inget alls när studion inte är vald än (kundförfrågningar) */
 create or replace function bs_studio_opt(p text) returns text
 language sql stable security definer set search_path = public as $$
@@ -106,7 +111,7 @@ begin
       rqname := coalesce((select name from members where id = actor), 'Någon');
       for mid in select distinct x from unnest(ids) x where x is not null and x <> actor loop
         perform bs_notify(mid, null, 'Avbokat: ' || bs_when(d),
-          rqname || ' har avbokat ' || bs_when(d) || bs_studio_opt(d->>'studio')
+          rqname || ' har avbokat ' || bs_when(d) || case when coalesce(d->>'studio','') = '' then '' else ', ' || bs_room(d) end
           || coalesce(' (' || nullif(d->>'title','') || ')', '') || '. Tiden är ledig igen.',
           'cancel', 'cancel:' || new.id || ':' || mid);
       end loop;
@@ -122,7 +127,7 @@ begin
          and (o is null or (o->>'date', o->>'start', o->>'end', coalesce(o->>'studio',''), coalesce(o->>'place',''))
                 is distinct from (d->>'date', d->>'start', d->>'end', coalesce(d->>'studio',''), coalesce(d->>'place','')))
       then
-        line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_studio(d->>'studio')
+        line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_room(d)
                                             else coalesce(nullif(d->>'place',''), 'annan plats') end;
         for mid in select distinct x from unnest(array[bs_member_by_name(d->>'who')]
                      || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x)) x
@@ -143,7 +148,7 @@ begin
        ska inte mejla någon). Flera pass på en gång blir ett mejl per person. */
     if coalesce(d->>'status','') = '' and (o is null or o->>'status' = 'request')
        and (d->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date then
-      line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_studio(d->>'studio') else 'studio ej vald' end
+      line := bs_when(d) || ' · ' || case when coalesce(d->>'studio','') <> '' then bs_room(d) else 'studio ej vald' end
               || coalesce(' · ' || nullif(d->>'title',''), '');
       ids := array[bs_member_by_name(d->>'who'), rq]
           || array(select bs_member_by_name(x) from jsonb_array_elements_text(coalesce(d->'with','[]')) x);
@@ -327,7 +332,7 @@ begin
     for mid in select distinct x from unnest(ids) x where x is not null loop
       perform bs_notify(mid, null, 'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end'),
         'Påminnelse: imorgon ' || (b.data->>'start') || '-' || (b.data->>'end') || ' i '
-        || bs_studio(b.data->>'studio') || ' - ' || title || '.', 'reminder',
+        || bs_room(b.data) || ' - ' || title || '.', 'reminder',
         'remind:' || b.id || ':' || day || ':' || (b.data->>'start') || ':' || mid);
       n := n + 1;
     end loop;
@@ -478,7 +483,7 @@ $$;
 create or replace function live_due() returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object('token', t.token, 'member', m.id, 'booking', r.id,
-      'title', coalesce(nullif(r.data->>'title', ''), 'Session'), 'studio', bs_studio(r.data->>'studio'),
+      'title', coalesce(nullif(r.data->>'title', ''), 'Session'), 'studio', bs_room(r.data),
       'color', case r.data->>'studio' when 'A' then '#7c3aed' when 'B' then '#0284c7' else '#ff3ebf' end,
       'who', coalesce(r.data->>'who', ''), 'start', extract(epoch from bs_starts(r.data)), 'end', extract(epoch from bs_ends(r.data)))
       order by r.id, m.id), '[]'::jsonb)
@@ -565,6 +570,7 @@ revoke all on function bs_hours(text) from public, anon, authenticated;
 revoke all on function bs_member_by_name(text) from public, anon, authenticated;
 revoke all on function bs_first(text) from public, anon, authenticated;
 revoke all on function bs_studio_opt(text) from public, anon, authenticated;
+revoke all on function bs_room(jsonb) from public, anon, authenticated;
 revoke all on function outbox_claim(int) from public, anon, authenticated;
 revoke all on function outbox_done(bigint, boolean, text, text) from public, anon, authenticated;
 revoke all on function push_targets(text) from public, anon, authenticated;

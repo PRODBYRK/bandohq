@@ -4,3 +4,4 @@ app/store
 node_modules
 db/test
 .playwright-mcp
+DESIGN.md

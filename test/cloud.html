@@ -133,7 +133,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     await cloudView();
     return {view, circles, direct:direct.length, mems, seesSecret, req:req&&{who:req.who, by:req.reqBy===me().id}, forged, hack, role:me().r,
       leaderName:(circleById('c1')||{}).leader, leaderMail:(byName('Sofia Marks')||{}).email||'', short,
-      onlyBooking:/BOKA ETT PASS/.test(pv) && !/DINA TIMMAR/.test(pv), reqEnd:req&&req.end, reqStudio:req&&req.studio};`);
+      onlyBooking:/BOKA ETT PASS/i.test(pv) && !/DINA TIMMAR/i.test(pv), reqEnd:req&&req.end, reqStudio:req&&req.studio};`);
   ok('deltagaren landar i sin vy med sin cirkel', r.view==='participant' && JSON.stringify(r.circles)==='["Grupp 1"]', r);
   ok('kan inte läsa posterna direkt', r.direct===0, r.direct);
   ok('ser bara sitt eget konto i medlemstabellen', JSON.stringify(r.mems)==='["William Ek"]', r.mems);
@@ -174,7 +174,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const done = S.bookings.find(b=>b.id==='pastc1');
     openReceipt('pastc1'); await saveReceipt('pastc1', false);
     const rec = S.bookings.find(b=>b.id==='pastc1').receipt;
-    return {wait:/VÄNTAR PÅ DIG/.test(html) && /William Ek/.test(html), tel:/href="tel:\\+46705555555"/.test(mem), mail:/mailto:will@b.se/.test(mem),
+    return {wait:/VÄNTAR PÅ DIG/i.test(html) && /William Ek/.test(html), tel:/href="tel:\\+46705555555"/.test(mem), mail:/mailto:will@b.se/.test(mem),
       busy, clashMsg, booked, appr, done:{status:done.status, hours:done.hours, present:done.present.length, rot:!!done.rot}, hours:hoursFor(will.id),
       fut, pre, rec:rec && rec.by,
       secret:S.bookings.some(b=>/Hemlig/.test(b.title||''))};`);
@@ -250,7 +250,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
     const last = mine.find(b=>b.date==='${D(5)}');
     await cancelMine(last.id);
-    return {gapsAfter, prof, phone, prices:/DINA PRISER OCH FÖRMÅNER/.test(html), group:/Vi placerar dig i en grupp/.test(html),
+    return {gapsAfter, prof, phone, prices:/DINA PRISER OCH FÖRMÅNER/i.test(html), group:/Vi placerar dig i en grupp/.test(html),
       view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
       noStudio:mine.every(b=>b.studio==='' && b.end==='15:00'), note:(last||{}).note,
       after:S.bookings.filter(b=>!b.busy && b.status==='request').length};`);
@@ -270,7 +270,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const gate = document.getElementById('gateBody').innerHTML, reg = document.getElementById('gateAccess');
     const res = await fetch(CLOUD.url + '/rest/v1/rpc/public_request', {method:'POST', headers:{apikey:CLOUD.key, 'Content-Type':'application/json'},
       body:JSON.stringify({p_name:'Vera Ny', p_email:'vera@x.se', p_phone:'', p_date:'${D(6)}', p_start:'10:00', p_end:'13:00', p_studio:'', p_message:'', p_hp:''})});
-    return {noBook:!/UTAN KONTO/.test(gate), reg:reg && /access\\.html$/.test(reg.getAttribute('href')), status:res.status, msg:(await res.json()).message};`);
+    return {noBook:!/UTAN KONTO/i.test(gate), reg:reg && /access\\.html$/.test(reg.getAttribute('href')), status:res.status, msg:(await res.json()).message};`);
   ok('inloggningen leder nya till registreringen (Bando HQ Access)', r.noBook && r.reg, r);
   ok('servern tar inte emot förfrågningar utan konto längre', r.status===400 && /bandohq\.se\/access/.test(r.msg), r);
   await fetch(EMU+'/__sql', {method:'POST', body:JSON.stringify({sql:`insert into leads(id,name,email,phone,date,start_t,end_t,message,created_at) values
@@ -300,7 +300,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     openAddPerson('admin'); addDraft.name='Costa'; addDraft.email='costa@b.se';
     await saveAddPerson();
     const out = document.getElementById('apOut').textContent;
-    return {inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox), bk:bk&&{who:bk.who, studio:bk.studio}, kr:!!kr, out};`);
+    return {inbox:/NY KUND/i.test(inbox) && /Vera Ny/.test(inbox), bk:bk&&{who:bk.who, studio:bk.studio}, kr:!!kr, out};`);
   ok('managern ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokningen ligger i schemat', r.bk && r.bk.who==='Vera Ny' && r.bk.studio==='A', r.bk);
   ok('lägg till person: inbjudan går som mejl', /får ett mejl till costa@b.se/.test(r.out), r.out);
@@ -309,7 +309,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   const costa = box.find(m=>m.kind==='invite' && m.email==='costa@b.se');
   const ans = box.find(m=>m.kind==='confirmed' && m.email==='kund@b.se');
   ok('kunden får bokningsbekräftelsen med länken till Access-sidan på mejlen', vera && /^Bokningsbekräftelse/.test(vera.subject) && /access\.html\?inbjudan=/.test(vera.link), vera);
-  ok('kunden med konto får "Session bekräftad" med adress och studioregler när förfrågan godkänns', !!ans && /THE BOOTH/.test(ans.body)
+  ok('kunden med konto får "Session bekräftad" med adress och studioregler när förfrågan godkänns', !!ans && /THE BOOTH/i.test(ans.body)
      && /^Session bekräftad/.test(ans.subject) && /Råsundavägen 102/.test(ans.body) && /Max 2 extra personer/.test(ans.body), box.filter(m=>/booked|confirmed/.test(m.kind)).map(m=>m.email+' '+m.subject));
   ok('Costa får sin inbjudan på mejlen, som admin', costa && /som admin/.test(costa.body) && /#join=/.test(costa.link), costa);
   const tokV = new URL(vera.link).searchParams.get('inbjudan'), tokC = costa.link.split('#join=')[1];
@@ -342,7 +342,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const goals = (await sb('/records?select=id&kind=eq.goal')).length;
     const st = await sbRpc('notify_stats',{});
     go('team'); ${wait(300)} const team = document.getElementById('view').innerHTML;
-    return Object.assign(res, {mgr, hack, goals, st, sms:/NOTISER/.test(team) && /I KÖ/.test(team) && !/SMS/.test(team)});`);
+    return Object.assign(res, {mgr, hack, goals, st, sms:/NOTISER/i.test(team) && /I KÖ/i.test(team) && !/SMS/i.test(team)});`);
   ok('Costa går med som admin', r.view==='full' && r.role==='admin', r);
   ok('admin sköter konton men ser inte statistiken', r.crew===true && r.dash===false, r);
   ok('servern nekar admin att skapa en manager', /Bara managern/.test(r.mgr), r.mgr);
@@ -359,7 +359,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const before = await sbRpc('push_public_key',{});
     go('team'); ${wait(100)}
     await makeVapid(false); ${wait(50)}
-    const shown = /VAPID_PRIVATE_KEY/.test(document.getElementById('view').innerHTML) && vapidMade && vapidMade.priv.length===43;
+    const shown = /VAPID_PRIVATE_KEY/i.test(document.getElementById('view').innerHTML) && vapidMade && vapidMade.priv.length===43;
     await sync(true);
     const anonKey = await (await fetch(CLOUD.url + '/rest/v1/rpc/push_public_key', {method:'POST',
       headers:{apikey:CLOUD.key, Authorization:'Bearer '+CLOUD.key, 'Content-Type':'application/json'}, body:'{}'})).json();
@@ -383,8 +383,8 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     localStorage.setItem('bandohq_push','https://push.example/az-telefon');
     pushEnv = () => ({supported:true, ios:false, standalone:true, perm:'granted'});
     signOut(); ${wait(300)}
-    return {before, shown, anonKey, pub:S.pushCfg ? '' : '', ban:/Slå på notiser/i.test(ban) && /SLÅ PÅ/.test(ban), gone:!/Slå på notiser/i.test(after),
-      subs, team:/har push påslaget/.test(team) && /PUSH/.test(team), home, homeTxt:/hemskärmen/.test(homeTxt), denied, unsup,
+    return {before, shown, anonKey, pub:S.pushCfg ? '' : '', ban:/Slå på notiser/i.test(ban) && /SLÅ PÅ/i.test(ban), gone:!/Slå på notiser/i.test(after),
+      subs, team:/har push påslaget/.test(team) && /PUSH/i.test(team), home, homeTxt:/hemskärmen/.test(homeTxt), denied, unsup,
       ls:localStorage.getItem('bandohq_push')};`);
   ok('utan nycklar finns ingen servernyckel', r.before===null || r.before==='', r.before);
   ok('managern skapar push-nycklarna, den privata visas en gång', r.shown===true);
@@ -442,7 +442,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const target = accounts().find(a=>a.n==='Vera Ny');
     await deletePerson(target.id);
     const srv = (await sb('/members?select=name')).map(m=>m.name);
-    return {lost, back, status:/SYSTEMSTATUS/.test(team) && /Ansluten/.test(team) && /Notisutskick/.test(team), srv, local:!byName('Vera Ny')};`);
+    return {lost, back, status:/SYSTEMSTATUS/i.test(team) && /Ansluten/.test(team) && /Notisutskick/.test(team), srv, local:!byName('Vera Ny')};`);
   ok('en förlorad post läses tillbaka från kopian', r.lost===true && r.back===true, r);
   ok('systemstatus visar servern och notisutskicket', r.status===true);
   ok('managern raderar en person — borta på servern och i appen', !r.srv.includes('Vera Ny') && r.local===true, r.srv);
@@ -538,7 +538,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${LOGIN('az','nyttlosen1')} ${wait(200)}
     invListAt = 0; go('team'); ${wait(300)}
     const html = document.getElementById('view').innerHTML;
-    const list = /INBJUDNINGAR/.test(html) && /RKAY/.test(html);
+    const list = /INBJUDNINGAR/i.test(html) && /RKAY/i.test(html);
     openAddPerson(null,'rkay'); addDraft.email='RKAY@bando.se'; await saveAddPerson();
     const out = document.getElementById('apOut').textContent;
     return {list, out};`);
@@ -553,7 +553,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const mail = document.getElementById('jE').value, sug = document.getElementById('jU').value;
     document.getElementById('jP').value='rkay12345'; document.getElementById('jC').checked=true; await doJoin(); ${wait(250)}
     return {tag, noName, mail, sug, member:S.session&&S.session.member, view:roleView(), id:me()&&me().id};`);
-  ok('länken hälsar på RKAY, med e-post och användarnamn ifyllda', /Hej RKAY/.test(r.tag) && r.noName && r.mail==='rkay@bando.se' && r.sug==='rkay', r);
+  ok('länken hälsar på RKAY, med e-post och användarnamn ifyllda', /Hej RKAY/i.test(r.tag) && r.noName && r.mail==='rkay@bando.se' && r.sug==='rkay', r);
   ok('RKAY loggar in på sitt befintliga konto (samma id och namn)', r.member==='RKAY' && r.id==='rkay' && r.view==='full', r);
   w = await boot();
   r = await ev(w,`${LOGIN('rkay','rkay12345')} return {member:S.session&&S.session.member, n:(await sb('/members?select=id&name=eq.RKAY')).length};`);
@@ -648,10 +648,10 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     render(); const html = document.getElementById('view').innerHTML;
     let direct = ''; try{ await sbRpc('book_circle_session', {p_circle:c.id, p_date:dd(60), p_start:'09:00', p_end:'12:00', p_studio:'B'}); }catch(e){ direct = e.message; }
     const ends = S.bookings.filter(b=>b.circleId===c.id && b.start==='09:00').map(b=>b.end);
-    return {cfg, bank0, preview, btn, mine, ends, html:!/TIMBANK/.test(html) && !/480/.test(html), direct, id:c.id};`);
+    return {cfg, bank0, preview, btn, mine, ends, html:!/TIMBANK/i.test(html) && !/480/.test(html), direct, id:c.id};`);
   ok('ledaren får reglerna från servern', r.cfg===30, r.cfg);
   const okN = (r.preview.match(/✓/g)||[]).length;
-  ok('förhandsvisningen kommer från servern: alla fyra datum går', okN===4 && r.btn==='BOKA 4 PASS', [r.preview, r.btn]);
+  ok('förhandsvisningen kommer från servern: alla fyra datum går', okN===4 && r.btn==='Boka 4 pass', [r.preview, r.btn]);
   ok('träffarna bokar rummet 3,5 timmar (3 h studietid + 30 min paus) — med ledarens id', r.mine.length===4 && r.ends.every(e=>e==='12:30') && r.mine.every(x=>/:[a-z0-9_]+$/.test(x)), [r.mine, r.ends]);
   ok('ingen timbank eller 480-räknare i ledarvyn', r.html===true);
   ok('servern nekar en träff utan pausen även om appen kringgås', /bokas 3,5 timmar/.test(r.direct), r.direct);
@@ -667,7 +667,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.'+b.id))[0].data;
     circTab='groups'; go('circles'); const g = document.getElementById('view').innerHTML;
     S.circleCfg = {up:Date.now()}; save(); await sync(true);
-    return {st:srv.status, by:srv.completedBy, g:/LEDARE/.test(g) && /Sofia Marks/.test(g) && !/TIMBANK/.test(g)};`);
+    return {st:srv.status, by:srv.completedBy, g:/LEDARE/i.test(g) && /Sofia Marks/.test(g) && !/TIMBANK/i.test(g)};`);
   ok('admin markerar ett cirkelpass genomfört — via servern', r.st==='done' && r.by==='AZ', r);
   ok('admin ser ledarna (antal grupper) — ingen timbank', r.g===true);
 
@@ -688,7 +688,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     window.confirm = () => true; await reportSessions(['past1']); saveBlob = realSave;
     const srv = (await sb('/session_reports?select=booking_id,status&order=booking_id'));
     adminWeek = monday(fromIso(d)); circTab='week'; go('circles'); const html = document.getElementById('view').innerHTML;
-    return {ap, csv, srv, html:/RAPPORTERAT/.test(html) && /Timmarna är 2/.test(html)};`);
+    return {ap, csv, srv, html:/RAPPORTERAT/i.test(html) && /Timmarna är 2/.test(html)};`);
   ok('admin godkänner via servern — passet med fel timmar stoppas där', JSON.stringify(r.ap.checked)==='["past1"]' && /Timmarna stämmer inte/.test(r.ap.skipped[0].reason), r.ap);
   ok('rapporten kommer från serverns ögonblicksbild', /Grupp 1/.test(r.csv) && /Sofia Marks/.test(r.csv) && /William Ek/.test(r.csv), r.csv);
   ok('statusen ligger på servern', JSON.stringify(r.srv)==='[{"booking_id":"past1","status":"reported"}]', r.srv);
@@ -724,7 +724,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     await saveComplete(b.id);
     const srv = (await sb('/rpc/my_view',{method:'POST',body:'{}'})).bookings.find(x=>x.id===b.id);
     render(); const html = document.getElementById('view').innerHTML;
-    return {courses:S.courses.length, next:p && p.next && p.next.title, sel:sel===(p&&p.next&&p.next.id), lt:srv.lessonTitle, html:/NÄSTA · NIVÅ 1 · LEKTION 2/.test(html)};`);
+    return {courses:S.courses.length, next:p && p.next && p.next.title, sel:sel===(p&&p.next&&p.next.id), lt:srv.lessonTitle, html:/NÄSTA · NIVÅ 1 · LEKTION 2/i.test(html)};`);
   ok('ledaren får sin grupps kurs från servern', r.courses===1 && r.next==='Studion och DAW:en', r);
   ok('lektionen sparas på servern när passet markeras genomfört', r.sel===true && r.lt==='Studion och DAW:en', r);
   ok('och ledarens vy visar nästa lektion', r.html===true, r);
@@ -768,7 +768,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     rwTab='stats'; rsPer='year'; rsOff=0; render(); for(let i=0; i<30 && rwStatsKey!=='year:0'; i++) await new Promise(r=>setTimeout(r,100)); render();
     const stats = document.getElementById('view').innerHTML;
     return {pts:sum0.total, level:sum0.level, redeem, lvl:sum1.level && sum1.level.name, unl:sum1.unlocks.map(u=>u.benefit_id),
-      intel:intel && {b:+intel.bookings, notes:+intel.notes, av:intel.available}, html:/Inga belöningar väntar/.test(html), stats:/INTÄKTER/.test(stats) && /KUNDER PER NIVÅ/.test(stats) && /Bando Access/.test(stats)};`);
+      intel:intel && {b:+intel.bookings, notes:+intel.notes, av:intel.available}, html:/Inga belöningar väntar/.test(html), stats:/INTÄKTER/i.test(stats) && /KUNDER PER NIVÅ/i.test(stats) && /Bando Access/.test(stats)};`);
   ok('poängen ligger på servern: 3 h × 100 p = 300, ingen nivå än', r.pts===300 && r.level===null, r);
   ok('poäng är inte pengar — inget går att lösa in', /inte pengar/.test(r.redeem), r.redeem);
   ok('3 800 p: Bando Access, belöningen upplåst', r.lvl==='Bando Access' && JSON.stringify(r.unl)==='["access-pkg20"]', r);
@@ -794,8 +794,8 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     agendaTab='general'; go('agenda'); const gen = document.getElementById('view').innerHTML;
     goalsWho=null; go('goals'); const over = document.getElementById('view').innerHTML;
     goalsWho='rkay'; render(); const rk = document.getElementById('view').innerHTML;
-    return {gen:/Fem placeringar under Q4/.test(gen) && /lagt till av RKAY/.test(gen) && !/Mixa vocals själv/.test(gen),
-      over:/Allas målsättningar/.test(over) && /RKAY/.test(over), rk:/Mixa vocals själv/.test(rk) && !/Fem placeringar/.test(rk)};`);
+    return {gen:/Fem placeringar under Q4/.test(gen) && /lagt till av RKAY/i.test(gen) && !/Mixa vocals själv/.test(gen),
+      over:/Allas målsättningar/.test(over) && /RKAY/i.test(over), rk:/Mixa vocals själv/.test(rk) && !/Fem placeringar/.test(rk)};`);
   ok('hela teamet ser punkten i allmänna agendan — men inte RKAYs mål där', r.gen===true);
   ok('managern ser RKAYs målsättning — och bara den personliga', r.over && r.rk, r);
   let gbox = await outbox();
@@ -835,7 +835,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     for(let i=0; i<40 && syncing; i++) await new Promise(r=>setTimeout(r,100));
     await sync(true); go('today'); const inbox = document.getElementById('view').innerHTML;
     const x = (S.accessReqs||[]).find(a=>a.email==='alva@acc.se'); await approveAccess(x.id);
-    return {inbox:/Alva Strand/.test(inbox) && /ACCESS/.test(inbox)};`);
+    return {inbox:/Alva Strand/.test(inbox) && /ACCESS/i.test(inbox)};`);
   ok('admin ser förfrågan i inkorgen och godkänner', r.inbox, r);
   abox0 = await outbox();
   const invMail = abox0.filter(m=>m.kind==='invite-access' && m.email==='alva@acc.se').pop();
@@ -869,7 +869,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${wait(700)}
     const m = me(), html = document.getElementById('view').innerHTML;
     return {who:m&&m.n, role:m&&m.r, view:roleView(), part:m&&m.part, ints:(m&&m.interests||[]).join(), prof:S.profile, gaps:profileGaps(),
-      group:/DIN STUDIOCIRKEL/.test(html) && /NÄSTA TRÄFF/.test(html) && !/Vi placerar dig/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html), hash:location.hash};`);
+      group:/DIN STUDIOCIRKEL/i.test(html) && /NÄSTA TRÄFF/i.test(html) && !/Vi placerar dig/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/i.test(html), hash:location.hash};`);
   ok('appen: inloggad som kund och cirkeldeltagare, profilen komplett', r.who==='Alva Strand' && r.role==='customer' && r.view==='customer' && r.part===true
      && r.ints==='production' && r.prof && r.prof.pnr===true && r.gaps===null && !r.hash, r);
   ok('kundvyn: placerad automatiskt i en grupp (samma ämne, ledig plats) och priserna', r.group && r.prices, r);
@@ -925,7 +925,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     openDistribute(); const plan = distPlan.find(x=>x.id===alva.id); distPlan.forEach(x=>{ if(x.id!==alva.id) x.circle = ''; }); if(plan) plan.circle = 'cAcc';
     await doDistribute(); ${wait(300)}
     const srv = (await sb('/records?select=data&kind=eq.circle&id=eq.cAcc'))[0].data.members;
-    return {waiting:/VÄNTAR PÅ EN GRUPP/.test(people) && /Alva Strand/.test(people) && /ACCESS/.test(people) && /990315-••••/.test(people),
+    return {waiting:/VÄNTAR PÅ EN GRUPP/i.test(people) && /Alva Strand/.test(people) && /ACCESS/i.test(people) && /990315-••••/.test(people),
       prof:/990315-••••/.test(prof) && /via Access/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof), shown, sug:plan && plan.circle, srv, id:alva.id};`);
   ok('utan grupp: admin ser henne under "Väntar på en grupp" med maskerat personnummer', r.waiting===true);
   ok('profilen: registrerad via Access, inriktning, maskerat personnummer', r.prof===true);
@@ -938,7 +938,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
     await cloudView(); render();
     const html = document.getElementById('view').innerHTML;
-    return {view:roleView(), circle:/DIN STUDIOCIRKEL/.test(html) && /Produktion – Access/.test(html) && /ANSVARIG PRODUCENT/.test(html) && /RKAY/.test(html),
+    return {view:roleView(), circle:/DIN STUDIOCIRKEL/i.test(html) && /Produktion – Access/.test(html) && /ANSVARIG PRODUCENT/i.test(html) && /RKAY/i.test(html),
       contact:(S.contact||{}).name};`);
   ok('kunden ser sin grupp och sin ansvariga producent', r.view==='customer' && r.circle===true, r);
   ok('och gruppens ledare är kontakten vid sen avbokning', r.contact==='RKAY', r.contact);
@@ -968,9 +968,9 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     let wrong = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(9)}',p_start:'12:00',p_end:'15:00',p_studio:'',p_note:'',p_with:['AZ']}); }catch(e){ wrong = e.message; }
     openSlot('${D(9)}','12:00'); await sendSlot('${D(9)}'); ${wait(200)}
     const srv = (await sbRpc('my_view',{})).bookings.find(b=>b.date==='${D(9)}' && b.status==='request');
-    return {chips:/BOKA MED/.test(html) && /RKAY/.test(html), pre, wrong, srv:srv && {with:srv.with, id:srv.id}};`);
+    return {chips:/BOKA MED/i.test(html) && /RKAY/i.test(html), pre, wrong, srv:srv && {with:srv.with, id:srv.id}};`);
   ok('artisten ser sin producent förvald', r.chips && JSON.stringify(r.pre)==='["RKAY"]', r);
-  ok('servern nekar någon som inte är artistens producent', /Du kan inte boka med AZ/.test(r.wrong), r.wrong);
+  ok('servern nekar någon som inte är artistens producent', /Du kan inte boka med AZ/i.test(r.wrong), r.wrong);
   ok('förfrågan med RKAY ligger på servern', r.srv && JSON.stringify(r.srv.with)==='["RKAY"]', r.srv);
   const reqId = r.srv && r.srv.id;
   let pbox = await outbox();
@@ -981,7 +981,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     await sync(true); go('today'); const inbox = document.getElementById('view').innerHTML;
     openApprove('${reqId}'); await doApprove('${reqId}', 'A'); ${wait(200)} await sync(true);
     const srv = (await sb('/records?select=data&kind=eq.booking&id=eq.${reqId}'))[0].data;
-    return {inbox:/Alva Strand/.test(inbox) && /med RKAY/.test(inbox), srv:{status:srv.status, studio:srv.studio, with:srv.with}};`);
+    return {inbox:/Alva Strand/.test(inbox) && /med RKAY/i.test(inbox), srv:{status:srv.status, studio:srv.studio, with:srv.with}};`);
   ok('RKAY ser förfrågan i sin inkorg och godkänner', r.inbox && r.srv.status==='' && r.srv.studio==='A' && JSON.stringify(r.srv.with)==='["RKAY"]', r);
 
   /* ============ REWARDS MOT SERVERN: VÄRVA EN VÄN, BONUSAR OCH KAMPANJ ============ */
@@ -994,7 +994,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const card = document.getElementById('view').innerHTML;
     const code = (await sb('/rpc/points_summary', {method:'POST', body:'{}'})).refCode;
     openInviteFriend(); document.getElementById('frN').value = 'Vilma Vän'; document.getElementById('frE').value = 'vilma@acc.se'; await sendInviteFriend();
-    return {card:/VÄRVA EN ARTIST/.test(card) && /Så fungerar det/.test(card) && /access\\?ref=[0-9A-F]{6}/.test(card), code, sent:document.getElementById('frOut').textContent};`);
+    return {card:/VÄRVA EN ARTIST/i.test(card) && /Så fungerar det/.test(card) && /access\\?ref=[0-9A-F]{6}/.test(card), code, sent:document.getElementById('frOut').textContent};`);
   ok('artisten har en värvningslänk från servern, och bjuder in en vän med e-post', r.card && /^[0-9A-F]{6}$/.test(r.code||'') && /Inbjudan skickad/.test(r.sent), r);
   let fbox = await outbox();
   const fm = fbox.filter(m=>m.kind==='invite-access' && m.email==='vilma@acc.se').pop();
@@ -1040,7 +1040,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`document.getElementById('gE').value='alva@acc.se'; document.getElementById('gP').value='studio2026x'; await doLogin(); ${wait(400)}
     await cloudView(); rwMineAt = 0; render(); ${wait(400)} render();
     const html = document.getElementById('view').innerHTML;
-    return {friend:/Vilma Vän/.test(html) && /KLAR · \\+300/.test(html), camp:/rwcamp/.test(html) && /Dubbla poäng/.test(html)};`);
+    return {friend:/Vilma Vän/.test(html) && /KLAR · \\+300/i.test(html), camp:/rwcamp/.test(html) && /Dubbla poäng/.test(html)};`);
   ok('Alva ser vännen som klar och kampanjen som pågår', r.friend && r.camp, r);
 
   /* ============ BANDO EDUCATION MOT SERVERN ============ */

@@ -152,7 +152,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('upptagen studio erbjuds inte', JSON.stringify(r.free)==='["B"]', r.free);
   ok('godkännande mot upptagen tid nekas', r.blockedStays==='request', r.blockedStays);
   ok('den lediga studion går att godkänna mot', r.otherWorks==='' && r.studio==='B', r);
-  ok('men inte när ledaren redan har ett pass då', r.leaderClash==='request' && /Krock: RKAY har redan/.test(r.toast), r);
+  ok('men inte när ledaren redan har ett pass då', r.leaderClash==='request' && /Krock: RKAY har redan/i.test(r.toast), r);
 
   r = await ev(w,`
     S.bookings.push({id:'rq3',studio:'',date:'2026-12-01',start:'18:00',end:'21:00',
@@ -255,7 +255,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const n2 = document.querySelectorAll('#gateBody .member').length;
     byId('adrey').active=true; save(); renderGate();
     const text = body.replace(/<[^>]+>/g,' ');
-    return {gateOn, preview:/FÖRHANDSVISNING/.test(tag), n, total:activeAcc().length, n2,
+    return {gateOn, preview:/FÖRHANDSVISNING/i.test(tag), n, total:activeAcc().length, n2,
       groups:['MANAGER','PRODUCENT','DELTAGARE'].every(g=>body.includes(g)),
       noPad:!/pinpad|pindots/.test(body), noCode:!/(^|[^a-zåäö])kod([^a-zåäö]|$)/i.test(text),
       noGoogle:!/Fortsätt med Google/.test(body),
@@ -291,8 +291,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const blocked = !S.session;
     byId('adrey').active=true; save();
     return {mgr, back, part, blocked,
-      prof:{switch:/BYT KONTO/.test(prof), code:/BYT KOD|SÄTT EN KOD/.test(prof)},
-      pprof:{switch:/BYT KONTO/.test(pprof), code:/BYT KOD|SÄTT EN KOD/.test(pprof)}};`);
+      prof:{switch:/BYT KONTO/i.test(prof), code:/BYT KOD|SÄTT EN KOD/i.test(prof)},
+      pprof:{switch:/BYT KONTO/i.test(pprof), code:/BYT KOD|SÄTT EN KOD/i.test(pprof)}};`);
   ok('ett tryck loggar in managern med hela appen', r.mgr.member==='AZ' && r.mgr.view==='full' && r.mgr.app && r.mgr.gateOff, r.mgr);
   ok('sessionen är märkt som förhandsvisning', r.mgr.via==='preview', r.mgr.via);
   ok('BYT KONTO går direkt tillbaka till väljaren', r.back.gate===true && r.back.session===null, r.back);
@@ -340,12 +340,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='AZ';
     return {
       part:{len:part.len, err:part.err,
-        noCurr:!/Arrangemang/.test(part.html||''), hasBook:/BOKA ETT PASS/.test(part.html||'') && /tl-bar/.test(part.html||''),
-        noHours:!/DINA TIMMAR/.test(part.html||''), noSchedule:!/RESTEN AV VECKAN/.test(part.html||''),
+        noCurr:!/Arrangemang/.test(part.html||''), hasBook:/BOKA ETT PASS/i.test(part.html||'') && /tl-bar/.test(part.html||''),
+        noHours:!/DINA TIMMAR/i.test(part.html||''), noSchedule:!/RESTEN AV VECKAN/i.test(part.html||''),
         noFiles:!/Lägg in ditt arbete/.test(part.html||'')},
       lead:{len:lead2.len, err:lead2.err,
-        hasReq:/VÄNTAR PÅ DIG/.test(lead2.html||''), hasMembers:/William Ek/.test(lead2.html||''),
-        noCrew:!/STUDIOBELÄGGNING/.test(lead2.html||'')},
+        hasReq:/VÄNTAR PÅ DIG/i.test(lead2.html||''), hasMembers:/William Ek/.test(lead2.html||''),
+        noCrew:!/STUDIOBELÄGGNING/i.test(lead2.html||'')},
       cust:{len:cust.len, err:cust.err, hasBook:/Boka studiotid/.test(cust.html||'') && /tl-bar/.test(cust.html||''),
         noCircles:!/läroplan/i.test(cust.html||'')},
       navHidden: document.getElementById('nav').style.display};`);
@@ -442,7 +442,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     go('dash'); const prodDash = view;
     go('more'); const moreHtml = document.getElementById('view').innerHTML;
     S.session.member='AZ';
-    return {mgr, prod, redirect, prodDash, moreHasStats:/STATISTIK/.test(moreHtml)};`);
+    return {mgr, prod, redirect, prodDash, moreHasStats:/STATISTIK/i.test(moreHtml)};`);
   ok('fem flikar i botten', r.mgr.tabs==='today,week,agenda,beats,more', r.mgr.tabs);
   ok('managern når statistiken via MER', /dash/.test(r.mgr.more) && r.mgr.dash===true, r.mgr);
   ok('producenten når INTE statistiken', !/dash/.test(r.prod.more) && r.prod.dash===false, r.prod);
@@ -467,9 +467,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     goalsWho='adrey'; render();
     const drill = document.getElementById('view').innerHTML;
     return {canOther, canOwn, seesOwn:/Din målsättning/.test(h),
-      leaks:/ADREYS HEMLIGA/.test(h)||/ADREYS PLAN/.test(h)||/Allas målsättningar/.test(h),
-      untouched, overShowsBoth:/RKAY/.test(over)&&/ADREY/.test(over),
-      drillShows:/ADREYS HEMLIGA/.test(drill)&&/ADREYS PLAN/.test(drill)};`);
+      leaks:/ADREYS HEMLIGA/i.test(h)||/ADREYS PLAN/i.test(h)||/Allas målsättningar/.test(h),
+      untouched, overShowsBoth:/RKAY/i.test(over)&&/ADREY/i.test(over),
+      drillShows:/ADREYS HEMLIGA/i.test(drill)&&/ADREYS PLAN/i.test(drill)};`);
   ok('producenten får inte se andras mål', r.canOther===false);
   ok('men sina egna', r.canOwn===true);
   ok('kvarglömt val leder ändå till de egna målen', r.seesOwn===true);
@@ -586,10 +586,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   r = await ev(w,`
     window.confirm = () => true;
     const MX = window.__mockDbx;
-    const before = {configured:dbxConfigured(), ready:dbxReady(), card:/KOPPLA DROPBOX/.test(dropboxCard())};
+    const before = {configured:dbxConfigured(), ready:dbxReady(), card:/KOPPLA DROPBOX/i.test(dropboxCard())};
     S.dropbox.appKey = 'mockappkey1'; save();
     await dbxConnect();
-    const mid = {connected:dbxConnected(), ready:dbxReady(), card:/SÄTT UPP MAPPARNA/.test(dropboxCard())};
+    const mid = {connected:dbxConnected(), ready:dbxReady(), card:/SÄTT UPP MAPPARNA/i.test(dropboxCard())};
     const res = await dbxSetup(()=>{});
     const folders = ['/BANDOHQ','/BANDOHQ/Beats','/BANDOHQ/Beats/RKAY','/BANDOHQ/Beats/ADREY','/BANDOHQ/Beats/AZ']
       .every(p=>Object.values(MX.f).some(f=>f.folder && f.path===p));
@@ -673,10 +673,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='AZ'; openProfile('adrey');
     const mgrProf = document.getElementById('sheetBody').innerHTML; closeSheet();
     return {sessions:st.sessions, releases:st.releases, perRelease:st.perRelease, streams:st.streams,
-      topPair:/RKAY[\\s\\S]{0,200}ADREY[\\s\\S]{0,60}3 pass/.test(cm) || /ADREY[\\s\\S]{0,200}RKAY[\\s\\S]{0,60}3 pass/.test(cm),
+      topPair:/RKAY[\\s\\S]{0,200}ADREY[\\s\\S]{0,60}3 pass/i.test(cm) || /ADREY[\\s\\S]{0,200}RKAY[\\s\\S]{0,60}3 pass/i.test(cm),
       adreyHours:/ADREY<\\/text>[\\s\\S]{0,80}9 h/.test(bars),
-      other:{beats:/BEATS/.test(otherProf), pass:/<em>PASS<\\/em>/.test(otherProf), mates:/JOBBAR MEST MED/.test(otherProf), note:/privata/.test(otherProf)},
-      own:{pass:/<em>PASS<\\/em>/.test(ownProf)}, mgr:{pass:/<em>PASS<\\/em>/.test(mgrProf), mates:/JOBBAR MEST MED/.test(mgrProf)}};`);
+      other:{beats:/BEATS/i.test(otherProf), pass:/<em>PASS<\\/em>/.test(otherProf), mates:/JOBBAR MEST MED/i.test(otherProf), note:/privata/.test(otherProf)},
+      own:{pass:/<em>PASS<\\/em>/.test(ownProf)}, mgr:{pass:/<em>PASS<\\/em>/.test(mgrProf), mates:/JOBBAR MEST MED/i.test(mgrProf)}};`);
   ok('artisten har 4 pass och 2 släpp', r.sessions===4 && r.releases===2, r);
   ok('pass per släpp = 2', r.perRelease===2, r.perRelease);
   ok('streams summeras över släppen', r.streams===150000, r.streams);
@@ -785,11 +785,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     let formOk = true; try{ openForm(null,null,'c1'); }catch(e){ formOk = e.message; }
     const form = document.getElementById('sheetBody').innerHTML; closeSheet();
     return {
-      pass:{book:/BOKA PASS/.test(pass), wait:/VÄNTAR PÅ DIG/.test(pass) && /Godkänn/.test(pass),
-        mark:/ATT MARKERA/.test(pass) && /Genomförd/.test(pass), coming:/KOMMANDE/.test(pass),
-        curr:/class="currlinks"/.test(pass) && pass.indexOf('currlinks') < pass.indexOf('BOKA PASS'), noStats:!/STUDIOBELÄGGNING|STATISTIK/.test(pass)},
+      pass:{book:/BOKA PASS/i.test(pass), wait:/VÄNTAR PÅ DIG/i.test(pass) && /Godkänn/.test(pass),
+        mark:/ATT MARKERA/i.test(pass) && /Genomförd/.test(pass), coming:/KOMMANDE/i.test(pass),
+        curr:/class="currlinks"/.test(pass) && pass.indexOf('currlinks') < pass.indexOf('Boka pass'), noStats:!/STUDIOBELÄGGNING|STATISTIK/i.test(pass)},
       mem:{tel:/href="tel:0701"/.test(mem), sms:/href="sms:0701"/.test(mem), mail:/href="mailto:w@b.se"/.test(mem),
-        all:/mailto:\\?bcc=/.test(mem), hours:/Person \\d · [\\d,.]+ h/.test(mem) && !/480/.test(mem), confirm:/BEKRÄFTA/.test(mem), both:/William Ek/.test(mem)&&/Nora Lind/.test(mem)},
+        all:/mailto:\\?bcc=/.test(mem), hours:/Person \\d · [\\d,.]+ h/.test(mem) && !/480/.test(mem), confirm:/BEKRÄFTA/i.test(mem), both:/William Ek/.test(mem)&&/Nora Lind/.test(mem)},
       nav:document.getElementById('nav').style.display, formOk, formCircle:/Boka session/.test(form)};`);
   ok('ledaren har en BOKA PASS-knapp', r.pass.book===true);
   ok('förfrågningar ligger överst med Godkänn', r.pass.wait===true);
@@ -822,7 +822,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openArtist('a1'); const sheet = document.getElementById('sheetBody').innerHTML; closeSheet();
     return {start, up1, ranks, nochange, alone, top, samiPrio, prodMove, rows:(html.match(/class="rankrow"/g)||[]).length,
       arrows:/Flytta Sami upp/.test(html), opts, groups, badge:/Prio 1 · #1/.test(sheet),
-      tiers:['PRIO 1','PRIO 2','PRIO 3'].every(t=>html.includes(t)), noPrio:!/HÖG|MELLAN|LÅG/.test(html+sheet)};`);
+      tiers:['PRIO 1','PRIO 2','PRIO 3'].every(t=>html.includes(t)), noPrio:!/HÖG|MELLAN|LÅG/i.test(html+sheet)};`);
   ok('grupperade på prio 1/2/3, sedan namn', r.start==='Kairo,Nova,Lizzie,Sami', r.start);
   ok('flytta upp byter plats inom graden', r.up1==='Nova,Kairo,Lizzie,Sami', r.up1);
   ok('hela listan numreras om 10, 20, 30…', r.ranks==='10,20,30,40', r.ranks);
@@ -853,7 +853,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const week = document.getElementById('view').innerHTML;
     const panel = document.querySelector('.myag').innerHTML;
     const st0 = document.querySelector('.myag').classList.contains('open'); toggleMyAg(); const st1 = document.querySelector('.myag').classList.contains('open'); toggleMyAg(); const st2 = document.querySelector('.myag').classList.contains('open'); const closed = st0!==st1 && st2===st0;
-    return {today:{card:/VECKANS AGENDA/.test(today), people:['RKAY','ADREY','Alla'].every(n=>today.includes(n)),
+    return {today:{card:/VECKANS AGENDA/i.test(today), people:['RKAY','ADREY','Alla'].every(n=>today.includes(n)),
         count:/1\\/2/.test(today), old:/Gammal vecka/.test(today)}, toggled, other,
       week:{panel:/Min agenda/.test(week), mine:/Skicka stems/.test(panel), notOthers:!/Vocals/.test(panel.split('FÖR ALLA')[0]),
         shared:/Städa/.test(panel), layout:/wk-layout/.test(week)}, closed};`);
@@ -894,9 +894,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const team = document.getElementById('view').innerHTML;
     const res = {view:roleView(), crew:can('manageCrew'), circles:can('manageCircles'), artists:can('manageArtists'),
       dash:can('dashboard'), dashView:canView('dash'), goals:can('viewGoals','rkay'), grant:can('grantManager'),
-      roles:inviteRoles().map(x=>x[0]).join(','), addBtn:/LÄGG TILL PERSON/.test(team), sms:/NOTISER/.test(team) && !/SMS/.test(team),
-      invCard:/INBJUDNINGAR/.test(team) && /ADREY/.test(team),
-      cam:/KAMERATEAM/.test(team) && /Moez/.test(team)};
+      roles:inviteRoles().map(x=>x[0]).join(','), addBtn:/LÄGG TILL PERSON/i.test(team), sms:/NOTISER/i.test(team) && !/SMS/i.test(team),
+      invCard:/INBJUDNINGAR/i.test(team) && /ADREY/i.test(team),
+      cam:/KAMERATEAM/i.test(team) && /Moez/.test(team)};
     closeSheet(); openAccount('az'); res.blocked = !document.getElementById('sheet').classList.contains('on');
     closeSheet();
     openAddPerson('camera'); addDraft.name='Bo Lind'; addDraft.email='Bo@D2L.se'; addDraft.team='D2L';
@@ -907,7 +907,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openAddPerson('producer'); addDraft.name='Ny Utan'; addDraft.email='ny@';
     await saveAddPerson(); res.badMail = !byName('Ny Utan');
     /* ADREY finns redan men har aldrig loggat in */
-    openAddPerson(null, 'adrey'); res.exSheet = /Bjud in ADREY/.test(document.getElementById('sheetBody').textContent) && !document.getElementById('apN');
+    openAddPerson(null, 'adrey'); res.exSheet = /Bjud in ADREY/i.test(document.getElementById('sheetBody').textContent) && !document.getElementById('apN');
     addDraft.email='adrey@gmail.com'; await saveAddPerson();
     const i1 = S.invites.filter(i=>i.member_id==='adrey');
     openAddPerson(null, 'adrey'); pickAddRole('admin'); await saveAddPerson();
@@ -933,7 +933,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     pickAddRole('leader'); res.keepOne = addDraft.lead===true;
     openAddPerson(null,'rkay'); res.rkayPre = addDraft.main==='producer' && addDraft.lead===true && addDraft.leads.join()==='c1';
     closeSheet();
-    go('goals'); res.goalsLeak = /RKAYS MÅL/.test(document.getElementById('view').innerHTML);
+    go('goals'); res.goalsLeak = /RKAYS MÅL/i.test(document.getElementById('view').innerHTML);
     S.session.member='AZ';
     return res;`);
   ok('admin får hela appen', r.view==='full');
@@ -971,7 +971,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     document.getElementById('jU').value = 'adrey'; document.getElementById('jC').checked=true; await doJoin();
     const a = byId('adrey');
     return {tag, noName, sug, mail, same: accounts().length===before, r:a.r, username:a.username, login:a.login, who:S.session&&S.session.member};`);
-  ok('ADREYS länk hälsar med namnet och frågar inte efter det', /Hej ADREY/.test(r.tag) && r.noName, r);
+  ok('ADREYS länk hälsar med namnet och frågar inte efter det', /Hej ADREY/i.test(r.tag) && r.noName, r);
   ok('användarnamnet föreslås och e-posten är ifylld', r.sug==='adrey' && r.mail==='adrey@gmail.com', r);
   ok('inloggningen kopplas till ADREYS konto — samma person, rollen från länken', r.same && r.r==='admin' && r.username==='adrey' && r.login===true && r.who==='ADREY', r);
   boot.hash = '#join=' + LINA_TOK;
@@ -1086,10 +1086,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='RKAY'; await doApprove(rq.id,'B');
     const after = S.bookings.find(b=>b.id===rq.id).status;
     S.session.member='AZ';
-    return {ss:ss.map(s=>s.hm+':'+s.st).join(' '), chips, noNames:!/ADREY|Hemlig/.test(html), bokat:/>Bokat</.test(html),
+    return {ss:ss.map(s=>s.hm+':'+s.st).join(' '), chips, noNames:!/ADREY|Hemlig/i.test(html), bokat:/>Bokat</.test(html),
       noStudioPick:!/spick/.test(html) && openArgs.length>0 && openArgs.every(n=>n===2), fullDay, fullChip:!!fullChip,
       end, taken, takenMsg, takenBtn, late, lateMsg, rqv, blocks,
-      rkay:/VÄNTAR PÅ SVAR/.test(rkay) && /Nora Lind/.test(rkay) && !/önskar/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
+      rkay:/VÄNTAR PÅ SVAR/i.test(rkay) && /Nora Lind/.test(rkay) && !/önskar/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
   ok('en starttid går när minst en studio är ledig i tre timmar', r.ss==='10:00:ok 11:00:taken 12:00:taken 13:00:taken 14:00:taken 15:00:ok 16:00:ok 17:00:ok 18:00:ok 19:00:ok 20:00:ok', r.ss);
   ok('kunden ser starttiderna som 3-timmarspass, de bokade överstrukna', /^10:00–13:00 11:00–14:00× 12:00–15:00× .*20:00–23:00$/.test(r.chips), r.chips);
   ok('och vad som är bokat — men inte vem eller vad', r.bokat===true && r.noNames===true, r);
@@ -1117,8 +1117,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const mine = S.bookings.find(b=>b.who==='Nora Lind' && b.start==='17:00');
     await cancelMine(mine.id); const gone = S.bookings.find(b=>b.id===mine.id).del;
     S.session.member='AZ';
-    return {btns, lateSheet:/Mindre än en timme kvar/.test(lateSheet) && /RKAY/.test(lateSheet) && /mailto:rkay@b.se/.test(lateSheet), stillThere, gone,
-      contact:(/DIN PRODUCENT/.test(html) || /ANSVARIG PRODUCENT/.test(html)) && /rkay@b.se/.test(html)};`);
+    return {btns, lateSheet:/Mindre än en timme kvar/.test(lateSheet) && /RKAY/i.test(lateSheet) && /mailto:rkay@b.se/.test(lateSheet), stillThere, gone,
+      contact:(/DIN PRODUCENT/i.test(html) || /ANSVARIG PRODUCENT/i.test(html)) && /rkay@b.se/.test(html)};`);
   ok('med mindre än en timme kvar står det "Hör av dig" i stället för Avboka', /Hör av dig/.test(r.btns) && /Avboka/.test(r.btns), r.btns);
   ok('och kunden hänvisas till sin producent med kontaktuppgifter', r.lateSheet===true && r.stillThere===true, r);
   ok('i god tid avbokar kunden själv', r.gone===true);
@@ -1139,11 +1139,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const bk = S.bookings.find(b=>b.leadId===lead.id), inv = S.invites.find(i=>i.lead_id===lead.id);
     openLead(tel.id); const telSheet = document.getElementById('sheetBody').innerHTML;
     await approveLead(tel.id,'A'); const smsSheet = document.getElementById('sheetBody').innerHTML;
-    return {noBook:!/BOKA STUDIOTID/.test(gate), reg:reg && /access\.html$/.test(reg.getAttribute('href')) && /SKICKA FÖRFRÅGAN/.test(reg.textContent),
-      inbox:/NY KUND/.test(inbox) && /Vera Ny/.test(inbox),
+    return {noBook:!/BOKA STUDIOTID/i.test(gate), reg:reg && /access\.html$/.test(reg.getAttribute('href')) && /SKICKA FÖRFRÅGAN/i.test(reg.textContent),
+      inbox:/NY KUND/i.test(inbox) && /Vera Ny/.test(inbox),
       bk:bk && {who:bk.who, status:bk.status}, inv:inv && {role:inv.role, name:inv.name, max:inv.max_uses}, tok:inv&&inv.token, leadStatus:lead.status,
-      telSheet:/TELEFON/.test(telSheet) && !/E-POST/.test(telSheet) && /färdig text/.test(telSheet),
-      sms:/SKICKA SOM SMS/.test(smsSheet) && /sms:\\+46701234567/.test(smsSheet) && /#join=/.test(leadText)};`);
+      telSheet:/TELEFON/i.test(telSheet) && !/E-POST/i.test(telSheet) && /färdig text/.test(telSheet),
+      sms:/SKICKA SOM SMS/i.test(smsSheet) && /sms:\\+46701234567/.test(smsSheet) && /#join=/.test(leadText)};`);
   ok('inloggningen: "Boka studiotid utan konto" är ersatt av Bando HQ Access — skicka förfrågan', r.noBook && r.reg, r);
   ok('admin ser nya kunder på IDAG', r.inbox===true);
   ok('godkänd: bokning i schemat och en kundinbjudan för en person', r.bk && r.bk.who==='Vera Ny' && r.bk.status==='' && r.inv && r.inv.role==='customer' && r.inv.max===1 && r.leadStatus==='approved', r);
@@ -1172,12 +1172,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const rq = S.bookings.find(b=>b.status==='request' && b.reqBy==='p1');
     const rqv = rq && {circle:rq.circleId, who:rq.who, start:rq.start, end:rq.end, studio:rq.studio};
     render(); const html2 = document.getElementById('view').innerHTML;
-    const groupBtn = [...document.querySelectorAll('#view .srow')].find(r=>/Studio|THE BOOTH|STUDIO A/.test(r.textContent) && /18:00–21:00/.test(r.textContent));
+    const groupBtn = [...document.querySelectorAll('#view .srow')].find(r=>/Studio|THE BOOTH|STUDIO A/i.test(r.textContent) && /18:00–21:00/.test(r.textContent));
     await cancelMine(rq.id); const gone = S.bookings.find(b=>b.id===rq.id).del;
     S.session.member='AZ';
-    return {book:/BOKA ETT PASS/.test(html) && /Er cirkel/.test(html), noCurr:!/Arrangemang|DINA TIMMAR/.test(html), sheet:/går till <b>RKAY<\\/b>/.test(sheet) && !/MEDDELANDE/.test(sheet),
-      rqv, waiting:/VÄNTAR PÅ SVAR/.test(html2), groupNoCancel: !!groupBtn && !groupBtn.querySelector('button'), gone,
-      leader:/DIN CIRKELLEDARE/.test(html) && /rkay@b.se/.test(html)};`);
+    return {book:/BOKA ETT PASS/i.test(html) && /Er cirkel/.test(html), noCurr:!/Arrangemang|DINA TIMMAR/i.test(html), sheet:/går till <b>RKAY<\\/b>/.test(sheet) && !/MEDDELANDE/i.test(sheet),
+      rqv, waiting:/VÄNTAR PÅ SVAR/i.test(html2), groupNoCancel: !!groupBtn && !groupBtn.querySelector('button'), gone,
+      leader:/DIN CIRKELLEDARE/i.test(html) && /rkay@b.se/.test(html)};`);
   ok('deltagaren bokar i sin cirkel och ser cirkelns pass som "Er cirkel"', r.book===true && r.noCurr===true, r);
   ok('förslaget går till ledaren, utan studio och med tre timmar', r.sheet===true && r.rqv && r.rqv.circle==='c1' && r.rqv.who==='RKAY' && r.rqv.start==='14:00' && r.rqv.end==='17:00' && r.rqv.studio==='', r);
   ok('det väntar på svar och kan tas tillbaka', r.waiting===true && r.gone===true, r);
@@ -1200,10 +1200,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openAddPerson(null,'adrey'); window.toast = realToast;
     asWho('Moez'); const cam = can('addClients'); closeSheet(); openAddPerson('customer'); const camSheet = document.getElementById('sheet').classList.contains('on');
     asWho('AZ'); go('team');
-    return {team:/\\+ KUND/.test(team) && /\\+ DELTAGARE/.test(team) && !/LÄGG TILL PERSON/.test(team), roles, prod,
+    return {team:/\\+ KUND/i.test(team) && /\\+ DELTAGARE/i.test(team) && !/LÄGG TILL PERSON/i.test(team), roles, prod,
       kalle:kalle && {r:kalle.r, producer:kalle.producer, producers:kalle.producers, email:kalle.email}, inv:inv && {role:inv.role, email:inv.email},
       dina:dina && {r:dina.r, inCircle:(circleById('c1').members||[]).includes(dina.id)},
-      waiting:/HAR INTE LOGGAT IN ÄN/.test(team2) && /Kalle Kund/.test(team2), crewBlocked, cam, camSheet};`);
+      waiting:/HAR INTE LOGGAT IN ÄN/i.test(team2) && /Kalle Kund/.test(team2), crewBlocked, cam, camSheet};`);
   ok('producenten har knappar för kund och cirkeldeltagare — inte för crewet', r.team===true, r);
   ok('och kan bara välja de två rollerna', r.roles==='participant,customer', r.roles);
   ok('en kund producenten lägger till blir producentens kund — och kan boka med hen', r.prod==='rkay' && r.kalle && r.kalle.r==='customer' && r.kalle.producer==='rkay' && JSON.stringify(r.kalle.producers)==='["rkay"]' && r.kalle.email==='kalle@x.se', r);
@@ -1254,7 +1254,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const note = document.getElementById('sheetBody').innerHTML;
     togglePosted(img.id); const posted = Object.keys(lmedia().find(x=>x.id===img.id).posted).join(',');
     closeSheet(); render(); await new Promise(r=>setTimeout(r,50));
-    const badge = /POSTAD/.test(document.getElementById('view').innerHTML);
+    const badge = /POSTAD/i.test(document.getElementById('view').innerHTML);
     galOnlyNew = true; render(); const unposted = document.querySelectorAll('.mtile').length; galOnlyNew = false;
     S.media = []; S.session.member='Moez'; MX.put('/BANDOHQ/Media/D2L/ny.jpg');
     const camFound = await scanMedia(), camBy = [...new Set(lmedia().map(x=>x.by))].join(',');
@@ -1307,20 +1307,20 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     previewParse(); commitParse();
     const added = S.bookings.filter(b=>b.date>=iso(agendaWeek) && b.id!=='w3').map(b=>b.who).join(',');
     S.session.member='AZ';
-    return {txt, back, plan:/VECKANS PLAN/.test(html) && /0\\/1 körda/.test(html), canW3, canW2, ran, own, added,
+    return {txt, back, plan:/VECKANS PLAN/i.test(html) && /0\\/1 körda/.test(html), canW3, canW2, ran, own, added,
       adreyTask:lagenda().some(a=>a.text==='Kapa')};`);
   ok('förra veckans plan skrivs som text i tolkens format', r.txt.split('\n').length===2 && /^mån 18:00-22:00 RKAY \+ ADREY med Nova i studio B Mixdown$/m.test(r.txt), r.txt);
   ok('och tolkas tillbaka till samma pass', r.back==='mån 18:00 22:00 RKAY ADREY ar1 B Mixdown | tor 14:30 18:00 ADREY   A Session', r.back);
   ok('AGENDA visar veckans plan med körda', r.plan===true);
   ok('man bockar av sina egna pass, inte andras', r.canW3===true && r.canW2===false && r.ran==='01', r);
-  ok('producentens kopia tar bara med de egna passen', r.own.split('\n').filter(Boolean).every(l=>/RKAY/.test(l)), r.own);
+  ok('producentens kopia tar bara med de egna passen', r.own.split('\n').filter(Boolean).every(l=>/RKAY/i.test(l)), r.own);
   ok('producenten kan bara skriva in sina egna rader', r.added==='RKAY' && r.adreyTask===false, r);
 
   /* ============ v8 · SAMARBETEN ============ */
   r = await ev(w,`
     const B = (id,w)=>({id,studio:'A',date:'2026-01-0'+id.slice(-1),start:'10:00',end:'12:00',who:'RKAY',with:w,status:'',del:false});
     return {html: collabTop([B('x1',['ADREY']),B('x2',['ADREY']),B('x3',['AZ'])],[B('x4',['ADREY'])])};`);
-  ok('statistiken visar "flest pass ihop" med förändring', /RKAY[\s\S]{0,200}ADREY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/.test(r.html) || /ADREY[\s\S]{0,200}RKAY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/.test(r.html), r.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,160));
+  ok('statistiken visar "flest pass ihop" med förändring', /RKAY[\s\S]{0,200}ADREY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/i.test(r.html) || /ADREY[\s\S]{0,200}RKAY[\s\S]{0,300}>2<[\s\S]{0,120}▲ 1/i.test(r.html), r.html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').slice(0,160));
 
   /* ============ v8.1 · PUSH-FILERNA ============ */
   log('\n── v8.1: service worker och manifest ──');
@@ -1386,7 +1386,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const back = !!S.bookings.find(b=>b.id==='bk1');
     go('team'); const team = document.getElementById('view').innerHTML;
     return {app:data.app, mode:data.mode, has:JSON.stringify(data).includes('Viktig'), at:at>0, by, back,
-      status:/SYSTEMSTATUS/.test(team) && /Förhandsläge/.test(team) && /SÄKERHETSKOPIA/.test(team), due:backupDue()};`);
+      status:/SYSTEMSTATUS/i.test(team) && /Förhandsläge/.test(team) && /SÄKERHETSKOPIA/i.test(team), due:backupDue()};`);
   ok('managern laddar ner en säkerhetskopia med allt', r.app==='BANDOHQ' && r.has===true, r);
   ok('datum och vem sparas', r.at && r.by==='AZ', r);
   ok('kopian går att läsa tillbaka', r.back===true);
@@ -1398,12 +1398,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.bookings.push(bump({id:'dp1',studio:'A',date:'2027-04-02',start:'10:00',end:'12:00',who:'RKAY',title:'x',note:'',circleId:'',status:'',hours:null,present:[],with:['ADREY'],artistId:'',paid:false,del:false}));
     S.agenda.push(bump({id:'da1',kind:'week',week:'2027-03-29',who:'ADREY',text:'Hemligt',due:'',done:false,del:false}));
     save();
-    S.session.member='RKAY'; openAccount('adrey'); const prodBtn = /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML); closeSheet();
-    S.session.member='AZ'; openAccount('adrey'); const mgrBtn = /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML);
+    S.session.member='RKAY'; openAccount('adrey'); const prodBtn = /RADERA PERSON/i.test(document.getElementById('sheetBody').innerHTML); closeSheet();
+    S.session.member='AZ'; openAccount('adrey'); const mgrBtn = /RADERA PERSON/i.test(document.getElementById('sheetBody').innerHTML);
     await deletePerson('adrey');
     const b = S.bookings.find(x=>x.id==='dp1');
     return {prodBtn, mgrBtn, gone:!byId('adrey'), withs:JSON.stringify(b.with), agenda:S.agenda.find(x=>x.id==='da1').del,
-      self:(()=>{ openAccount('az'); return /RADERA PERSON/.test(document.getElementById('sheetBody').innerHTML); })()};`);
+      self:(()=>{ openAccount('az'); return /RADERA PERSON/i.test(document.getElementById('sheetBody').innerHTML); })()};`);
   ok('bara managern kan radera, inte sig själv', r.mgrBtn===true && r.self===false, r);
   ok('raderad person: kontot borta, namnet borta ur pass och agenda', r.gone && r.withs==='[]' && r.agenda===true, r);
 
@@ -1430,13 +1430,13 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const lid = S.bookings.find(b=>b.circleId==='c1' && b.date===dd(7)).leaderId;
     go('circles'); circTab='groups'; render(); const g2 = document.getElementById('view').innerHTML;
     return {g, plan, endLocked, preview, btn, made, lid, dd:[dd(7),dd(14),dd(21),dd(28)], g2, Y};`);
-  ok('grupperna visar fyllnad mot gruppstorleken (2 av 4 → behöver 2)', /2 av 4 deltagare/.test(r.g) && /BEHÖVER 2/.test(r.g) && /1 grupp behöver/.test(r.g), r.g.slice(0,300));
+  ok('grupperna visar fyllnad mot gruppstorleken (2 av 4 → behöver 2)', /2 av 4 deltagare/.test(r.g) && /BEHÖVER 2/i.test(r.g) && /1 grupp behöver/.test(r.g), r.g.slice(0,300));
   ok('ett cirkelpass har fast längd: slutet räknas ut och är låst', r.endLocked===true);
-  ok('förhandsvisningen kontrollerar varje datum (krock med ledarens studiopass) — ingen timbank', r.plan[0].ok && !r.plan[1].ok && /Krock: RKAY har redan Mix/.test(r.plan[1].reason)
+  ok('förhandsvisningen kontrollerar varje datum (krock med ledarens studiopass) — ingen timbank', r.plan[0].ok && !r.plan[1].ok && /Krock: RKAY har redan Mix/i.test(r.plan[1].reason)
      && r.plan[2].ok && r.plan[3].ok, r.plan);
-  ok('och visas innan något bokas', /✗/.test(r.preview) && /✓/.test(r.preview) && /BOKA 3 PASS/.test(r.btn), [r.preview, r.btn]);
+  ok('och visas innan något bokas', /✗/.test(r.preview) && /✓/.test(r.preview) && /BOKA 3 PASS/i.test(r.btn), [r.preview, r.btn]);
   ok('bara de som går bokas, med ledarens id', JSON.stringify(r.made)===JSON.stringify([r.dd[0], r.dd[2], r.dd[3]]) && r.lid==='rkay', r.made);
-  ok('ledarna visas med antal grupper mot gränsen (högst 5), utan timbank', /1 av 5 grupper/.test(r.g2) && !/TIMBANK/.test(r.g2), r.g2.match(/LEDARE[\s\S]{0,400}/));
+  ok('ledarna visas med antal grupper mot gränsen (högst 5), utan timbank', /1 av 5 grupper/.test(r.g2) && !/TIMBANK/i.test(r.g2), r.g2.match(/LEDARE[\s\S]{0,400}/));
 
   r = await ev(w,`
     window.confirm = () => true;
@@ -1453,7 +1453,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('ett pass flyttas med samma längd', r.mv==='10:00-13:00', r.mv);
   ok('och kan ställas in', r.cancelled===true);
   ok('admin ändrar reglerna (gruppstorlek, grupper per ledare, rapporteringsdagar)', r.cfg==='[3,4,10,0]', r.cfg);
-  ok('kalendern visar veckans cirkelpass med ledare och deltagare', /Musikproduktion – Grupp 1/.test(r.cal) && /RKAY/.test(r.cal) && /2 deltagare/.test(r.cal) && /PLANERAT/.test(r.cal), r.cal.slice(0,200));
+  ok('kalendern visar veckans cirkelpass med ledare och deltagare', /Musikproduktion – Grupp 1/.test(r.cal) && /RKAY/i.test(r.cal) && /2 deltagare/.test(r.cal) && /PLANERAT/i.test(r.cal), r.cal.slice(0,200));
   ok('och går att filtrera på deltagare', /Musikproduktion – Grupp 1/.test(r.calP));
 
   r = await ev(w,`
@@ -1474,12 +1474,12 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     window.confirm = m => { asked = m; return false; }; await savePerson(''); window.confirm = () => true;
     const noDup = accounts().filter(a=>a.n==='Nora Lind').length;
     return {people, cand, plan, c1, sara:sara&&sara.r, dup:dup.map(d=>d.id+':'+d.why), sheet, s2:s2.status+':'+s2.member_id, asked, noDup};`);
-  ok('nya anmälningar syns under Deltagare', /NYA ANMÄLNINGAR/.test(r.people) && /Sara Ny/.test(r.people));
+  ok('nya anmälningar syns under Deltagare', /NYA ANMÄLNINGAR/i.test(r.people) && /Sara Ny/.test(r.people));
   ok('fördela: anmälningar och deltagare utan grupp', r.cand==='Sara Ny,William Ek,Utan Grupp', r.cand);
   ok('förslaget fyller gruppen till gruppstorleken (3) — resten får vänta', r.plan==='Sara Ny:c1,William Ek:-,Utan Grupp:-', r.plan);
   ok('en anmälan blir en deltagare i gruppen', r.c1.split(',').length===3 && r.c1.split(',').some(x=>x.startsWith('m_')) && r.sara==='participant', r.c1);
   ok('dubbletter hittas (samma namn)', JSON.stringify(r.dup)==='["p1:samma namn"]', r.dup);
-  ok('en anmälan med samma namn kan kopplas till personen som finns', /Finns kanske redan/.test(r.sheet) && /KOPPLA TILL WILLIAM EK/.test(r.sheet) && r.s2==='placed:p1', r.s2);
+  ok('en anmälan med samma namn kan kopplas till personen som finns', /Finns kanske redan/.test(r.sheet) && /KOPPLA TILL WILLIAM EK/i.test(r.sheet) && r.s2==='placed:p1', r.s2);
   ok('ny deltagare med ett namn som finns: frågar först', /Nora Lind/.test(r.asked) && /samma namn/.test(r.asked) && r.noDup===1, r.asked);
 
   /* ============ CIRKLARNA · ETAPP 2: VECKOVYN ============ */
@@ -1505,7 +1505,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const st2 = sessState(S.bookings.find(b=>b.id==='w1'));
     render(); const html2 = document.getElementById('view').innerHTML;
     window.prompt = () => 'Fel närvaro'; await unlockSession('w1'); const st3 = sessState(S.bookings.find(b=>b.id==='w1'));
-    return {html:html.replace(/\\s+/g,' '), flags, groups, ap, st, lockedComplete, lockedDel, csv, st2, html2:/RAPPORTERAT/.test(html2) && /Ladda ner veckans rapporterade underlag igen/.test(html2), st3};`);
+    return {html:html.replace(/\\s+/g,' '), flags, groups, ap, st, lockedComplete, lockedDel, csv, st2, html2:/RAPPORTERAT/i.test(html2) && /Ladda ner veckans rapporterade underlag igen/.test(html2), st3};`);
   ok('veckovyn räknar veckans pass per status', /<b>4<\/b><span>pass<\/span>/.test(r.html) && /<b>3<\/b><span>att kontrollera<\/span>/.test(r.html), r.html.slice(0,600));
   ok('ett korrekt pass har inga flaggor', r.flags.w1.length===0, r.flags.w1);
   ok('passet som varit utan närvaro flaggas — med knappen för att registrera', r.flags.w2.some(x=>/fel:Passet har varit men närvaron är inte registrerad/.test(x)) && /Registrera närvaro/.test(r.html), r.flags.w2);
@@ -1544,7 +1544,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     document.getElementById('ciF').value = k.levels[1].lessons[0].id; saveCircle('c1');
     const p2 = progressOf(circleById('c1'));
     circTab='edu'; openCircle=null; go('circles'); const edu = document.getElementById('view').innerHTML;
-    return {empty:/LÄGG IN STARTINNEHÅLL/.test(empty), n:ks.length, draft:ks.every(x=>x.draft), subj:ks.map(x=>x.subject).sort().join(','),
+    return {empty:/LÄGG IN STARTINNEHÅLL/i.test(empty), n:ks.length, draft:ks.every(x=>x.draft), subj:ks.map(x=>x.subject).sort().join(','),
       cid:!!c.courseId, next0:p0.next.title, lvl0:p0.level, sel:sel===p0.next.id, opts, lid:stored.lessonId===p0.next.id, ltitle:stored.lessonTitle,
       next1:p1.next.title, count1:p1.count, cv, before, lv1, fromOpts, next2:p2.next.title, lvl2:p2.level, edu};`);
   ok('utan kurser erbjuds startinnehållet', r.empty===true);
@@ -1553,10 +1553,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('vid genomfört är nästa lektion förvald', r.sel===true && r.opts>15, r);
   ok('och sparas på passet', r.lid===true && r.ltitle==='Studion och DAW:en', r.ltitle);
   ok('nästa lektion blir tillgänglig', r.next1==='Trummor och groove' && r.count1===1, r);
-  ok('gruppens sida visar kursen med nästa lektion, mål och övning', /UTBILDNING/.test(r.cv) && /Trummor och groove/.test(r.cv) && /Lärandemål/.test(r.cv) && /Övning/.test(r.cv));
+  ok('gruppens sida visar kursen med nästa lektion, mål och övning', /UTBILDNING/i.test(r.cv) && /Trummor och groove/.test(r.cv) && /Lärandemål/.test(r.cv) && /Övning/.test(r.cv));
   ok('admin lägger till och flyttar lektioner', r.lv1.length===r.before/3+1 && r.lv1[4]==='Extra lektion', r.lv1);
   ok('en grupp kan börja längre fram i kursen', r.fromOpts>10 && r.lvl2===2 && r.next2==='Inspelning av sång', r);
-  ok('Utbildning visar gruppernas läge', /GRUPPERNAS LÄGE/.test(r.edu) && /nivå 2/.test(r.edu), r.edu.slice(0,200));
+  ok('Utbildning visar gruppernas läge', /GRUPPERNAS LÄGE/i.test(r.edu) && /nivå 2/.test(r.edu), r.edu.slice(0,200));
   r = await ev(w,`const c = circleById('c1'); c.courseSince = iso(addDays(new Date(),-1));
     const mk = (id,d)=>{ const b = bump({id, studio:'B', date:iso(addDays(new Date(),d)), start:'15:00', end:'18:00', who:'RKAY', title:c.n, note:'',
       circleId:'c1', leaderId:'rkay', status:'done', hours:3, present:['p1'], with:[], artistId:'', paid:false, del:false}); S.bookings.push(b); return b; };
@@ -1583,8 +1583,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('att åtgärda: fel först, sedan varningar', r.flags[0]==='Passet har varit men närvaron är inte registrerad' && r.flags.some(t=>/2 av 4 deltagare/.test(t)), r.flags);
   ok('kommande 14 dagar', JSON.stringify(r.up)==='["o3"]', r.up);
   ok('närvaro och rapportering per vecka', r.wk && r.wk.n===2 && r.wk.checked===1 && r.wk.planned===1 && Math.round(r.wk.att*100)===100, r.wk);
-  ok('rapporteringen till SV per grupp, ledarna och utbildningsnivån visas — ingen timbank', /RAPPORTERING TILL SV/.test(r.html) && /<b>RKAY<\/b>/.test(r.html)
-     && /UTBILDNINGSNIVÅ/.test(r.html) && /NÄRVARO OCH RAPPORTERING/.test(r.html) && !/TIMBANK/.test(r.html));
+  ok('rapporteringen till SV per grupp, ledarna och utbildningsnivån visas — ingen timbank', /RAPPORTERING TILL SV/i.test(r.html) && /<b>RKAY<\/b>/i.test(r.html)
+     && /UTBILDNINGSNIVÅ/i.test(r.html) && /NÄRVARO OCH RAPPORTERING/i.test(r.html) && !/TIMBANK/i.test(r.html));
 
   /* ============ BANDO REWARDS ============ */
   log('\n── Bando Rewards: avsluta pass, poäng, belöningar, nivåer, omdömen, intelligence ──');
@@ -1627,11 +1627,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openAccount('rkay'); document.getElementById('acX').checked = true; saveAccount('rkay'); await new Promise(r=>setTimeout(r,50));
     S.session.member = 'RKAY'; const rkIntel = canIntel() && moreViews().includes('rewards'); S.session.member = 'AZ';
     rwTab='intel'; intelList = null; await loadRwAdmin(); intelF.status = 'aktiv'; render(); const il = document.getElementById('view').innerHTML; intelF.status='';
-    return {adreyNo, det:/AVSLUTA PASSET/.test(det) && /Inte avslutat/.test(det), closed:b1.closed && b1.paid && b1.closedBy==='RKAY', intelNo, moreNo,
-      cust:/BANDO REWARDS/.test(cust) && /900/.test(cust) && /INGEN NIVÅ ÄN/.test(cust) && /Bando Legacy/.test(cust) && /2(&nbsp;| )600 poäng kvar till/.test(cust),
-      cust2:/BANDO ACCESS/.test(cust2) && /ANVÄND/.test(cust2) && /20 % rabatt på ett sessionspaket/.test(cust2), waiting,
-      red:/Nora Lind/.test(red) && /GODKÄNN/.test(red) && /Paket med 4 sessions/.test(red), delivered,
-      stats:/INTÄKTER/.test(stats) && /RABATTER/.test(stats) && /KUNDER PER NIVÅ/.test(stats) && /1(&nbsp;| )200 kr/.test(stats), tabs, notes:/Bra session/.test(notes) && /Mixa/.test(notes), intel:/Pass per månad/.test(intel) && /UPPFÖLJNING/.test(intel),
+    return {adreyNo, det:/AVSLUTA PASSET/i.test(det) && /Inte avslutat/.test(det), closed:b1.closed && b1.paid && b1.closedBy==='RKAY', intelNo, moreNo,
+      cust:/BANDO REWARDS/i.test(cust) && /900/.test(cust) && /INGEN NIVÅ ÄN/i.test(cust) && /Bando Legacy/.test(cust) && /2(&nbsp;| )600 poäng kvar till/.test(cust),
+      cust2:/BANDO ACCESS/i.test(cust2) && /ANVÄND/i.test(cust2) && /20 % rabatt på ett sessionspaket/.test(cust2), waiting,
+      red:/Nora Lind/.test(red) && /GODKÄNN/i.test(red) && /Paket med 4 sessions/.test(red), delivered,
+      stats:/INTÄKTER/i.test(stats) && /RABATTER/i.test(stats) && /KUNDER PER NIVÅ/i.test(stats) && /1(&nbsp;| )200 kr/.test(stats), tabs, notes:/Bra session/.test(notes) && /Mixa/.test(notes), intel:/Pass per månad/.test(intel) && /UPPFÖLJNING/i.test(intel),
       crm, lvl, rkIntel, il:/Nora Lind/.test(il)};`);
   ok('en producent som inte är kundens kan inte avsluta passet', /Bara kundens producent/.test(r.adreyNo), r.adreyNo);
   ok('kundens producent ser "Avsluta passet" på ett pass som varit', r.det===true);
@@ -1693,11 +1693,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const vb2 = rwState().points.filter(p=>p.booking_id==='vb2' && p.kind==='earn').map(p=>[p.points, p.note]);
     signIn(byName('Vera Vän')); rwMineAt = 0; render(); await wait(80); render(); const vcard = document.getElementById('view').innerHTML;
     openPointsHistory(); const hist = document.getElementById('sheetBody').innerHTML;
-    return {card:/Så fungerar det/.test(card) && /VÄRVA EN ARTIST/.test(card) && /Bjud in med e-post/.test(card) && /\\+300/.test(card),
+    return {card:/Så fungerar det/.test(card) && /VÄRVA EN ARTIST/i.test(card) && /Bjud in med e-post/.test(card) && /\\+300/.test(card),
       sheet:/Bjud in en vän/.test(sheet) && /300 poäng/.test(sheet), own, sent, inv:inv && {ref:inv.referrer, by:inv.created_by, max:inv.max_uses},
-      card2:/Vera Vän/.test(card2) && /INBJUDEN/.test(card2), vera:vera && {ref:vera.referredBy, r:vera.r}, welcome, t, ref:ref && ref.points,
-      card3:/Vera Vän/.test(card3) && /KLAR · \\+300/.test(card3), badMult, camps,
-      panel:/KAMPANJER/.test(panel) && /PÅGÅR/.test(panel) && /BONUSPOÄNG/.test(panel) && /VÄRVA EN ARTIST/.test(panel) && /POÄNG PER BETALD TIMME/.test(panel),
+      card2:/Vera Vän/.test(card2) && /INBJUDEN/i.test(card2), vera:vera && {ref:vera.referredBy, r:vera.r}, welcome, t, ref:ref && ref.points,
+      card3:/Vera Vän/.test(card3) && /KLAR · \\+300/i.test(card3), badMult, camps,
+      panel:/KAMPANJER/i.test(panel) && /PÅGÅR/i.test(panel) && /BONUSPOÄNG/i.test(panel) && /VÄRVA EN ARTIST/i.test(panel) && /POÄNG PER BETALD TIMME/i.test(panel),
       closeTxt:/600 poäng \\(Dubbla poäng ×2\\)/.test(closeHtml), vb2, vcard:/rwcamp/.test(vcard) && /Dubbla poäng/.test(vcard) && /×2/.test(vcard),
       hist:/Bonus/.test(hist) && /Första sessionen/.test(hist) && /Välkomstbonus/.test(hist)};`);
   ok('kunden ser "Så fungerar det" och Värva en artist', r.card===true);
@@ -1751,17 +1751,17 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const done = S.bookings.find(b=>b.id===rq.id);
     S.session.member='Nora Lind'; render(); const contact = myContact(done);
     S.session.member='AZ'; save();
-    return {hasBox, azProd, list, prof:/KAN BOKA MED/.test(prof) && /SPARA PRODUCENTERNA/.test(prof), saved,
-      v0:/BOKA MED/.test(v0) && /Välj vem du vill boka med/.test(v0), chips, blocked,
+    return {hasBox, azProd, list, prof:/KAN BOKA MED/i.test(prof) && /SPARA PRODUCENTERNA/i.test(prof), saved,
+      v0:/BOKA MED/i.test(v0) && /Välj vem du vill boka med/.test(v0), chips, blocked,
       st12, st16, bar:/RKAY<\\/div>[\\s\\S]*Upptagen/.test(v1), why,
       sheet:/med <b>RKAY<\\/b>/.test(sheet), rq:rqv,
-      rkInbox:/Nora Lind/.test(rkInbox) && /med RKAY/.test(rkInbox), rkCan, adCan,
-      appr:/PRODUCENT/.test(appr) && /pp-appr/.test(appr), done:done && {with:done.with, studio:done.studio, status:done.status}, contact:contact && contact.name};`);
+      rkInbox:/Nora Lind/.test(rkInbox) && /med RKAY/i.test(rkInbox), rkCan, adCan,
+      appr:/PRODUCENT/i.test(appr) && /pp-appr/.test(appr), done:done && {with:done.with, studio:done.studio, status:done.status}, contact:contact && contact.name};`);
   ok('en manager (eller admin) kan vara producent också — då kan artister boka med hen', r.hasBox && r.azProd===true && r.list==='ADREY,AZ,RKAY', r);
   ok('admin väljer artistens producenter i profilen — den första blir huvudproducent', r.prof && JSON.stringify(r.saved.producers)==='["rkay","adrey"]' && r.saved.producer==='rkay', r.saved);
   ok('kundvyn: BOKA MED med artistens producenter — inget förvalt när det finns flera', r.v0 && JSON.stringify(r.chips)==='["RKAY","ADREY"]' || JSON.stringify(r.chips)==='["ADREY","RKAY"]', r.chips);
   ok('utan vald producent går det inte att skicka förfrågan', r.blocked===true);
-  ok('tider då RKAY är upptagen stängs — andra är öppna', r.st12==='producer' && r.st16==='ok' && /RKAY är upptagen/.test(r.why), r);
+  ok('tider då RKAY är upptagen stängs — andra är öppna', r.st12==='producer' && r.st16==='ok' && /RKAY är upptagen/i.test(r.why), r);
   ok('RKAYs upptagna tid syns som en egen rad i tidslinjen', r.bar===true);
   ok('förfrågan går med RKAY', r.sheet && r.rq && JSON.stringify(r.rq.with)==='["RKAY"]' && r.rq.studio==='', r.rq);
   ok('RKAY ser förfrågan i inkorgen och kan svara — ADREY (inte vald) kan inte', r.rkInbox && r.rkCan===true && r.adCan===false, r);
@@ -1789,15 +1789,15 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     go('more'); const more = document.getElementById('view').innerHTML;
     S.session.member='AZ'; const azEdit = can('editGeneral', mine);
     return {
-      weekOk:/Veckan/.test(week) && /VECKANS PLAN/.test(week) && !/LÅNGSIKTIGA PROJEKT/.test(week) && !/AZ GEMENSAMT PROJEKT/.test(week),
-      genOk:['LÅNGSIKTIGA PROJEKT','GEMENSAMMA AMBITIONER','UTVECKLINGSOMRÅDEN','MÖJLIGHETER'].every(x=>gen.includes(x)) && /AZ GEMENSAMT PROJEKT/.test(gen)
-        && !/VECKANS AGENDA/.test(gen) && !/RKAYS EGET MÅL/.test(gen) && /lagt till av AZ/.test(gen),
+      weekOk:/Veckan/.test(week) && /VECKANS PLAN/i.test(week) && !/LÅNGSIKTIGA PROJEKT/i.test(week) && !/AZ GEMENSAMT PROJEKT/i.test(week),
+      genOk:['LÅNGSIKTIGA PROJEKT','GEMENSAMMA AMBITIONER','UTVECKLINGSOMRÅDEN','MÖJLIGHETER'].every(x=>gen.includes(x)) && /AZ GEMENSAMT PROJEKT/i.test(gen)
+        && !/VECKANS AGENDA/i.test(gen) && !/RKAYS EGET MÅL/i.test(gen) && /lagt till av AZ/i.test(gen),
       mine:mine && {cat:mine.cat, who:mine.who, by:mine.by, note:mine.note}, canOwn, canAz, azUntouched, azEdit,
-      myAg:!/AZ GEMENSAMT PROJEKT/.test(myAg) && !/Sync i reklam/.test(myAg),
-      goalsOk:/Din målsättning/.test(goals) && /RKAYS EGET MÅL/.test(goals) && !/AZ GEMENSAMT PROJEKT/.test(goals) && !/Sync i reklam/.test(goals)
+      myAg:!/AZ GEMENSAMT PROJEKT/i.test(myAg) && !/Sync i reklam/.test(myAg),
+      goalsOk:/Din målsättning/.test(goals) && /RKAYS EGET MÅL/i.test(goals) && !/AZ GEMENSAMT PROJEKT/i.test(goals) && !/Sync i reklam/.test(goals)
         && ['MÅL','AMBITIONER','UTVECKLINGSOMRÅDEN','PLAN'].every(x=>goals.includes('>'+x+'<')),
       amb:amb && amb.cat, ambShown:/id="gs-ambition"[\\s\\S]*Topplistan[\\s\\S]*id="gs-utveckling"/.test(goals2),
-      more:/MÅLSÄTTNING/.test(more) && /ALLMÄN AGENDA/.test(more)};`);
+      more:/MÅLSÄTTNING/i.test(more) && /ALLMÄN AGENDA/i.test(more)};`);
   ok('Agenda → Veckan: veckans plan och uppgifter, inget av det allmänna', r.weekOk===true);
   ok('Agenda → Allmän agenda: projekt, ambitioner, utvecklingsområden och möjligheter — inga personliga mål', r.genOk===true);
   ok('alla i teamet lägger till i allmänna agendan — utan ägare, med vem som skrev', r.mine && r.mine.cat==='mojlighet' && r.mine.who==='' && r.mine.by==='rkay' && r.mine.note==='Håll utkik', r.mine);
@@ -1816,7 +1816,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='RKAY'; openParse(); document.getElementById('psT').value = ['Mål:','ADREY: hemligt mål'].join('\\n'); previewParse(); commitParse();
     const leak = S.goals.some(g=>g.text==='Hemligt mål');
     return {gen:P.general.map(t=>t.cat+':'+t.text+':'+(t.who||'')), goals:P.goals.map(t=>(t.who||'JAG')+':'+t.text), tasks:P.tasks.map(t=>t.who+':'+t.text),
-      prev:/ALLMÄN AGENDA · GEMENSAMT/.test(prev) && /MÅLSÄTTNING · PERSONLIGT/.test(prev),
+      prev:/ALLMÄN AGENDA · GEMENSAMT/i.test(prev) && /MÅLSÄTTNING · PERSONLIGT/i.test(prev),
       gR:gR && gR.owner, gA:gA && gA.owner, genItem:gen && {by:gen.by, who:gen.who, cat:gen.cat}, leak};`);
   ok('texttolken: "Projekt:" och "Möjligheter:" blir allmän agenda utan ägare', JSON.stringify(r.gen)==='["projekt:Eget releasebolag:","mojlighet:RKAY: festivaler i sommar:"]', r.gen);
   ok('"Mål:" blir personliga mål — med namn för den personen, annars för den som skriver', JSON.stringify(r.goals)==='["RKAY:Lära mig mixa vocals","JAG:Bli bättre på content"]', r.goals);
@@ -1832,7 +1832,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     agendaTab='general'; go('agenda'); const gen = document.getElementById('view').innerHTML;
     const add = can('addGeneral'), editAz = can('editGeneral', S.agenda.find(a=>a.id==='gA'));
     S.session.member='AZ'; showApp();
-    return {view:/Din målsättning/.test(g) && !/RKAYS EGET MÅL/.test(g), own:own && own.cat, gen:/LÅNGSIKTIGA PROJEKT/.test(gen) && /\\+ MÖJLIGHET/.test(gen), add, editAz};`);
+    return {view:/Din målsättning/.test(g) && !/RKAYS EGET MÅL/i.test(g), own:own && own.cat, gen:/LÅNGSIKTIGA PROJEKT/i.test(gen) && /\\+ MÖJLIGHET/i.test(gen), add, editAz};`);
   ok('kamerateamet har sin egen målsättning — och ser ingen annans', r.view===true && r.own==='utveckling', r);
   ok('och kan lägga till i allmänna agendan men inte ändra andras punkter', r.gen===true && r.add===true && r.editAz===false, r);
 
@@ -1863,7 +1863,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const sent = document.getElementById('stage').textContent, req = ((JSON.parse(localStorage.getItem('bandosesh_v2')||'{}').accessReqs)||[]).find(x=>x.email==='alva@acc.se');
     return {chips, title, h, perks, cta, noPw, errs, focused, count, picked1, e1, noConsent, stillForm, sent, req};`);
   ok('sidan: BANDO HQ ACCESS, tre rubriker och sex förmåner — och en förfrågan i stället för ett konto', r.title==='BANDO HQ ACCESS'
-     && r.h.join('|')==='VAD INGÅR I BANDO HQ ACCESS?|VÄLJ DIN INRIKTNING|SKICKA EN FÖRFRÅGAN' && r.perks.length===6 && r.perks[4]==='A&R-feedback' && /SKICKA FÖRFRÅGAN/.test(r.cta), r);
+     && r.h.join('|')==='VAD INGÅR I BANDO HQ ACCESS?|VÄLJ DIN INRIKTNING|SKICKA EN FÖRFRÅGAN' && r.perks.length===6 && r.perks[4]==='A&R-feedback' && /SKICKA FÖRFRÅGAN/i.test(r.cta), r);
   ok('förfrågan har inget lösenord och inget personnummer — men plats för ett meddelande', r.noPw===true);
   ok('tolv inriktningar att välja bland — flera går att välja', r.chips===12 && /2 valda/.test(r.count) && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.picked1), r);
   ok('tom förfrågan: varje fält får sitt fel och första fältet får fokus', r.errs.every(Boolean) && r.focused==='f_name', r.errs);
@@ -1878,7 +1878,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const x = S.accessReqs.find(a=>a.email==='alva@acc.se'); openAccessReq(x.id); const sheet = document.getElementById('sheetBody').innerHTML;
     await approveAccess(x.id); const inv = S.invites.find(i=>i.request_id===x.id);
     go('today'); const inbox2 = document.getElementById('view').innerHTML;
-    return {inbox:/ACCESS/.test(inbox) && /Alva Strand/.test(inbox), sheet:/GODKÄNN OCH SKICKA INBJUDAN/.test(sheet) && /Jag producerar och mixar/.test(sheet),
+    return {inbox:/ACCESS/i.test(inbox) && /Alva Strand/.test(inbox), sheet:/GODKÄNN OCH SKICKA INBJUDAN/i.test(sheet) && /Jag producerar och mixar/.test(sheet),
       inv:inv && {role:inv.role, email:inv.email, interests:inv.interests, by:inv.created_by, max:inv.max_uses}, tok:inv && inv.token, status:x.status,
       gone:!/Alva Strand/.test(inbox2)};`);
   ok('admin ser förfrågan i inkorgen, med inriktning och meddelande', r.inbox && r.sheet, r);
@@ -1911,7 +1911,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const anywhere = JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k, localStorage.getItem(k)])));
     return {head, lead, pre, e2, fmt, e3, noConsent, noAvail, availOn, code, codeText, e4, done, saved,
       leak: anywhere.includes(P.slice(-4) + '"') || anywhere.includes(P.replace('-','')), P};`);
-  ok('med inbjudan: "Skapa ditt konto", inbjuden av AZ, uppgifterna ifyllda', /Skapa ditt konto/.test(r.head) && /inbjuden till Bando HQ Access av AZ/.test(r.lead)
+  ok('med inbjudan: "Skapa ditt konto", inbjuden av AZ, uppgifterna ifyllda', /Skapa ditt konto/.test(r.head) && /inbjuden till Bando HQ Access av AZ/i.test(r.lead)
      && r.pre.name==='Alva Strand' && r.pre.email==='alva@acc.se' && r.pre.phone==='+46701234567' && /Musikproduktion & beatmaking · Mixning & mastering/.test(r.pre.picked), r);
   ok('personnummer med fel kontrollsiffra nekas, ett rätt formateras ÅÅÅÅMMDD-XXXX', /stämmer inte/.test(r.e2) && r.fmt===r.P, r);
   ok('för enkla lösenord nekas', /för lätt/.test(r.e3), r.e3);
@@ -1932,8 +1932,8 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     await new Promise(r=>setTimeout(r,500));
     const m = me(), html = document.getElementById('view').innerHTML;
     return {who:m&&m.n, role:m&&m.r, part:m&&m.part, ints:(m&&m.interests||[]).join(), pnr:m&&m.pnr, consent:m&&m.consent, src:m&&m.source, view:roleView(),
-      circle:/DIN STUDIOCIRKEL/.test(html) && /Musikproduktion – Grupp 1/.test(html) && /NÄSTA TRÄFF/.test(html) && !/Vi placerar dig/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/.test(html) && /Prislista · studiotid/.test(html) && /8 sessions/.test(html)
-        && /6(&nbsp;|\\s)500 kr/.test(html) && /MIX &amp; MASTER/.test(html) && /fråga oss/.test(html),
+      circle:/DIN STUDIOCIRKEL/i.test(html) && /Musikproduktion – Grupp 1/.test(html) && /NÄSTA TRÄFF/i.test(html) && !/Vi placerar dig/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/i.test(html) && /Prislista · studiotid/.test(html) && /8 sessions/.test(html)
+        && /6(&nbsp;|\\s)500 kr/.test(html) && /MIX &amp; MASTER/i.test(html) && /fråga oss/.test(html),
       perks:/A&amp;R-feedback/.test(html), interests:/Musikproduktion &amp; beatmaking, Mixning &amp; mastering/.test(html), banner:!!document.getElementById('profBanner'),
       left:localStorage.getItem('bandohq_access_preview'), hash:location.hash};`);
   ok('appen tar emot registreringen: inloggad som kund och cirkeldeltagare', r.who==='Alva Strand' && r.role==='customer' && r.part===true && r.view==='customer'
@@ -1953,10 +1953,10 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const prof = document.getElementById('sheetBody').innerHTML;
     S.session.member = 'Alva Strand'; render();
     const cust = document.getElementById('view').innerHTML;
-    return {auto, waiting:/VÄNTAR PÅ EN GRUPP/.test(people) && /Alva Strand/.test(people) && /ACCESS/.test(people) && /990315-••••/.test(people),
+    return {auto, waiting:/VÄNTAR PÅ EN GRUPP/i.test(people) && /Alva Strand/.test(people) && /ACCESS/i.test(people) && /990315-••••/.test(people),
       plan:plan && {c:plan.circle, s:plan.subject}, sheet:/Mixning &amp; mastering/.test(sheet), placed,
-      prof:/PERSONNUMMER/.test(prof) && /990315-••••/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof) && /Musikproduktion – Grupp 1/.test(prof) && /via Access/.test(prof),
-      cust:/DIN STUDIOCIRKEL/.test(cust) && /Musikproduktion – Grupp 1/.test(cust) && /ANSVARIG PRODUCENT/.test(cust) && /RKAY/.test(cust)};`);
+      prof:/PERSONNUMMER/i.test(prof) && /990315-••••/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof) && /Musikproduktion – Grupp 1/.test(prof) && /via Access/.test(prof),
+      cust:/DIN STUDIOCIRKEL/i.test(cust) && /Musikproduktion – Grupp 1/.test(cust) && /ANSVARIG PRODUCENT/i.test(cust) && /RKAY/i.test(cust)};`);
   ok('registreringen placerade personen automatiskt med en roll i gruppen', r.auto===true);
   ok('admin: utan grupp står den nya under "Väntar på en grupp", med ACCESS och maskerat personnummer', r.waiting===true);
   ok('Väntelistan föreslår gruppen med samma ämne som inriktningen', r.plan && r.plan.c==='c1' && r.plan.s==='Musikproduktion' && r.sheet, r.plan);
@@ -1973,14 +1973,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member = 'Alva Strand'; render();
     const cust = document.getElementById('view').innerHTML;
     S.session.member = 'AZ'; save();
-    return {tab:/INRIKTNINGAR/.test(tab) && /TJÄNSTEPRISER/.test(tab) && /FÖRMÅNER/.test(tab), bad, mix:cfg.services[0], rapOff:cfg.interests[1].off===true,
+    return {tab:/INRIKTNINGAR/i.test(tab) && /TJÄNSTEPRISER/i.test(tab) && /FÖRMÅNER/i.test(tab), bad, mix:cfg.services[0], rapOff:cfg.interests[1].off===true,
       price:/<s[^>]*>2(&nbsp;|\\s)000 kr<\\/s> 1(&nbsp;|\\s)500 kr per låt/.test(cust)};`);
   ok('Mer → Rewards → Access: inriktningar, förmåner och tjänstepriser', r.tab===true);
   ok('en förmån utan text sparas inte', /rubrik och text/.test(r.bad), r.bad);
   ok('admin sätter priset — kunden ser det direkt, ordinarie överstruket', r.mix.access===1500 && r.mix.price===2000 && r.price===true, r);
   r = await ev(w,`
     signIn(byName('AZ')); go('rewards'); rwTab='access'; accDraft=null; render(); await new Promise(r=>setTimeout(r,150)); render();
-    const n0 = accDraft.packages.length, tab = /PRISLISTA · STUDIOPAKET/.test(document.getElementById('view').innerHTML);
+    const n0 = accDraft.packages.length, tab = /PRISLISTA · STUDIOPAKET/i.test(document.getElementById('view').innerHTML);
     accDraft.packages.push({sessions:8, hours:24, price:9000}); saveAccessCfg(); const dup = document.getElementById('accMsg').textContent;
     accDraft.packages.pop(); accDraft.packages[0].price = 1400; accDraft.notes = ['Rad ett', '']; saveAccessCfg();
     S.session.member = 'Alva Strand'; render(); const cust = document.getElementById('view').innerHTML;
@@ -2072,7 +2072,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   r = await ev(w,`
     const html = document.getElementById('view').innerHTML;
     const res = {demo:DEMO, me:(me()||{}).n, n:accounts().length, preview:PREVIEW_LOGIN, banner:/Demoläge/.test(html)};
-    signOut(); res.gate = /DEMOLÄGE/.test(document.getElementById('gateTag').innerHTML) && document.querySelectorAll('#gateBody .member').length >= 10;
+    signOut(); res.gate = /DEMOLÄGE/i.test(document.getElementById('gateTag').innerHTML) && document.querySelectorAll('#gateBody .member').length >= 10;
     return res;`);
   ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===18 && r.preview===true && r.banner===true, r);
   ok('och granskaren kan byta till alla roller', r.gate===true, r);
@@ -2177,13 +2177,13 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     signIn(byName('Lina Ledare')); await wait(300); eduAt = 0; eduOpen = a.id; render(); await wait(250); render(); const ended = document.getElementById('view').innerHTML;
     let denyEnd = ''; try{ await edu('edu_save_note',{p_id:a.id,p_month:3,p_learned:'x',p_created:''}); }catch(e){ denyEnd = e.message; }
     return {tabs, groups, rows, hits, bank:/200 av 200 läroplaner/.test(bank),
-      sheet:(sheet.match(/MÅNAD \\d · /g)||[]).length + ':' + /TILLDELA LÄROPLAN/.test(sheet) + ':' + /Vad är ert mål med cirkeln/.test(sheet),
-      list, orig2: JSON.stringify(eduCatalog.byCode.MP03.sv_arbetsplan_mall)===orig, rk, deny, lv:/LÄROPLANER/i.test(lv) && /FL Studio/.test(lv), lina,
-      det:/Månad 2 av 6/.test(det) && /MÅNAD 2 · GRUNDER &amp; TEKNIK/.test(det) && /ARBETSPLAN – SV/.test(det) && />MALL</.test(det),
+      sheet:(sheet.match(/MÅNAD \\d · /g)||[]).length + ':' + /TILLDELA LÄROPLAN/i.test(sheet) + ':' + /Vad är ert mål med cirkeln/.test(sheet),
+      list, orig2: JSON.stringify(eduCatalog.byCode.MP03.sv_arbetsplan_mall)===orig, rk, deny, lv:/LÄROPLANER/i.test(lv) && /FL Studio/i.test(lv), lina,
+      det:/Månad 2 av 6/.test(det) && /MÅNAD 2 · GRUNDER &amp; TEKNIK/i.test(det) && /ARBETSPLAN – SV/i.test(det) && />MALL</i.test(det),
       note: again.notes.map(n=>n.month+':'+n.learned+':'+n.created), mal:again.sv_answers && again.sv_answers.mal, url:again.final_project_url, badLink,
       c1, c2:/^Period\\n/.test(c2) && /Utvärdering vid sista träffen/.test(c2) && c2.includes('Vårt eget mål'),
-      det2:/Trummor och bas/.test(det2) && /ER VERSION/.test(det2) && /ÖPPNA SLUTPROJEKTET/.test(det2),
-      ended:/Avslutad/.test(ended) && !/SKRIV UPPFÖLJNING|ÄNDRA UPPFÖLJNING/.test(ended) && !/>ANPASSA</.test(ended), denyEnd};`);
+      det2:/Trummor och bas/.test(det2) && /ER VERSION/i.test(det2) && /ÖPPNA SLUTPROJEKTET/i.test(det2),
+      ended:/Avslutad/.test(ended) && !/SKRIV UPPFÖLJNING|ÄNDRA UPPFÖLJNING/i.test(ended) && !/>ANPASSA</i.test(ended), denyEnd};`);
   ok('banken: 200 läroplaner i 18 ämnesområden — Mina, Läroplansbank och Tilldelningar för admin', r.bank && r.groups===18 && r.rows===200 && r.tabs.join()==='Mina,Läroplansbank,Tilldelningar', r);
   ok('sök på kod hittar läroplanen', r.hits===1, r.hits);
   ok('läroplanen: sex månader, SV-mallen och Tilldela', r.sheet==='6:true:true', r.sheet);
@@ -2218,14 +2218,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     openCheck('k1');
     const items = document.querySelectorAll('.ckl .task').length, off0 = document.getElementById('ckGo').disabled;
     document.getElementById('ckAll').click();
-    const allOn = document.getElementById('ckN').textContent==='11/11' && document.getElementById('ckGo').textContent==='SKICKA IN' && /AVMARKERA/.test(document.getElementById('ckAll').textContent);
+    const allOn = document.getElementById('ckN').textContent==='11/11' && document.getElementById('ckGo').textContent==='Skicka in' && /AVMARKERA/i.test(document.getElementById('ckAll').textContent);
     document.getElementById('ckAll').click(); const allOff = document.getElementById('ckN').textContent==='0/11' && document.getElementById('ckGo').disabled;
     CHECK_ITEMS.slice(0, 10).forEach(([k])=>ckToggle(k));
     const off10 = document.getElementById('ckGo').disabled;
     document.getElementById('ckC').value = 'Dörren gick inte att låsa'; ckPaint();
-    const dev = !document.getElementById('ckGo').disabled && /AVVIKELSE/.test(document.getElementById('ckGo').textContent);
+    const dev = !document.getElementById('ckGo').disabled && /AVVIKELSE/i.test(document.getElementById('ckGo').textContent);
     document.getElementById('ckC').value = ''; ckToggle('skador');
-    const full = !document.getElementById('ckGo').disabled && document.getElementById('ckGo').textContent==='SKICKA IN' && document.getElementById('ckN').textContent==='11/11';
+    const full = !document.getElementById('ckGo').disabled && document.getElementById('ckGo').textContent==='Skicka in' && document.getElementById('ckN').textContent==='11/11';
     await sendCheck('k1'); await wait(80);
     const done = document.getElementById('sheetBody').innerHTML;
     closeSheet(); go('today'); await wait(50);
@@ -2256,11 +2256,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     signIn(byName('Kim Kund')); await wait(200); localStorage.removeItem('bandohq_conf_k3'); render();
     const cv = document.getElementById('view').innerHTML, lit1 = !!document.querySelector('.conf-h.lit');
     render(); const lit2 = !!document.querySelector('.conf-h.lit');
-    return {banner, items, off0, off10, dev, full, allOn, allOff, done:/STUDIOKONTROLL INSKICKAD/.test(done) && /ck-sign lit/.test(done) && /RKAY/.test(done),
+    return {banner, items, off0, off10, dev, full, allOn, allOff, done:/STUDIOKONTROLL INSKICKAD/i.test(done) && /ck-sign lit/.test(done) && /RKAY/i.test(done),
       ok1: !!(checkOf('k1') && checkOf('k1').all_ok), bannerAfter, deny, noTxt, needTxt, k2:!!(checkOf('k2') && !checkOf('k2').all_ok && checkOf('k2').damage),
-      more:/STUDIO/.test(more) && /Sessionsstatistik/.test(more), missing, devRows:/SKADA/.test(devRows) && /ADREY/.test(devRows),
-      det:/STUDIOKONTROLL/.test(det) && /Saknas/.test(det) && /FYLL I STUDIOKONTROLLEN/.test(det), kp, inherit, k0, kA, kN, kM,
-      cust:/SESSION BEKRÄFTAD ✅/.test(cv) && /Råsundavägen 102/.test(cv) && (cv.match(/class="rrow"/g)||[]).length===5 && /Max 2 extra personer/.test(cv), lit1, lit2};`);
+      more:/STUDIO/i.test(more) && /Sessionsstatistik/.test(more), missing, devRows:/SKADA/i.test(devRows) && /ADREY/i.test(devRows),
+      det:/STUDIOKONTROLL/i.test(det) && /Saknas/.test(det) && /FYLL I STUDIOKONTROLLEN/i.test(det), kp, inherit, k0, kA, kN, kM,
+      cust:/SESSION BEKRÄFTAD ✅/i.test(cv) && /Råsundavägen 102/.test(cv) && (cv.match(/class="rrow"/g)||[]).length===5 && /Max 2 extra personer/.test(cv), lit1, lit2};`);
   ok('IDAG påminner producenten om studiokontrollen som saknas', r.banner===true, r);
   ok('arket har elva punkter, och skickas inte in tomt', r.items===11 && r.off0===true && r.off10===true, r);
   ok('"Markera alla" bockar av alla elva — och avmarkerar dem igen', r.allOn===true && r.allOff===true, r);
@@ -2317,7 +2317,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
       prof:/Liquid Glass/.test(prof) && /Dynamic Island/.test(prof) && /id="pfGlass" checked/.test(prof) && /id="pfLive" checked/.test(prof)};`);
   ok('appen på iOS 26 med glaset på: navigeringslagret blir glas, korten inte', r.glassOn && parseFloat(r.navR) > 100 && /blur/.test(r.navBlur) && !/blur/.test(r.cardBlur), r);
   ok('den valda fliken är en glaslins som glider till nästa flik (280 ms)', r.lensW > 40 && r.lensAnim===280, r);
-  ok('min pågående session startar Live Activity — en gång', r.started.length===1 && r.started[0]==='start:live1:STUDIO A:true' && r.again===1, r.calls);
+  ok('min pågående session startar Live Activity — en gång', r.started.length===1 && r.started[0]==='start:live1:Studio A:true' && r.again===1, r.calls);
   ok('"Minska genomskinlighet" eller valet i profilen ger det vanliga utseendet', r.offAcc && r.offPref, r);
   ok('profilen har Liquid Glass och Dynamic Island', r.prof===true, r);
   ok('Dynamic Island av i profilen tar bort Live Activity; passet slut tar bort det', r.endAll && r.endPast, r.calls);
@@ -2337,7 +2337,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const today = document.getElementById('view').innerHTML.split('DINA NÄSTA PASS')[1] || '';
     fWho = 'ADREY'; selDate = d; weekStart = monday(t); go('week'); const week = document.getElementById('view').innerHTML; fWho = null;
     openMe(); const prof = document.getElementById('sheetBody').innerHTML; closeSheet();
-    const collab = {today:/Co-write/.test(today) && !/Solo/.test(today), week:/Co-write/.test(week) && /SAMARBETE/.test(week) && !/Solo/.test(week),
+    const collab = {today:/Co-write/.test(today) && !/Solo/.test(today), week:/Co-write/.test(week) && /SAMARBETE/i.test(week) && !/Solo/.test(week),
       prof:/2 · 6 h totalt|1 · 3 h totalt/.test(prof) && /samarbete/.test(prof), solo:isCollab(S.bookings.find(b=>b.id==='so1'))};
     /* möte: i studio A krockar med Co-write, på annan plats går det */
     signIn(byName('RKAY')); await wait(40);
@@ -2359,7 +2359,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     selDate = d; go('week'); const wk2 = document.getElementById('view').innerHTML;
     openDetail(mt.id); const det = document.getElementById('sheetBody').innerHTML; closeSheet();
     return {mgr, collab, blocked, warn, mt:mt && mt.place==='Kontoret' && mt.with.join()==='ADREY' && mt.studio==='', studioBlocked, offsite, excluded,
-      card:/MÖTE/.test(wk2) && /Planering/.test(wk2), det:/DELTAGARE/.test(det) && /Kontoret/.test(det) && /ÄNDRA MÖTET/.test(det)};`);
+      card:/MÖTE/i.test(wk2) && /Planering/.test(wk2), det:/DELTAGARE/i.test(det) && /Kontoret/.test(det) && /ÄNDRA MÖTET/i.test(det)};`);
   ok('RKAY som manager: samma rättigheter som managern — och fortfarande producent', r.mgr.dash && r.mgr.grant && r.mgr.prod && r.mgr.inCrew && r.mgr.nav && /Manager · producent/.test(r.mgr.label), r.mgr);
   ok('samarbete: passet syns hos båda producenterna, i IDAG, schemat och profilen', r.collab.today && r.collab.week && r.collab.prof && r.collab.solo===false, r.collab);
   ok('möte i en upptagen studio stoppas; på annan plats går det, med varning om krock för deltagaren', r.blocked && r.warn && r.mt, r);
@@ -2411,9 +2411,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     signIn(byName('AZ')); await approveAccess('ar1'); await approveAccess('ar2'); closeSheet();
     const refs = S.invites.filter(i=>['ny@x.se','nora@x.se'].includes(i.email)).map(i=>i.email + ':' + (i.referrer||''));
     return {warn, noWarn, pen, sheet:/Sen avbokning från kunden/.test(sheet) && /id="ldLate" checked/.test(sheet), pen2, lt3gone,
-      claimSheet:/VILKET PASS/.test(claimSheet) && /data-b="ex1"/.test(claimSheet), cl:/30 min/.test(cl) && /ledig efter/.test(cl), sug,
-      ex1:ex1.end + ':' + ex1.freeMin, ed:/FÖRMÅNER/.test(ed) && /20 % rabatt på ett sessionspaket/.test(ed), acc:(acc.benefits||[]).map(b=>b.title + ':' + b.kind).join('|'),
-      card:/VÄRVA EN ARTIST/.test(card) && new RegExp('access\\\\?ref=' + code).test(card), code, refs};`);
+      claimSheet:/VILKET PASS/i.test(claimSheet) && /data-b="ex1"/.test(claimSheet), cl:/30 min/.test(cl) && /ledig efter/.test(cl), sug,
+      ex1:ex1.end + ':' + ex1.freeMin, ed:/FÖRMÅNER/i.test(ed) && /20 % rabatt på ett sessionspaket/.test(ed), acc:(acc.benefits||[]).map(b=>b.title + ':' + b.kind).join('|'),
+      card:/VÄRVA EN ARTIST/i.test(card) && new RegExp('access\\\\?ref=' + code).test(card), code, refs};`);
   ok('kunden avbokar under 24 h: varning och −500; i god tid: inget avdrag', r.warn && r.noWarn && JSON.stringify(r.pen)==='["-500:late:lt1"]', r);
   ok('crewet tar bort ett kundpass inom 24 h: rutan för sen avbokning är ikryssad, avdraget ges', r.sheet && r.pen2===2 && r.lt3gone===true, r);
   ok('extra tid: kunden väljer pass, admin ser att studion är ledig efter, föreslaget värde = 30 min × timpris', r.claimSheet && r.cl && r.sug==='325', r);
@@ -2471,23 +2471,23 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('fas 1-rotationen: 1+2+3, 1+4+5, 1+2+4', JSON.stringify(r.plan0)==='["p1,p2","p3,p4","p1,p3"]', r.plan0);
   ok('gruppsidan: läroplanen direkt under namnet, roller 1–5, bekräftelse, fakta och nästa träff — ingen 480-räknare',
      r.page.indexOf('currlinks') > r.page.indexOf('class="h1"') && r.page.indexOf('currlinks') < r.page.indexOf('PERSONER') && /Aktuell läroplan/.test(r.page)
-     && [1,2,3,4,5].every(n=>new RegExp('class="rnum">' + n + '<').test(r.page)) && /BEKRÄFTA/.test(r.page) && /SCHEMA/.test(r.page) && /RUM/.test(r.page)
-     && /MOMENT/.test(r.page) && /Fas 1/.test(r.page) && /RAPPORTERING/.test(r.page) && /NÄSTA TRÄFF/.test(r.page) && /Tre Tresson/.test(r.page) && !/480/.test(r.page));
+     && [1,2,3,4,5].every(n=>new RegExp('class="rnum">' + n + '<').test(r.page)) && /BEKRÄFTA/i.test(r.page) && /SCHEMA/i.test(r.page) && /RUM/i.test(r.page)
+     && /MOMENT/i.test(r.page) && /Fas 1/.test(r.page) && /RAPPORTERING/i.test(r.page) && /NÄSTA TRÄFF/i.test(r.page) && /Tre Tresson/.test(r.page) && !/480/.test(r.page));
   ok('ledaren bekräftar en deltagare', r.conf===true);
   ok('en framtida träff kan inte markeras genomförd', /inte varit än/.test(r.future), r.future);
-  ok('genomförd: ingen förkryssad — de planerade visas bara som stöd, med fält för faktisk tid', r.pre===0 && /Planerade enligt rotationen: William Ek, Nora Lind/.test(r.form) && /FAKTISK TID/.test(r.form) && /RAPPORTERAD STUDIETID/.test(r.form));
+  ok('genomförd: ingen förkryssad — de planerade visas bara som stöd, med fält för faktisk tid', r.pre===0 && /Planerade enligt rotationen: William Ek, Nora Lind/.test(r.form) && /FAKTISK TID/i.test(r.form) && /RAPPORTERAD STUDIETID/i.test(r.form));
   ok('närvaron är bara den markerade; steget fryses och rotationen går vidare', r.done.present==='p1' && r.done.rot==='p1,p2' && r.done.step===1, r.done);
   ok('bokad, faktisk och rapporterad tid hålls isär — krocken i faktisk tid flaggas för granskning', r.done.booked==='18:00-21:00' && r.done.act==='18:30-21:30'
      && +r.done.hours===3 && /Rummet var bokat/.test(r.done.flag), r.done);
   ok('de kommande träffarna planeras som förut', JSON.stringify(r.plan1)==='["p3,p4","p1,p3"]', r.plan1);
-  ok('kvittens: "Rapportering inskickad" med namn — separat från "verifierat av SV"', /RAPPORTERING INSKICKAD/.test(r.rec) && r.receipt==='AZ' && r.verBefore===false && r.ver==='AZ');
+  ok('kvittens: "Rapportering inskickad" med namn — separat från "verifierat av SV"', /RAPPORTERING INSKICKAD/i.test(r.rec) && r.receipt==='AZ' && r.verBefore===false && r.ver==='AZ');
   ok('dokumenterat deltagarbyte på en kommande träff', r.swapped==='p1,p4' && r.swaps===1, r.swapped);
   ok('ledaren justerar nästa träff (steg 5: 1+2+5) — byten som inte längre går ihop gäller inte', JSON.stringify(r.rot)==='["p1,p4","p2,p3"]', r.rot);
   ok('fas 2 aktiveras med beskedet från Polki: ledaren och tre deltagare', r.ph2[0]===2 && /Polki/.test(r.ph2[1]) && r.ph2[2]==='p1,p2,p3' && r.ph2[3]==='p1,p2,p4', r.ph2);
   ok('rapportstatus per grupp och period med kommentar, ansvarig och vem som ändrade', r.rs.status==='hjalp' && r.rs.responsible==='Gio' && r.rs.by==='AZ' && /inloggning/.test(r.rs.comment), r.rs);
   ok('orapporterad: varnas dag 12–13, försenad efter dag 14 — och flaggas att åtgärda', r.ageOld.level==='warn' && r.ageLate.level==='late' && /report/.test(r.flagOld), [r.ageOld, r.ageLate]);
-  ok('översikten: rapporteringen per grupp med status, äldsta orapporterade och kommentaren', /RAPPORTERING TILL SV/.test(r.ov) && /BEHÖVER HJÄLP/.test(r.ov)
-     && /Äldsta orapporterade/.test(r.ov) && /Saknar inloggning/.test(r.ov) && /ansvarig Gio/.test(r.ov) && /Status satt av AZ/.test(r.ov), r.ov.match(/RAPPORTERING TILL SV[\s\S]{0,900}/));
+  ok('översikten: rapporteringen per grupp med status, äldsta orapporterade och kommentaren', /RAPPORTERING TILL SV/i.test(r.ov) && /BEHÖVER HJÄLP/i.test(r.ov)
+     && /Äldsta orapporterade|orapporterade från tidigare månader/.test(r.ov) && /Saknar inloggning/.test(r.ov) && /ansvarig Gio/.test(r.ov) && /Status satt av AZ/i.test(r.ov), r.ov.match(/RAPPORTERING TILL SV[\s\S]{0,900}/));
   r = await ev(w,`
     let t = ''; const rt = toast; window.toast = m => { t = m; };
     S.accounts.push(bump({id:'gio', n:'Gio', r:'producer', email:'gio@b.se', phone:'', perms:['circles'], c:'#6633b8', g:'#9d5cf5', active:true, del:false}));
@@ -2511,13 +2511,60 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     save(); openCircle = null; circTab = 'friday'; go('circles'); const html = document.getElementById('view').innerHTML;
     const a = S.cnotes.find(x=>x.type==='action'); toggleAction(a.id);
     return {html, done:a.done, notes:S.cnotes.length};`);
-  ok('fredagsmötet: Polkis besked med nästa åtgärd, äldsta orapporterade, hjälp, ledare som inte är klara', /BESKED FRÅN POLKI/.test(r.html) && /Fas 2 kan starta/.test(r.html)
-     && /Nästa: Aktivera fas 2/.test(r.html) && /ÄLDSTA ORAPPORTERADE/.test(r.html) && /försenad/.test(r.html) && /GRUPPER SOM BEHÖVER HJÄLP/.test(r.html)
-     && /Saknar inloggning/.test(r.html) && /LEDARE SOM INTE ÄR KLARA/.test(r.html) && /KVAR/.test(r.html));
-  ok('nästa veckas rotation och schema med krockarna, obekräftade deltagare', /NÄSTA VECKA · ROTATION OCH SCHEMA/.test(r.html) && /fas 2/.test(r.html) && /Krock:/.test(r.html)
-     && /Kim 20:00–22:00/.test(r.html) && /OBEKRÄFTADE DELTAGARE/.test(r.html));
-  ok('åtgärdspunkter med ansvarig och datum — försenade markeras, kan bockas av', /Hjälp RKAY med e-tjänsten/.test(r.html) && /Gio · <span style="color:var\(--bad2\)">senast/.test(r.html)
+  ok('fredagsmötet: Polkis besked med nästa åtgärd, äldsta orapporterade, hjälp, ledare som inte är klara', /BESKED FRÅN POLKI/i.test(r.html) && /Fas 2 kan starta/.test(r.html)
+     && /Nästa: Aktivera fas 2/.test(r.html) && /ÄLDSTA ORAPPORTERADE/i.test(r.html) && /försenad/.test(r.html) && /GRUPPER SOM BEHÖVER HJÄLP/i.test(r.html)
+     && /Saknar inloggning/.test(r.html) && /LEDARE SOM INTE ÄR KLARA/i.test(r.html) && /KVAR/i.test(r.html));
+  ok('nästa veckas rotation och schema med krockarna, obekräftade deltagare', /NÄSTA VECKA · ROTATION OCH SCHEMA/i.test(r.html) && /fas 2/.test(r.html) && /Krock:/.test(r.html)
+     && /Kim 20:00–22:00/.test(r.html) && /OBEKRÄFTADE DELTAGARE/i.test(r.html));
+  ok('åtgärdspunkter med ansvarig och datum — försenade markeras, kan bockas av', /Hjälp RKAY med e-tjänsten/i.test(r.html) && /Gio · <span style="color:var\(--bad2\)">senast/.test(r.html)
      && r.done===true && r.notes===2, r.html.match(/ÅTGÄRDSPUNKTER[\s\S]{0,600}/));
+  /* ============ ÖVRIG STUDIO ============ */
+  log('\n── övrig studio: boka i någon annans studio ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true; signIn(byName('RKAY'));
+    const D = n => iso(addDays(new Date(), n)), d = D(3);
+    S.bookings.push(bump({id:'own1', studio:'A', date:d, start:'12:00', end:'15:00', who:'ADREY', title:'Upptaget', note:'', circleId:'', status:'', with:[], paid:false, del:false})); save();
+    openForm(null, d); const form = document.getElementById('sheetBody').innerHTML;
+    pickStudio('X'); const shown = !document.getElementById('fPlaceWrap').hidden;
+    document.getElementById('fStart').value = '12:00'; document.getElementById('fEnd').value = '15:00'; checkForm();
+    const needPlace = document.getElementById('saveBtn').disabled && /Skriv vilken studio/.test(document.getElementById('clash').innerHTML);
+    document.getElementById('fPlace').value = 'Studio Rymden, Hornsgatan 12'; checkForm();
+    const ok = !document.getElementById('saveBtn').disabled && /krockar inte med schemat/.test(document.getElementById('clash').innerHTML);
+    document.getElementById('fTitle').value = 'Mix hos Rymden'; saveBooking();
+    const b = S.bookings.find(x=>x.title==='Mix hos Rymden');
+    openForm(null, d); pickStudio('X'); document.getElementById('fStart').value = '13:00'; document.getElementById('fEnd').value = '16:00';
+    document.getElementById('fPlace').value = 'Atlantis'; checkForm();
+    const second = document.getElementById('clash').innerHTML, secondOk = !document.getElementById('saveBtn').disabled; closeSheet();
+    const card = bkCard(b), noCheck = !checkable(b), clashes = clash(b).length;
+    openDetail(b.id); const det = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {form:/Övrig studio/.test(form) && /Krockar inte/.test(form), shown, needPlace, ok, b:b && [b.studio, b.place].join('|'),
+      second:/RKAY har redan Mix hos Rymden 12:00–15:00 samtidigt/i.test(second), secondOk, card:/Studio Rymden, Hornsgatan 12/.test(card), noCheck, clashes,
+      det:/Studio Rymden, Hornsgatan 12/.test(det)};`);
+  ok('crewet kan välja "Övrig studio" och skriva vilken studio', r.form && r.shown && r.needPlace && r.ok && r.b==='X|Studio Rymden, Hornsgatan 12', r);
+  ok('övriga studior krockar inte med schemat — en varning om personen redan har något samtidigt', r.secondOk && r.second && r.clashes===0, r);
+  ok('platsen syns på passet och i detaljerna, och ingen studiokontroll', r.card && r.det && r.noCheck, r);
+  r = await ev(w,`signIn(byName('Studio Nord AB')); openForm(null, iso(addDays(new Date(), 4)), null, true); const h = document.getElementById('sheetBody').innerHTML; closeSheet(); return /Övrig studio/.test(h);`);
+  ok('kunder kan inte välja övrig studio', r===false);
+  /* ============ DESIGN: HANDLINGAR SOM MENINGAR ============ */
+  log('\n── design: knappar, länkar, flikar och menyn skrivs som meningar ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    const NAMES = /^(AZ|RKAY|ADREY|V2K|PKL|GIOVANNI|BS|SV|CSV|HQ|OK|PDF|SMS|CRM|A&R)$/;
+    const bad = new Set();
+    const scan = where => document.querySelectorAll('#view .btn, #view .linkbtn, #view .chip, #view .seg button, nav button, #sheetBody .btn, #sheetBody .linkbtn, #sheetBody .chip, #sheetBody .seg button')
+      .forEach(el=>{ const words = el.textContent.replace(/[^\\p{L}\\s]/gu,' ').split(/\\s+/).filter(w=>w.length>1);
+        const caps = words.filter(w=>w===w.toUpperCase() && /\\p{Lu}/u.test(w) && !NAMES.test(w));
+        if(caps.length >= 2 || (words.length===1 && caps.length===1 && words[0].length>3)) bad.add(where + ': ' + el.textContent.trim().slice(0,40)); });
+    for(const who of ['AZ','RKAY']){ signIn(byName(who));
+      for(const v of ['today','week','agenda','beats','more','team','dash','circles','artists','goals','gallery','rewards','education','studio']){
+        if(!canView(v)) continue; go(v); scan(who + '/' + v); }
+      go('week'); openForm(); scan(who + '/boka'); closeSheet(); }
+    signIn(byName('AZ')); go('circles'); openCircleView('c1'); scan('AZ/grupp');
+    for(const who of ['Studio Nord AB','Sofia Marks','William Ek']){ const a = byName(who); if(!a) continue; signIn(a); render(); scan(who); }
+    return [...bad];`);
+  ok('inga knappar, länkar, chips, flikar eller menyval i versaler (namn och förkortningar undantagna)', r.length===0, r.slice(0, 20));
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

@@ -1753,6 +1753,20 @@ ok('en vanlig producent kan varken skriva eller läsa det', (await as(db,U.rkay,
    && (await as(db,U.rkay,()=>q(`select 1 from records where kind='cnote'`))).length===0);
 ok('ledaren inte heller', (await as(db,U.gl,()=>q(`select 1 from records where kind='cnote'`))).length===0);
 }
+/* ============ ÖVRIG STUDIO ============ */
+{
+head('Övrig studio: krockar inte, ingen studiokontroll, platsen i notiserna');
+const span = (d, a, b) => `tsrange(timestamp '${d} ${a}', timestamp '${d} ${b}')`;
+await R('booking','xs1',{id:'xs1', studio:'X', place:'Studio Rymden, Hornsgatan 12', date:'2027-02-10', start:'12:00', end:'15:00', who:'RKAY', title:'Mix', circleId:'', status:'', with:[]});
+await R('booking','xs2',{id:'xs2', studio:'X', place:'Atlantis', date:'2027-02-10', start:'13:00', end:'16:00', who:'ADREY', title:'Vocals', circleId:'', status:'', with:[]});
+ok('två pass i övriga studior samtidigt krockar inte', (await one(`select bs_clash('X', ${span('2027-02-10','12:30','14:00')}, null) k`)).k===false);
+ok('och tar inte Studio A', (await one(`select bs_clash('A', ${span('2027-02-10','12:30','14:00')}, null) k`)).k===false);
+ok('ett möte utan studio krockar inte heller', (await one(`select bs_clash('', ${span('2027-02-10','12:30','14:00')}, null) k`)).k===false);
+ok('ingen studiokontroll för en övrig studio', (await one(`select bs_check_needed(data) n from records where id='xs1'`)).n===false
+   && (await one(`select bs_check_needed('{"status":"","studio":"A","date":"2027-02-10"}'::jsonb) n`)).n===true);
+ok('notiserna visar platsen', (await one(`select bs_room(data) r from records where id='xs1'`)).r==='Studio Rymden, Hornsgatan 12'
+   && (await one(`select bs_room('{"studio":"X"}'::jsonb) r`)).r==='övrig studio');
+}
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
 process.exit(fail?1:0);

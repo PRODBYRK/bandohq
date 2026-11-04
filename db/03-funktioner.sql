@@ -90,9 +90,11 @@ $$;
 
 /* Krockar passet med något som redan tar plats i studion? Förfrågningar och
    avböjda pass tar ingen plats — samma regel som booked() i appen. */
+/* Krock i ett av Bandos rum (A eller B). En övrig studio (X, någon annans rum) eller ett möte
+   utan studio krockar aldrig. */
 create or replace function bs_clash(p_studio text, p_span tsrange, p_ignore text) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (
+  select p_studio in ('A','B') and exists (
     select 1 from records r
      where r.kind = 'booking' and not r.del
        and coalesce(r.data->>'status','') not in ('request','declined')
@@ -2882,7 +2884,7 @@ $$;
 /* Pass som ska ha studiokontroll: bokade pass i en studio som har börjat. */
 create or replace function bs_check_needed(d jsonb) returns boolean
 language sql stable as $$
-  select coalesce(d->>'status','') in ('', 'done') and coalesce(d->>'studio','') <> '' and coalesce(d->>'busy','') = ''
+  select coalesce(d->>'status','') in ('', 'done') and coalesce(d->>'studio','') in ('A','B') and coalesce(d->>'busy','') = ''
      and coalesce(d->>'type','') <> 'meeting'
      and coalesce(d->>'date','') ~ '^\d{4}-\d\d-\d\d$'
 $$;
