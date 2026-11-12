@@ -168,6 +168,7 @@ const ap = await as(db,U.sofia,()=>rpc('answer_request',{p_booking:req.id,p_appr
 ok('ledaren godkänner mot ledig studio', ap.status==='' && ap.studio==='B', ap);
 ok('ledaren bokar ett pass själv', (await as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-15',p_start:'18:00',p_end:'21:00',p_studio:'A'}))).status==='');
 ok('men inte i en krockande tid', /upptagen/.test(await boom(()=>as(db,U.sofia,()=>rpc('book_circle_session',{p_circle:'c1',p_date:'2026-12-01',p_start:'19:00',p_end:'20:00',p_studio:'A'})))||''));
+await q(`update records set data = data || '{"date":"2027-06-01"}' where id='s1'`);   // en träff som inte varit
 ok('en framtida träff kan inte markeras genomförd', /inte varit än/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['will'])})))||''));
 await q(`update records set data = data || '{"date":"2026-10-27"}' where id='s1'`);   // träffen har varit
 ok('närvaro för någon utanför cirkeln nekas', /inte med i cirkeln/.test(await boom(()=>as(db,U.sofia,()=>rpc('complete_session',{p_booking:'s1',p_hours:3,p_present:JSON.stringify(['nora'])})))||''));
@@ -1766,6 +1767,29 @@ ok('ingen studiokontroll för en övrig studio', (await one(`select bs_check_nee
    && (await one(`select bs_check_needed('{"status":"","studio":"A","date":"2027-02-10"}'::jsonb) n`)).n===true);
 ok('notiserna visar platsen', (await one(`select bs_room(data) r from records where id='xs1'`)).r==='Studio Rymden, Hornsgatan 12'
    && (await one(`select bs_room('{"studio":"X"}'::jsonb) r`)).r==='övrig studio');
+}
+/* ============ MEDARBETARE ============ */
+{
+head('Medarbetare: ser bara mötena i schemat');
+U.st1 = await user('st1@b.se');
+await M('st1', U.st1, 'staff', 'Elin Ström', 'st1@b.se', null);
+const today = (await one(`select ((now() at time zone 'Europe/Stockholm')::date + 2)::text d`)).d;
+await R('booking','mtS1',{id:'mtS1', type:'meeting', studio:'', place:'Kontoret', date:today, start:'10:00', end:'11:00', who:'AZ', with:['Elin Ström'], title:'Planering', note:'', status:''});
+await R('booking','mtS2',{id:'mtS2', type:'meeting', studio:'B', place:'', date:today, start:'13:00', end:'14:00', who:'RKAY', with:[], title:'Crewmöte', note:'', status:''});
+const sv = await as(db,U.st1,()=>rpc('my_view',{}));
+ok('medarbetaren ser mötena — och inga pass, cirklar eller kunder', sv.bookings.length>=2 && sv.bookings.every(b=>b.type==='meeting')
+   && sv.bookings.some(b=>b.id==='mtS1') && !('circles' in sv) && !('busy' in sv), sv.bookings.map(b=>b.id));
+ok('och namnen på crewet och medarbetarna, utan kontaktuppgifter', sv.people.some(p=>p.name==='RKAY') && sv.people.every(p=>!('email' in p) && !('phone' in p))
+   && !sv.people.some(p=>p.role==='customer'||p.role==='participant'));
+ok('medarbetaren läser inga poster direkt', (await as(db,U.st1,()=>q(`select 1 from records`))).length===0);
+ok('och kan inte skriva något', (await as(db,U.st1,()=>rpc('push_records',{rows:JSON.stringify([{kind:'booking',id:'mtS3',data:{id:'mtS3',type:'meeting',date:today,start:'15:00',end:'16:00',who:'Elin Ström'},up:1}])})))===0);
+ok('ser inga andra konton än sitt eget', (await as(db,U.st1,()=>q(`select id from members`))).map(r=>r.id).join()==='st1');
+await q(`delete from outbox`);
+await q(`update records set data = data || '{"title":"Planering inför släppet"}', up = up + 1 where id='mtS1'`);
+await q(`update records set data = data || '{"start":"10:30","end":"11:30"}', up = up + 1 where id='mtS1'`);
+ok('medarbetaren får notisen när ett möte hen är med i flyttas', !!(await one(`select 1 x from outbox where kind='meeting' and member_id='st1'`)));
+ok('admin kan bjuda in en medarbetare', /^[0-9A-F]{4}-/.test(await as(db,U.az,()=>rpc('create_invite',{p_role:'staff',p_circle:null,p_days:14,p_max:1}))));
+ok('en producent kan inte', /Bara admin och manager/.test(await boom(()=>as(db,U.rkay,()=>rpc('create_invite',{p_role:'staff',p_circle:null,p_days:14,p_max:1})))||''));
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

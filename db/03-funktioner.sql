@@ -72,7 +72,7 @@ create or replace function bs_role_sv(r text) returns text
 language sql immutable as $$
   select case r when 'manager' then 'manager' when 'admin' then 'admin' when 'producer' then 'producent'
     when 'leader' then 'cirkelledare' when 'participant' then 'deltagare' when 'customer' then 'kund'
-    when 'camera' then 'kamerateam' else coalesce(r,'') end
+    when 'camera' then 'kamerateam' when 'staff' then 'medarbetare' else coalesce(r,'') end
 $$;
 
 /* "tor 9 okt" — samma form som appen. */
@@ -660,6 +660,17 @@ begin
   if me.id is null then raise exception 'Inget konto'; end if;
   select data into studios from records where kind = 'setting' and id = 'studios';
   select data into rates   from records where kind = 'setting' and id = 'rates';
+
+  /* Medarbetare: bara mötena i schemat — från en vecka bakåt — och namnen på de som är med. */
+  if me.role::text = 'staff' then
+    return jsonb_build_object('me', to_jsonb(me), 'studios', studios,
+      'bookings', coalesce((select jsonb_agg(data order by data->>'date', data->>'start') from records
+         where kind = 'booking' and not del and data->>'type' = 'meeting'
+           and coalesce(data->>'date','') ~ '^\d{4}-\d\d-\d\d$'
+           and (data->>'date')::date >= (now() at time zone 'Europe/Stockholm')::date - 7), '[]'::jsonb),
+      'people', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'role', role, 'color', color, 'glow', glow))
+         from members where active and role::text in ('manager','admin','producer','staff')), '[]'::jsonb));
+  end if;
 
   if me.role = 'customer' then
     /* Access: kunden är också cirkeldeltagare — gruppen, ansvarig producent och gruppens pass */

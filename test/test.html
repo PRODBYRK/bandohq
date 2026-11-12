@@ -2074,7 +2074,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const res = {demo:DEMO, me:(me()||{}).n, n:accounts().length, preview:PREVIEW_LOGIN, banner:/Demoläge/.test(html)};
     signOut(); res.gate = /DEMOLÄGE/i.test(document.getElementById('gateTag').innerHTML) && document.querySelectorAll('#gateBody .member').length >= 10;
     return res;`);
-  ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===18 && r.preview===true && r.banner===true, r);
+  ok('demoläget: påhittad data, inloggad som AZ, inget mot servern', r.demo===true && r.me==='AZ' && r.n===19 && r.preview===true && r.banner===true, r);
   ok('och granskaren kan byta till alla roller', r.gate===true, r);
   r = await ev(w,`leaveDemo(); return true;`);
   await new Promise(r=>setTimeout(r,1500));
@@ -2565,6 +2565,47 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     for(const who of ['Studio Nord AB','Sofia Marks','William Ek']){ const a = byName(who); if(!a) continue; signIn(a); render(); scan(who); }
     return [...bad];`);
   ok('inga knappar, länkar, chips, flikar eller menyval i versaler (namn och förkortningar undantagna)', r.length===0, r.slice(0, 20));
+  /* ============ CREWET SOM CIRKELLEDARE + MEDARBETARE ============ */
+  log('\n── producenter, admins och managers som cirkelledare; medarbetare ser bara möten ──');
+  w = await boot(seed());
+  r = await ev(w,`
+    window.confirm = () => true;
+    S.circles.push(bump({id:'c2', n:'Artistutveckling – Grupp 2', subject:'Artistutveckling', leader:'', members:[], active:true, del:false})); save();
+    signIn(byName('AZ'));
+    const out = {};
+    for(const id of ['adrey','az']){            /* producent och manager */
+      openAccount(id); const html = document.getElementById('sheetBody').innerHTML;
+      document.querySelector('#acLeads .chip[data-c="c2"]').click(); saveAccount(id);
+      out[id] = {chips:/CIRKELLEDARE FÖR/i.test(html), leads:circleById('c2').leader, role:byId(id).r}; }
+    openAccount('adrey'); document.querySelector('#acLeads .chip[data-c="c1"]').click(); saveAccount('adrey');
+    const takeover = circleById('c1').leader, keepRole = byId('adrey').r;
+    openAccount('adrey'); document.querySelectorAll('#acLeads .chip.on').forEach(c=>c.click()); saveAccount('adrey');
+    const released = [circleById('c1').leader, circleById('c2').leader].join('|');
+    openAccount('adrey'); document.querySelector('#acLeads .chip[data-c="c1"]').click(); saveAccount('adrey');
+    signIn(byName('ADREY')); go('today'); const today = document.getElementById('view').innerHTML;
+    const tabs = canView('circles'), my = myCircles().map(c=>c.id).join(), leads = can('leadCircle', circleById('c1'));
+    return {out, takeover, keepRole, released, today:/DINA CIRKLAR/i.test(today) && /Musikproduktion – Grupp 1/.test(today), tabs, my, leads, label:roleLabel(byId('adrey'))};`);
+  ok('kontoarket: producent och manager väljer cirklar de leder — rollen står kvar', r.out.adrey.chips && r.out.adrey.leads==='ADREY' && r.out.adrey.role==='producer'
+     && r.out.az.leads==='AZ' && r.out.az.role==='manager', r.out);
+  ok('en grupp som redan har en ledare byter ledare; avmarkerat släpper ledarskapet', r.takeover==='ADREY' && r.keepRole==='producer' && r.released==='|AZ', r);
+  ok('producenten som leder ser sina cirklar på Idag, kan leda dem och heter "Producent · cirkelledare"', r.today && r.tabs && r.my==='c1' && r.leads
+     && /cirkelledare/i.test(r.label), r);
+  r = await ev(w,`
+    S.accounts.push(bump({id:'stf', n:'Elin Ström', r:'staff', email:'elin@b.se', phone:'', c:'#047857', g:'#34d399', active:true, del:false}));
+    const D = n => iso(addDays(new Date(), n));
+    S.bookings.push(bump({id:'mx1', type:'meeting', studio:'', place:'Kontoret', date:D(1), start:'10:00', end:'11:00', who:'AZ', with:['Elin Ström'], title:'Planering', note:'', circleId:'', status:'', present:[], paid:false, del:false}));
+    S.bookings.push(bump({id:'mx2', type:'meeting', studio:'B', place:'', date:D(2), start:'13:00', end:'14:00', who:'RKAY', with:[], title:'Crewmöte', note:'', circleId:'', status:'', present:[], paid:false, del:false}));
+    S.bookings.push(bump({id:'sx9', studio:'A', date:D(1), start:'12:00', end:'15:00', who:'RKAY', title:'Hemlig session', note:'', circleId:'', status:'', with:[], paid:true, del:false}));
+    save();
+    signIn(byName('AZ')); go('week'); openMeeting(null, D(3)); const meetForm = document.getElementById('sheetBody').innerHTML; closeSheet();
+    signIn(byName('Elin Ström')); render();
+    const html = document.getElementById('view').innerHTML, nav = document.getElementById('nav').style.display;
+    openDetail('mx1'); const det = document.getElementById('sheetBody').innerHTML; closeSheet();
+    return {rv:roleView(), html, nav, det, inForm:/data-w="Elin Ström"/.test(meetForm), invite:inviteRoles().some(([r])=>r==='staff')};`);
+  ok('medarbetare: egen vy med bara mötena — de hen är med på markerade', r.rv==='staff' && /Möten/.test(r.html) && /Planering/.test(r.html) && /Crewmöte/.test(r.html)
+     && /DU ÄR MED/i.test(r.html) && !/Hemlig session/.test(r.html) && r.nav==='none', r.html.slice(0,300));
+  ok('mötet öppnas men går inte att ändra', /Kontoret/.test(r.det) && !/Ändra mötet/.test(r.det));
+  ok('medarbetare kan väljas som deltagare i ett möte och bjudas in', r.inForm && r.invite, r);
   log('\n══════════════════════════════');
   log(pass+' PASS · '+fail+' FAIL');
   log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');

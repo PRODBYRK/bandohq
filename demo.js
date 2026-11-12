@@ -33,7 +33,9 @@ window.bandohqDemo = function(o){
     A('nabbe','Nabbe','admin','#0284c7','#38bdf8','nabbe@bandocollective.com','070-200 00 02'),
     Object.assign(A('moez','Moez','camera','#d97706','#fbbf24','moez@bandocollective.com','070-200 00 03'),{team:'Moez',ig:'moez'}),
     Object.assign(A('d2la','Alva','camera','#db2777','#f472b6','alva@d2l.se','070-200 00 04'),{team:'D2L',ig:'d2l.film'}),
-    Object.assign(A('d2lb','Benji','camera','#db2777','#f472b6','benji@d2l.se','070-200 00 05'),{team:'D2L',ig:'d2l.film'})
+    Object.assign(A('d2lb','Benji','camera','#db2777','#f472b6','benji@d2l.se','070-200 00 05'),{team:'D2L',ig:'d2l.film'}),
+    /* medarbetare: ser mötena i schemat */
+    A('staff1','Elin Ström','staff','#047857','#34d399','elin@bandocollective.com','070-300 00 01')
   ];
   const curricula=[
    {id:'cu1',subject:'Musikproduktion',title:'Aktuell läroplan – Musikproduktion',
@@ -95,6 +97,11 @@ window.bandohqDemo = function(o){
   bookings.filter(b=>b.circleId && b.status==='done' && b.date < D(-8)).forEach(b=>{ b.receipt = {by:b.who, at:Date.now()-5*864e5};
     if(b.date < D(-40)) b.svVerified = {by:'GIOVANNI', at:Date.now()-3*864e5}; });
   B('u1','A',D(3),'18:00','21:00','RKAY','Musikproduktion – Grupp 1','c1');
+  /* möten: ett på kontoret med medarbetaren, ett crewmöte i The Booth */
+  bookings.push({id:'mt1', type:'meeting', studio:'', place:'Kontoret', date:D(1), start:'10:00', end:'11:00', who:'AZ', with:['RKAY','Elin Ström'],
+    title:'Planering inför släppet', note:'Ta med veckoplanen', circleId:'', status:'', hours:null, present:[], paid:false, artistId:'', up:1, del:false});
+  bookings.push({id:'mt2', type:'meeting', studio:'B', place:'', date:D(4), start:'15:00', end:'16:00', who:'RKAY', with:['ADREY','V2K'],
+    title:'Crewmöte', note:'', circleId:'', status:'', hours:null, present:[], paid:false, artistId:'', up:1, del:false});
   const PR=['RKAY','ADREY','V2K','GIOVANNI','PKL'];
   for(let i=1;i<=40;i++) B('cp'+i, i%2?'A':'B', D(-i-1), i%3?'13:00':'10:00', i%3?'16:00':'13:00', PR[i%5], 'Session');
   B('r1','',D(6),'18:00','21:00','Sofia Marks','Artistutveckling – Grupp 2','c2','request',null,[],false,'p3');

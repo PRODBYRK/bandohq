@@ -12,6 +12,8 @@ exception when duplicate_object then null; end $$;
 -- v8: admin (Costa, Nabbe) och kamera (Moez, D2L). Läggs till om typen redan fanns.
 alter type bs_role add value if not exists 'admin' after 'manager';
 alter type bs_role add value if not exists 'camera';
+/* medarbetare: ser mötena i schemat, inget annat (my_view) */
+alter type bs_role add value if not exists 'staff';
 
 -- ---------------------------------------------------------------------
 --  KONTON

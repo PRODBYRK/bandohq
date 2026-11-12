@@ -4118,8 +4118,12 @@ const sessionsWith = n => booked().filter(b => crewOn(b).includes(n));
 const weekKey = d => iso(monday(d || new Date()));
 
 /* ===================== IDENTITET & ROLLER ===================== */
-const ROLES = ['manager','admin','producer','camera','leader','participant','customer'];
-const ROLE_NAME = {manager:'Manager', admin:'Admin', producer:'Producent', camera:'Kamerateam',
+const ROLES = ['manager','admin','producer','camera','staff','leader','participant','customer'];
+/* Medarbetare: ser mötena i schemat och kan vara med på dem — inget annat. */
+const isStaff = a => !!a && a.r === 'staff';
+/* de som kan bjudas in till ett möte: crewet och medarbetarna */
+const meetPool = () => activeAcc().filter(a => isCrewRole(a.r) || a.r === 'staff');
+const ROLE_NAME = {manager:'Manager', admin:'Admin', producer:'Producent', camera:'Kamerateam', staff:'Medarbetare',
   leader:'Cirkelledare', participant:'Deltagare', customer:'Kund'};
 /* Crewet: de som bokar studion och sköter arbetet. Admin räknas dit (Costa,
    Nabbe) — men allas mål och individuell statistik är managerns (Rasmus). */
@@ -4996,7 +5000,7 @@ function paintSync(){
    och får rollen från länken. I förhandsvisningen sparas länkarna lokalt
    så att flödet går att prova i samma webbläsare.
    ===================================================================== */
-const INVITE_ROLES = {producer:'Producent', admin:'Admin', camera:'Kamerateam', manager:'Manager',
+const INVITE_ROLES = {producer:'Producent', admin:'Admin', camera:'Kamerateam', staff:'Medarbetare', manager:'Manager',
   leader:'Cirkelledare', participant:'Deltagare', customer:'Kund'};
 /* Rollerna den inloggade får bjuda in — admin kan inte skapa en manager. */
 const inviteRoles = () => Object.entries(INVITE_ROLES).filter(([r])=>r!=='manager' || can('grantManager'));
@@ -5453,7 +5457,7 @@ function render(){
     document.body.classList.add('simple');
     document.getElementById('view').className = '';
     document.getElementById('view').innerHTML = demoBanner() + pushBanner() + (
-      rv==='participant' ? vParticipant() : rv==='leader' ? vLeader() : vCustomer());
+      rv==='participant' ? vParticipant() : rv==='leader' ? vLeader() : rv==='staff' ? vStaff() : vCustomer());
     paintSync();
     return;
   }
@@ -7094,10 +7098,26 @@ function vToday(){
     </div>
     ${mine.length ? `<div class="eyebrow">DINA NÄSTA PASS<span class="ln"></span></div>
       <div class="stagger">${mine.map((b,i)=>bkCard(b,true,i)).join('')}</div>` : ''}
+    ${myLeadCard(m)}
     </section>
     <section>${weekAgendaCard()}</section>
     </div>
   `;
+}
+/* Cirklarna en producent, admin eller manager leder: nästa träff och det som väntar på ledaren. */
+function myLeadCard(m){
+  const cs = m ? circlesLedBy(m.n) : []; if(!cs.length) return '';
+  const now = new Date();
+  return `<div class="eyebrow">DINA CIRKLAR<span class="ln"></span><span style="color:var(--mut2)">${cs.length}</span></div>
+    <div class="card" style="padding:2px 14px">${cs.map(c=>{ const nb = nextMeeting(c), ss = circleSessions(c.id);
+      const todo = [unconfirmed(c).length ? nt(unconfirmed(c).length,'att bekräfta','att bekräfta') : '',
+        ss.filter(b=>!b.status && endAt(b) <= now).length ? `${ss.filter(b=>!b.status && endAt(b) <= now).length} att markera` : '',
+        ss.filter(unreported).length ? `${ss.filter(unreported).length} att rapportera` : ''].filter(Boolean);
+      return `<button class="member" style="cursor:pointer" onclick="go('circles');openCircleView('${c.id}')">
+        <div class="grow" style="min-width:0"><div class="mname">${esc(c.n)}</div>
+          <div class="mrole">${nb ? `Nästa träff ${esc(longDate(nb.date))} ${nb.start}` : 'Ingen träff bokad'}${
+            todo.length ? ` · <span style="color:var(--warn)">${todo.join(' · ')}</span>` : ''}</div></div>
+        <span class="chev">›</span></button>`; }).join('')}</div>`;
 }
 /* Hela crewets agenda för veckan i ett kort: en rad per producent med
    förloppet och de öppna uppgifterna. Bocka av direkt härifrån. */
@@ -7803,6 +7823,7 @@ const ROLE_HELP = {
   admin:'Sköter konton, inbjudningar, cirklar, schemat och artister. Ser inte allas mål och statistik.',
   producer:'Crewets vy: bokar studio, beats, agenda, och leder de cirklar hen tilldelas.',
   camera:'Ser schemat, har sin agenda och laddar upp bilder och film i galleriet.',
+  staff:'Ser mötena som ligger i schemat och får en notis när hen bjuds in till ett — inget annat.',
   leader:'Bokar pass för sina cirklar och når sina medlemmar.',
   participant:'Bokar pass med sin cirkelledare och kan avboka dem — inget annat.',
   customer:'Ser lediga tider, skickar bokningsförfrågningar och kan avboka — inget annat.'};
@@ -8990,6 +9011,36 @@ function sessionLine(b, extra){
     </div>
     ${extra||''}
   </div>`;
+}
+
+/* ---------- MEDARBETARE ----------
+   Bara mötena i schemat: de kommande dag för dag, de hen själv är med på markerade, och
+   den senaste veckans möten under Tidigare. Ingenting går att ändra härifrån. */
+function vStaff(){
+  const m = me(), now = new Date();
+  const meets = live().filter(isMeeting).sort((a,b)=>startAt(a)-startAt(b));
+  const coming = meets.filter(b=>endAt(b) > now), past = meets.filter(b=>endAt(b) <= now).reverse().slice(0, 5);
+  const mineN = coming.filter(b=>b.who===m.n || (b.with||[]).includes(m.n)).length;
+  const days = [...new Set(coming.map(b=>b.date))];
+  return `
+    <div class="h1">Möten</div>
+    <div class="sub">${coming.length ? `${nt(coming.length,'kommande möte','kommande möten')}${mineN ? ` · du är med på ${mineN}` : ''}` : 'Inga kommande möten i schemat.'}</div>
+    ${days.map(d=>`<div class="eyebrow">${esc(longDate(d))}${relDay(d)?' · '+relDay(d):''}<span class="ln"></span></div>
+      <div class="stagger">${coming.filter(b=>b.date===d).map(b=>staffMeetCard(b, m)).join('')}</div>`).join('')
+      || `<div class="empty">När ett möte bokas i schemat syns det här — och är du med får du en notis.</div>`}
+    ${past.length ? `<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.map(b=>staffMeetCard(b, m)).join('')}` : ''}`;
+}
+function staffMeetCard(b, m){
+  const mine = b.who===m.n || (b.with||[]).includes(m.n), past = endAt(b) <= new Date(), on = startAt(b) <= new Date() && !past;
+  return `<button class="bk meet ${past?'past':''} ${mine?'mine':''}" data-bid="${b.id}" style="--k:var(--tube)" onclick="openDetail('${b.id}')">
+    <div class="bk-time"><b>${b.start}</b><span>${b.end}</span></div>
+    <div class="grow">
+      <div class="bk-title">${esc(b.title||'Möte')}</div>
+      <div class="bk-sub"><span>${esc(meetPlace(b))}</span>
+        ${mine ? '<span class="pill" style="background:rgba(255,62,191,.14);color:var(--pur3)">DU ÄR MED</span>' : ''}
+        ${on ? '<span class="pill" style="background:rgba(52,211,153,.14);color:var(--ok2)">NU</span>' : ''}</div>
+      <div class="bk-note">${esc([b.who].concat(b.with||[]).filter(Boolean).join(', '))}</div>
+    </div></button>`;
 }
 
 /* ---------- DELTAGARE ----------
@@ -10193,7 +10244,12 @@ function openAccount(id){
     <label class="consent" style="margin-top:14px"><input type="checkbox" id="acPart" ${!a || a.part!==false ? 'checked' : ''}>
       <span><b>Cirkeldeltagare</b> <span class="muted">(kund)</span> — alla som bokar är med i studiocirklarna (Bando HQ Access). Stäng bara av i undantagsfall.</span></label>
 
-    ${leads.length?`<div class="eyebrow">LEDER<span class="ln"></span></div>
+    ${a && (isCrewRole(a.r) || a.r==='leader') && lcircle().length ? `<label class="lbl">CIRKELLEDARE FÖR</label>
+      <div class="chips wrap" id="acLeads">${lcircle().map(c=>`<button type="button" class="chip ${c.leader===a.n?'on':''}" data-c="${c.id}"
+        onclick="this.classList.toggle('on')">${esc(c.n)}${c.leader && c.leader!==a.n ? ` <span class="muted" style="font-weight:500">· ${esc(c.leader)}</span>` : ''}</button>`).join('')}</div>
+      <div class="tiny muted" style="margin-top:6px;line-height:1.5">Producenter, admins och managers kan leda cirklar och vara kvar i sin roll.
+        Högst ${ccfg().leaderMaxGroups} grupper per ledare. En grupp som redan har en ledare får ${esc(a.n)} i stället.</div>`
+      : leads.length?`<div class="eyebrow">LEDER<span class="ln"></span></div>
       ${leads.map(c=>`<div class="kv"><span>CIRKEL</span><b>${esc(c.n)}</b></div>`).join('')}`:''}
 
     ${a && can('manageCrew') && isCrewRole(a.r) && !isAdminRole(a.r) ? `<label class="consent" style="margin-top:16px"><input type="checkbox" id="acX" ${(a.perms||[]).includes('artist_intel')?'checked':''}>
@@ -10243,6 +10299,16 @@ function saveAccount(id){
     if(m.r==='manager' && nr!=='manager' && accounts().filter(c=>c.r==='manager').length<2)
       return toast('Det måste finnas minst en manager');
     const leads = lcircle().filter(c=>c.leader===m.n);
+    /* cirklarna personen leder: producenter, admins och managers kan leda och vara kvar i sin roll */
+    const lc = document.getElementById('acLeads'), leadOk = isCrewRole(nr) || nr==='leader';
+    const wantLeads = lc && leadOk ? [...lc.querySelectorAll('.chip.on')].map(el=>el.dataset.c) : null;
+    if(wantLeads){
+      const mx = ccfg().leaderMaxGroups;
+      if(mx > 0 && wantLeads.length > mx) return toast(`Högst ${mx} grupper per ledare`);
+      const takes = wantLeads.map(circleById).filter(c=>c && c.leader && c.leader!==m.n);
+      if(takes.length && !confirm(takes.map(c=>`${c.n} leds i dag av ${c.leader}`).join('\n') + `\n\n${m.n} blir ledare i stället?`)) return;
+      if(nr==='leader' && !wantLeads.length && leads.length) return toast('En cirkelledare måste leda minst en cirkel — välj en annan roll annars');
+    }
     if(leads.length && !isCrewRole(nr) && nr!=='leader'
        && !confirm(`${m.n} leder ${leads.length} ${leads.length===1?'cirkel':'cirklar'}.\n\nByter du roll står de utan ledare tills du sätter en ny.`))
       return;
@@ -10254,6 +10320,9 @@ function saveAccount(id){
       m.n = nn;
     }
     Object.assign(m, {email:ne, phone:np, r:nr, team:nt_, ig:ni, producer:nk, producers:nps, part:document.getElementById('acPart').checked, up:Date.now()});
+    if(wantLeads) lcircle().forEach(c=>{ const on = wantLeads.includes(c.id);
+      if(on && c.leader!==m.n){ c.leader = m.n; touch(c); }
+      else if(!on && c.leader===m.n){ c.leader = ''; touch(c); } });
     /* behörigheterna: Artist Intelligence (producenter) och Producent också (admin, manager) */
     let perms = (m.perms||[]).slice();
     const flag = (id, p) => { const x = document.getElementById(id); if(x) perms = x.checked ? [...new Set(perms.concat(p))] : perms.filter(y=>y!==p); };
@@ -10607,10 +10676,10 @@ function openMeeting(id, date){
     <input type="date" id="mDate" value="${v.date}" onchange="checkMeeting()">
     <label class="lbl">TID</label>
     <div class="two"><input type="time" id="mStart" value="${v.start}" onchange="meetLen()"><input type="time" id="mEnd" value="${v.end}" onchange="checkMeeting()"></div>
-    <div class="chips" style="margin-top:8px">${[[30,'30 MIN'],[60,'1 H'],[90,'1,5 H'],[120,'2 H']].map(([n,l])=>
+    <div class="chips" style="margin-top:8px">${[[30,'30 min'],[60,'1 h'],[90,'1,5 h'],[120,'2 h']].map(([n,l])=>
       `<button type="button" class="chip" onclick="meetLen(${n})">${l}</button>`).join('')}</div>
     <label class="lbl">DELTAGARE</label>
-    <div class="chips wrap">${crew().filter(c=>c.n!==v.who).map(c=>`<button type="button" class="chip mwith ${(v.with||[]).includes(c.n)?'on':''}"
+    <div class="chips wrap">${meetPool().filter(c=>c.n!==v.who).map(c=>`<button type="button" class="chip mwith ${(v.with||[]).includes(c.n)?'on':''}"
       data-w="${esc(c.n)}" onclick="this.classList.toggle('on');checkMeeting()"><i class="sw" style="background:${c.c}"></i>${esc(c.n)}</button>`).join('')}</div>
     <div class="tiny muted" style="margin-top:6px">${esc(v.who)} bokar mötet och är med.</div>
     <label class="lbl" for="mNote">ANTECKNING</label>
