@@ -2324,8 +2324,8 @@ begin
   end if;
   p12 := bs_pnr(p_pnr);
   if p12 is null then raise exception 'Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX'; end if;
+  /* inriktningen är valfri sedan nov 2026 (registreringssidan frågar inte längre) */
   ints := array(select distinct x from jsonb_array_elements_text(case when jsonb_typeof(p_interests) = 'array' then p_interests else '[]'::jsonb end) x order by x);
-  if coalesce(array_length(ints, 1), 0) = 0 then raise exception 'Välj minst en inriktning'; end if;
   select x into bad from unnest(ints) x where x <> all(bs_interest_ids()) limit 1;
   if bad is not null then raise exception 'Okänd inriktning: %', bad; end if;
   if not coalesce(p_consent, false) then raise exception 'Godkänn hur vi hanterar dina personuppgifter'; end if;
@@ -2432,8 +2432,9 @@ begin
   perform bs_notify(mid, em, 'Välkommen till Bando HQ',
     'Hej ' || split_part(nm, ' ', 1) || '!' || E'\n\n'
     || 'Ditt konto är klart. Du har nu tillgång till Bando HQ Access: boka sessions, se dina bokningar, priser och förmåner.'
-    || E'\n\n' || 'Du är också deltagare i våra studiocirklar. Vi placerar dig i en grupp utifrån det du valt ('
-    || coalesce(labels, '') || '), och du ser din grupp och ansvariga producent i Bando HQ.'
+    || E'\n\n' || 'Du är också deltagare i våra studiocirklar. Vi placerar dig i en grupp utifrån '
+    || case when labels is not null then 'det du valt (' || labels || ') och ' else '' end
+    || 'de tider du kan, och du ser din grupp och ansvariga producent i Bando HQ.'
     || case when wb > 0 then E'\n\n' || 'Välkomstgåva: ' || wb || ' poäng i Bando Rewards. Du samlar fler på varje betald session'
          || ' och löser in dem mot belöningar.' else '' end
     || E'\n\n' || 'Logga in med din e-postadress och lösenordet du valde.',
@@ -2441,9 +2442,9 @@ begin
   for a in select id from members where active and role::text in ('manager','admin') loop
     perform bs_notify(a.id, null, 'Ny registrering: ' || nm,
       'Ny registrering i Bando HQ Access: ' || nm || ' (' || concat_ws(', ', em, ph) || ').'
-      || E'\n\n' || 'Inriktning: ' || coalesce(labels, '—') || '.'
+      || coalesce(E'\n\n' || 'Inriktning: ' || labels || '.', '')
       || case when linked then E'\n\n' || 'Personen fanns redan i BANDOHQ — inloggningen är kopplad till den raden.' else '' end
-      || E'\n\n' || 'Placera personen i en studiocirkel under Cirklar → Fördela.',
+      || E'\n\n' || 'Får personen ingen plats automatiskt står hen på väntelistan under Cirklar → Grupper.',
       'access', 'access:' || mid || ':' || a.id, '0', coalesce(p_url, 'https://www.bandohq.se/'));
   end loop;
   return jsonb_build_object('ok', true, 'id', mid, 'name', nm, 'linked', linked, 'bonus', wb);
@@ -2456,10 +2457,9 @@ language sql stable security definer set search_path = public as $$
   select case when auth.uid() is null then jsonb_build_object('login', false)
     else coalesce((select jsonb_build_object('login', true, 'member', true, 'name', m.name, 'role', m.role,
         'complete', m.role::text not in ('customer','participant')
-                    or (m.consent_at is not null and cardinality(m.interests) > 0 and exists (select 1 from member_pnr where member_id = m.id)),
+                    or (m.consent_at is not null and exists (select 1 from member_pnr where member_id = m.id)),
         'missing', jsonb_strip_nulls(jsonb_build_object(
            'pnr', case when not exists (select 1 from member_pnr where member_id = m.id) then true end,
-           'interests', case when cardinality(m.interests) = 0 then true end,
            'phone', case when bs_phone(m.phone) is null then true end,
            'consent', case when m.consent_at is null then true end)))
       from members m where m.user_id = auth.uid()), jsonb_build_object('login', true, 'member', false)) end
@@ -2581,7 +2581,6 @@ begin
   if nm ~ '[0-9@#$%^&*_=+<>?/\\|{}\[\]:;"!]' then raise exception 'Namnet får bara innehålla bokstäver'; end if;
   if em !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(em) > 120 then raise exception 'Fyll i en giltig e-postadress'; end if;
   if ph is null then raise exception 'Fyll i ett giltigt mobilnummer'; end if;
-  if coalesce(array_length(ints, 1), 0) = 0 then raise exception 'Välj minst en inriktning'; end if;
   if not coalesce(p_consent, false) then raise exception 'Godkänn hur vi hanterar dina uppgifter'; end if;
   if (select count(*) from access_requests where created_at > now() - interval '1 day') >= 100 then
     raise exception 'Många förfrågningar just nu — försök igen imorgon';
@@ -2608,7 +2607,7 @@ begin
   select string_agg(i->>'label', ', ') into labels from jsonb_array_elements(bs_acfg()->'interests') i where i->>'id' = any(ints);
   for a in select m.id from members m where m.active and role::text in ('manager','admin','producer') loop
     perform bs_notify(a.id, null, 'Förfrågan om Bando HQ Access: ' || nm,
-      nm || ' (' || em || ', ' || ph || ') vill ha Bando HQ Access.' || E'\n\n' || 'Inriktning: ' || coalesce(labels, '—') || '.'
+      nm || ' (' || em || ', ' || ph || ') vill ha Bando HQ Access.' || coalesce(E'\n\n' || 'Inriktning: ' || labels || '.', '')
       || coalesce(E'\n\n' || 'Meddelande: ' || nullif(trim(p_message),''), '') || E'\n\n' || 'Godkänn eller avböj i BANDOHQ.',
       'access-req', 'access-req:' || id || ':' || a.id);
   end loop;

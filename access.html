@@ -290,18 +290,6 @@ if(/[?&]static=1/.test(location.search)) document.documentElement.classList.add(
     </div>
   </section>
 
-  <section id="inriktning" aria-labelledby="intH">
-    <div class="wrap">
-      <div class="sec-head">
-        <h2 class="h2" id="intH">Välj din inriktning</h2>
-        <span class="rule" aria-hidden="true"></span>
-        <p class="lead">Som deltagare i våra studiocirklar väljer du vilket område du vill utvecklas inom genom dina sessions.</p>
-      </div>
-      <div class="chips" id="chips" role="group" aria-labelledby="intH"></div>
-      <p class="chips-count" id="chipsCount" aria-live="polite">Välj en eller flera</p>
-    </div>
-  </section>
-
   <section id="registrera" aria-labelledby="regH">
     <div class="wrap">
       <div class="sec-head">
@@ -445,27 +433,8 @@ async function token(){
   return AUTH.access_token;
 }
 
-/* ---------- inriktningarna ---------- */
-function paintChips(){
-  $('chips').innerHTML = INTERESTS.map(i => `<button type="button" class="chip" data-id="${esc(i.id)}" aria-pressed="${picked.has(i.id)}"><i aria-hidden="true"></i>${esc(i.label)}</button>`).join('');
-  paintPicked();
-}
-function paintPicked(){
-  const n = picked.size, list = INTERESTS.filter(i => picked.has(i.id));
-  $('chipsCount').innerHTML = n ? `<b>${n}</b> ${n === 1 ? 'vald' : 'valda'}` : 'Välj en eller flera';
-  const p = $('picked'); if(!p) return;
-  p.classList.toggle('none', !n);
-  p.innerHTML = n ? `<span>${list.map(i => esc(i.label)).join(' · ')}</span><a href="#inriktning">Ändra</a>`
-                  : `<span>Ingen vald än</span><a href="#inriktning">Välj inriktning</a>`;
-  if(n) setErr('interests', '');
-}
-$('chips').addEventListener('click', e => {
-  const b = e.target.closest('.chip'); if(!b) return;
-  const id = b.dataset.id;
-  picked.has(id) ? picked.delete(id) : picked.add(id);
-  b.setAttribute('aria-pressed', picked.has(id));
-  paintPicked();
-});
+/* Inriktningen väljs inte längre här (nov 2026). En inbjudan som crewet skrivit inriktningar på
+   för dem vidare tyst (picked); annars skickas inga. */
 function paintPerks(perks){
   if(!Array.isArray(perks) || !perks.length) return;
   $('perks').innerHTML = perks.map((p, i) => `<li class="perk"><span class="perk-n">${String(i + 1).padStart(2, '0')}</span><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p></li>`).join('');
@@ -476,11 +445,6 @@ async function loadInfo(){
     if(PREVIEW){ const s = LS('bandosesh_v2'); info = s && s.accessCfg ? {interests: (s.accessCfg.interests || []).filter(i => !i.off), perks: s.accessCfg.perks} : null; }
     else info = await call(CLOUD.url + '/rest/v1/rpc/access_info', {});
     if(!info) return;
-    if(Array.isArray(info.interests) && info.interests.length){
-      INTERESTS = info.interests.map(i => ({id: i.id, label: i.label}));
-      [...picked].forEach(id => { if(!INTERESTS.some(i => i.id === id)) picked.delete(id); });
-      paintChips();
-    }
     paintPerks(info.perks);
   }catch(e){ /* standardtexterna står kvar */ }
 }
@@ -529,9 +493,6 @@ const availBox = () => `<div class="f f--full"><span class="lbl" id="l_avail">N�
     <div class="chips chips--left" id="avail" role="group" aria-labelledby="l_avail">${AVAIL.map(([id, n]) =>
       `<button type="button" class="chip" data-id="${id}" aria-pressed="${availSel.has(id)}"><i aria-hidden="true"></i>${n}</button>`).join('')}</div>
     <span class="err" id="e_avail" role="alert"></span></div>`;
-const pickedBox = () => `<div class="f f--full"><span class="lbl" id="l_interests">Inriktning</span>
-    <div class="picked none" id="picked" aria-labelledby="l_interests"></div>
-    <span class="err" id="e_interests" role="alert"></span></div>`;
 function wire(keys){
   $('form').addEventListener('submit', e => { e.preventDefault(); regMode() ? submit() : sendRequest(); });
   keys.forEach(k => {
@@ -557,11 +518,10 @@ function render(){
         ${field('name', 'För- och efternamn', `type="text" autocomplete="name" autocapitalize="words" maxlength="60" required value="${esc(draft.name)}"`, '', 'f--full')}
         ${field('email', 'E-post', `type="email" autocomplete="email" autocapitalize="none" spellcheck="false" inputmode="email" maxlength="120" required value="${esc(draft.email)}"`)}
         ${field('phone', 'Mobilnummer', `type="tel" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="070-123 45 67" required value="${esc(draft.phone)}"`)}
-        ${pickedBox()}
         <div class="f f--full"><label for="f_message">Om dig och din musik <span class="hint" style="text-transform:none;letter-spacing:0">(valfritt)</span></label>
           <textarea id="f_message" name="message" maxlength="600" rows="4" placeholder="Vad gör du, vad vill du utveckla, länkar till din musik …">${esc(draft.message)}</textarea></div>
         ${consentBox('Jag godkänner att Bando Collective sparar uppgifterna för att svara på min förfrågan.',
-          `<span><b>Dina uppgifter.</b> Vi sparar ditt namn, din e-post, ditt telefonnummer, dina inriktningar och ditt meddelande för att
+          `<span><b>Dina uppgifter.</b> Vi sparar ditt namn, din e-post, ditt telefonnummer och ditt meddelande för att
             svara på förfrågan — tills den är besvarad, och högst ett år. Personnummer behövs först när du skapar ditt konto.</span>`)}
       </div>
       <input class="hp" type="text" name="website" id="f_hp" tabindex="-1" autocomplete="off" aria-hidden="true">
@@ -571,7 +531,6 @@ function render(){
       </div>
       <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
     </form>`;
-    paintPicked();
     wire(['name','email','phone','message']);
     return;
   }
@@ -586,10 +545,9 @@ function render(){
         ${field('pnr', 'Personnummer', `type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="ÅÅÅÅMMDD-XXXX" required value="${esc(draft.pnr)}"`,
           'Behövs för rapporteringen av studiecirklarna. Lagras krypterat.', full ? '' : 'f--full')}
         ${full ? field('password', 'Lösenord', `type="password" autocomplete="new-password" minlength="8" maxlength="72" required value="${esc(draft.password)}"`, 'Minst 8 tecken, med både bokstäver och siffror.') : ''}
-        ${pickedBox()}
         ${availBox()}
         ${consentBox('Jag godkänner att Bando Collective behandlar mina uppgifter så här, och att jag blir deltagare i Bandos studiocirklar.',
-          `<span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer, dina inriktningar och ditt
+          `<span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer och ditt
               personnummer för att ge dig tillgång till Bando HQ och för att driva studiecirklarna.</span>
             <span><b>Personnumret</b> behövs för att vi ska kunna rapportera studiecirklarna till studieförbundet. Det lagras krypterat,
               syns bara för Bandos administratörer och raderas när du raderar ditt konto.</span>`)}
@@ -601,7 +559,6 @@ function render(){
       </div>
       <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
     </form>`;
-    paintPicked();
     $('avail').addEventListener('click', e => {
       const b = e.target.closest('.chip'); if(!b) return;
       const id = b.dataset.id; availSel.has(id) ? availSel.delete(id) : availSel.add(id);
@@ -656,8 +613,7 @@ function firstError(errs, order){
   const first = order.find(k => errs[k]);
   if(!first) return false;
   showMsg('');
-  if(first === 'interests'){ $('picked').scrollIntoView({block:'center', behavior:'smooth'}); }
-  else if(first === 'avail'){ $('avail').scrollIntoView({block:'center', behavior:'smooth'}); }
+  if(first === 'avail'){ $('avail').scrollIntoView({block:'center', behavior:'smooth'}); }
   else { const i = $('f_' + first); if(i){ i.focus(); i.scrollIntoView({block:'center', behavior:'smooth'}); } }
   return true;
 }
@@ -668,8 +624,8 @@ async function sendRequest(){
   const hp = ($('f_hp') || {}).value || '';
   draft.message = ($('f_message') || {}).value || draft.message;
   const errs = {name:CHECK.name(draft.name), email:CHECK.email(draft.email), phone:CHECK.phone(draft.phone),
-    interests: picked.size ? '' : 'Välj minst en inriktning', consent: draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter'};
-  if(firstError(errs, ['name','email','phone','interests','consent'])) return;
+    consent: draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter'};
+  if(firstError(errs, ['name','email','phone','consent'])) return;
   busy = true; render();
   try{
     const req = {p_name: cleanName(draft.name), p_email: draft.email.trim().toLowerCase(), p_phone: draft.phone,
@@ -696,10 +652,9 @@ async function submit(){
   if(($('f_hp') || {}).value) return;                       /* robot */
   const full = mode === 'new', errs = {};
   ['name', 'phone', 'pnr'].concat(full ? ['email', 'password'] : []).forEach(k => { errs[k] = CHECK[k](draft[k], draft); });
-  errs.interests = picked.size ? '' : 'Välj minst en inriktning';
   errs.avail = availSel.size ? '' : 'Välj minst en tid du kan';
   errs.consent = draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter';
-  if(firstError(errs, ['name','email','phone','pnr','password','interests','avail','consent'])) return;
+  if(firstError(errs, ['name','email','phone','pnr','password','avail','consent'])) return;
   busy = true; render();
   try{
     if(!full){ await finish(); return; }
@@ -788,12 +743,12 @@ async function loadInvite(){
     if(info && info.ok && info.role === 'customer'){
       invInfo = info; mode = 'new';
       draft.name = info.name || draft.name; draft.email = info.email || draft.email; draft.phone = info.phone || draft.phone;
-      (info.interests || []).forEach(id => picked.add(id)); paintChips();
+      (info.interests || []).forEach(id => picked.add(id));
     } else invWhy = (info && info.ok && info.role !== 'customer') ? 'Länken gäller inte Bando HQ Access' : (info && info.why) || '';
   }catch(e){ invWhy = 'kunde inte läsas'; }
 }
 async function start(){
-  paintChips(); render();
+  render();
   loadInfo();
   await loadInvite(); render();
   if(PREVIEW || !AUTH) return;

@@ -230,7 +230,6 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${wait(400)}
     const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
     const reg = !!document.getElementById('f_pnr');
-    document.querySelector('#chips .chip[data-id="production"]').click();
     set('name','Studio Nord AB'); set('email','kund@b.se'); set('phone','070-555 66 77'); set('pnr','${PNR('19880808','321')}'); set('password','kund12345');
     document.getElementById('f_consent').click(); { const av = document.querySelector('#avail .chip[data-id="wd-eve"]'); if(av && av.getAttribute('aria-pressed')!=='true') av.click(); }
     await submit(); ${wait(300)}
@@ -250,13 +249,13 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
     const last = mine.find(b=>b.date==='${D(5)}');
     await cancelMine(last.id);
-    return {gapsAfter, prof, phone, prices:/DINA PRISER OCH FÖRMÅNER/i.test(html), group:/Vi placerar dig i en grupp/.test(html),
+    return {gapsAfter, prof, phone, prices:/DINA PRISER OCH FÖRMÅNER/i.test(html), group:/Vi placerar dig i en grupp|DIN STUDIOCIRKEL/i.test(html),
       view, free:/tl-bar/.test(html) && />Bokat</.test(html) && !/Hemlig/.test(html), uiFull, clash, short, n:mine.length, paid:mine.every(b=>b.paid),
       noStudio:mine.every(b=>b.studio==='' && b.end==='15:00'), note:(last||{}).note,
       after:S.bookings.filter(b=>!b.busy && b.status==='request').length};`);
   ok('kunden är inloggad med komplett profil: personnumret sparat (krypterat), inget saknas', r.gapsAfter===null && r.prof && r.prof.pnr===true
      && r.prof.consent===true && r.phone==='+46705556677', r);
-  ok('kundvyn har priser och förmåner och "Vi placerar dig i en grupp"', r.prices && r.group, r);
+  ok('kundvyn har priser och förmåner och sin studiocirkel', r.prices && r.group, r);
   ok('kunden landar i kundvyn: bokat syns, men inte vem eller vad', r.view==='customer' && r.free===true, r);
   ok('kan inte fråga om en fullbokad tid — varken i appen eller på servern', r.uiFull==='taken' && /fullbokad/.test(r.clash), r);
   ok('servern tar bara emot pass på tre timmar', /tre timmar/.test(r.short), r.short);
@@ -320,7 +319,6 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${wait(400)}
     const pre = {name:document.getElementById('f_name').value, mail:document.getElementById('f_email').value};
     const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
-    document.querySelector('#chips .chip[data-id="production"]').click();
     set('name','Vera Ny'); set('phone','070-111 22 33'); set('pnr','${PNR('19920909','101')}'); set('password','vera12345');
     document.getElementById('f_consent').click(); { const av = document.querySelector('#avail .chip[data-id="wd-eve"]'); if(av && av.getAttribute('aria-pressed')!=='true') av.click(); } await submit(); ${wait(300)}
     return {pre, done:/Välkommen in/.test(document.getElementById('stage').textContent), msg:(document.getElementById('msg')||{}).textContent||''};`);
@@ -810,7 +808,6 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   w = await goPage('../access.html?cb=' + Math.random());
   const fill = (name, email, pnr) => `
     const set = (k,v) => { const i = document.getElementById('f_'+k); if(i){ i.value = v; i.dispatchEvent(new Event('input')); } };
-    if(!document.querySelector('#chips .chip[data-id="production"][aria-pressed="true"]')) document.querySelector('#chips .chip[data-id="production"]').click();
     set('name','${name}'); set('email','${email}'); set('phone','070-123 45 67'); set('pnr','${pnr}'); set('password','studio2026x');
     if(!document.getElementById('f_consent').checked) document.getElementById('f_consent').click(); { const av = document.querySelector('#avail .chip[data-id="wd-eve"]'); if(av && av.getAttribute('aria-pressed')!=='true') av.click(); }
     await submit();`;
@@ -818,12 +815,11 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   r = await ev(w,`${wait(300)}
     const chips = document.querySelectorAll('#chips .chip').length;
     const set = (k,v) => { const i = document.getElementById('f_'+k); i.value = v; i.dispatchEvent(new Event('input')); };
-    document.querySelector('#chips .chip[data-id="production"]').click();
     set('name','Alva Strand'); set('email','alva@acc.se'); set('phone','070-123 45 67'); set('message','Producerar R&B');
     document.getElementById('f_consent').click(); { const av = document.querySelector('#avail .chip[data-id="wd-eve"]'); if(av && av.getAttribute('aria-pressed')!=='true') av.click(); }
     await sendRequest();
     return {chips, sent:/Tack, Alva/.test(document.getElementById('stage').textContent)};`);
-  ok('förfrågan från sidan går till servern — utan konto, utan personnummer', r.chips===12 && r.sent, r);
+  ok('förfrågan från sidan går till servern — utan konto, utan personnummer, utan inriktning', r.chips===0 && r.sent, r);
   const reqRow = await sql(`select id, status, phone, message from access_requests where email='alva@acc.se'`);
   ok('förfrågan ligger på servern', reqRow.length===1 && reqRow[0].status==='new' && reqRow[0].phone==='+46701234567' && reqRow[0].message==='Producerar R&B', reqRow);
   let abox0 = await outbox();
@@ -871,14 +867,14 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     return {who:m&&m.n, role:m&&m.r, view:roleView(), part:m&&m.part, ints:(m&&m.interests||[]).join(), prof:S.profile, gaps:profileGaps(),
       group:/DIN STUDIOCIRKEL/i.test(html) && /NÄSTA TRÄFF/i.test(html) && !/Vi placerar dig/.test(html), prices:/DINA PRISER OCH FÖRMÅNER/i.test(html), hash:location.hash};`);
   ok('appen: inloggad som kund och cirkeldeltagare, profilen komplett', r.who==='Alva Strand' && r.role==='customer' && r.view==='customer' && r.part===true
-     && r.ints==='production' && r.prof && r.prof.pnr===true && r.gaps===null && !r.hash, r);
+     && r.ints==='' && r.prof && r.prof.pnr===true && r.gaps===null && !r.hash, r);
   ok('kundvyn: placerad automatiskt i en grupp (samma ämne, ledig plats) och priserna', r.group && r.prices, r);
   const auto = await sql(`select c.id, c.data->'roles' r from records c join members m on m.name = 'Alva Strand' where c.kind = 'circle' and c.data->'members' ? m.id`);
   ok('på servern: Alva har en roll i gruppen och ledaren har fått en notis', auto.length===1 && Object.keys(auto[0].r).length>0
      && (await outbox()).some(m=>/^Ny deltagare i /.test(m.subject||'') && /Alva Strand/.test(m.subject||'')), auto);
   let abox = await outbox();
   ok('välkomstmejl till Alva och "Ny registrering" till admins', abox.some(m=>m.kind==='welcome' && m.email==='alva@acc.se')
-     && abox.some(m=>m.kind==='access' && m.member_id==='az' && /Alva Strand/.test(m.body) && /Musikproduktion & beatmaking/.test(m.body)), abox.filter(m=>/welcome|access/.test(m.kind)));
+     && abox.some(m=>m.kind==='access' && m.member_id==='az' && /Alva Strand/.test(m.body) && !/Inriktning/.test(m.body)), abox.filter(m=>/welcome|access/.test(m.kind)));
 
   /* redan inloggad på enheten: sidan säger det och länkar till Bando HQ */
   w = await goPage('../access.html?cb=' + Math.random());
@@ -926,9 +922,9 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     await doDistribute(); ${wait(300)}
     const srv = (await sb('/records?select=data&kind=eq.circle&id=eq.cAcc'))[0].data.members;
     return {waiting:/VÄNTAR PÅ EN GRUPP/i.test(people) && /Alva Strand/.test(people) && /ACCESS/i.test(people) && /990315-••••/.test(people),
-      prof:/990315-••••/.test(prof) && /via Access/.test(prof) && /Musikproduktion &amp; beatmaking/.test(prof), shown, sug:plan && plan.circle, srv, id:alva.id};`);
+      prof:/990315-••••/.test(prof) && /via Access/.test(prof), shown, sug:plan && plan.circle, srv, id:alva.id};`);
   ok('utan grupp: admin ser henne under "Väntar på en grupp" med maskerat personnummer', r.waiting===true);
-  ok('profilen: registrerad via Access, inriktning, maskerat personnummer', r.prof===true);
+  ok('profilen: registrerad via Access, maskerat personnummer', r.prof===true);
   ok('admin visar hela personnumret', r.shown===P1, r.shown);
   const hist = await sql(`select op, by_id from record_history where kind = 'member' and op = 'personnummer visat'`);
   ok('och visningen loggas', hist.length===1 && hist[0].by_id==='az', hist);

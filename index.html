@@ -3344,7 +3344,7 @@ const pnrOf = a => !a ? '' : PREVIEW_LOGIN ? a.pnr || '' : PNR[a.id] || '';
 function profileGaps(a){
   a = a || me(); if(!a || !['customer','participant'].includes(a.r)) return null;
   const pnr = remoteRole() && a.id===(me()||{}).id ? (S.profile ? !!S.profile.pnr : true) : !!pnrOf(a);
-  const g = {pnr:!pnr, interests:!(a.interests||[]).length, consent:!a.consent, phone:!normPhone(a.phone)};
+  const g = {pnr:!pnr, consent:!a.consent, phone:!normPhone(a.phone)};
   return Object.values(g).some(Boolean) ? g : null;
 }
 const pickInt = {};
@@ -3368,8 +3368,6 @@ function openProfileSheet(forBooking){
     ${g.phone ? `<label class="lbl" for="pfP">MOBILNUMMER</label><input id="pfP" type="tel" inputmode="tel" autocomplete="tel" value="${esc(a.phone||'')}" placeholder="070-123 45 67">` : ''}
     ${needPnr ? `<label class="lbl" for="pfN">PERSONNUMMER</label><input id="pfN" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="ÅÅÅÅMMDD-XXXX">
       <div class="tiny muted" style="margin-top:5px;line-height:1.5">Behövs för att rapportera studiecirklarna till studieförbundet. Lagras krypterat och syns bara för Bandos administratörer.</div>` : ''}
-    <label class="lbl">DIN INRIKTNING</label>
-    <div class="chips" id="pfI" ${CHIPWRAP}>${interestChips('pf')}</div>
     ${needPnr ? `<label class="consent" style="margin-top:14px"><input type="checkbox" id="pfC"><span>Jag godkänner
       <a href="#integritet" onclick="event.preventDefault();openPrivacy()">hur Bando hanterar mina uppgifter</a> och att jag är deltagare i Bandos studiocirklar.</span></label>` : ''}
     <div id="pfMsg"></div>
@@ -3381,7 +3379,6 @@ async function saveProfile(){
   const msg = t => { document.getElementById('pfMsg').innerHTML = `<div class="warn" role="alert">${esc(t)}</div>`; };
   if(g.phone && !normPhone(phone)) return msg('Fyll i ett giltigt mobilnummer');
   if(needPnr && !pnr12(v('pfN'))) return msg('Personnumret stämmer inte — skriv ÅÅÅÅMMDD-XXXX');
-  if(!ints.length) return msg('Välj minst en inriktning');
   if(needPnr && !(document.getElementById('pfC')||{}).checked) return msg('Godkänn hur vi hanterar dina uppgifter');
   let bonus = 0;
   try{
@@ -3393,7 +3390,7 @@ async function saveProfile(){
       save();
     } else {
       if(needPnr) bonus = +((await sbRpc('register_access', {p_name:a.n, p_phone:phone, p_pnr:v('pfN'), p_interests:ints, p_consent:true, p_url:appUrl()}))||{}).bonus || 0;
-      else await sbRpc('set_my_interests', {p_interests:ints});
+      else if(ints.length) await sbRpc('set_my_interests', {p_interests:ints});
       if(remoteRole()) await cloudView(); else await cloudPull();
     }
     if(bonus) loadMyRewards(true);
@@ -3436,7 +3433,7 @@ function circleCardFor(){
   const c = ci.circle;
   if(!c) return `<div class="eyebrow">DIN STUDIOCIRKEL<span class="ln"></span></div>
     <div class="card"><div class="mname">Vi placerar dig i en grupp</div>
-      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Utifrån din inriktning${(m.interests||[]).length ? ' (' + esc(interestText(m.interests)) + ')' : ''}.
+      <div class="tiny muted" style="margin-top:6px;line-height:1.55">Utifrån tiderna du kan och var det finns lediga platser.
         När du är placerad ser du din grupp, din ansvariga producent och gruppens pass här.</div></div>`;
   const next = (ci.group||[]).filter(b=>endAt(b) > new Date()).slice(0, 4);
   return `<div class="eyebrow">DIN STUDIOCIRKEL<span class="ln"></span></div>
@@ -3481,7 +3478,7 @@ function profileBanner(){
   if(!profileAsked){ profileAsked = true; setTimeout(()=>{ if(!document.getElementById('sheet').classList.contains('on') && profileGaps()) openProfileSheet(); }, 500); }
   return `<button class="card profcta" id="profBanner" onclick="openProfileSheet()">
     <div class="grow" style="text-align:left"><div class="mname">Komplettera din profil</div>
-      <div class="tiny muted" style="margin-top:4px;line-height:1.5">${[g.pnr && 'personnummer', g.interests && 'inriktning', g.phone && 'mobilnummer', g.consent && 'godkännande']
+      <div class="tiny muted" style="margin-top:4px;line-height:1.5">${[g.pnr && 'personnummer', g.phone && 'mobilnummer', g.consent && 'godkännande']
         .filter(Boolean).join(', ').replace(/^./, c=>c.toUpperCase())} saknas — behövs för Bando HQ Access.</div></div><span class="chev">›</span></button>`;
 }
 
@@ -3636,7 +3633,7 @@ function openAccessReq(id){
     <div style="margin-top:12px">
       <div class="kv"><span>E-POST</span><b><a href="mailto:${esc(x.email)}" style="color:var(--txt)">${esc(x.email)}</a></b></div>
       ${x.phone?`<div class="kv"><span>TELEFON</span><b><a href="${telHref(x.phone)}" style="color:var(--txt)">${esc(x.phone)}</a></b></div>`:''}
-      <div class="kv"><span>INRIKTNING</span><b>${esc(interestText(x.interests||[])) || '—'}</b></div>
+      ${(x.interests||[]).length?`<div class="kv"><span>INRIKTNING</span><b>${esc(interestText(x.interests))}</b></div>`:''}
       ${x.message?`<div class="kv" style="border:0"><span>OM SIG</span><b style="font-weight:500">${esc(x.message)}</b></div>`:''}</div>
     <div class="note">Godkänn = personen får en inbjudan på mejlen och skapar sitt konto på Access-sidan${isProducer(me()) ? ' — och du blir hens producent' : ''}.</div>
     <button class="btn" style="margin-top:14px" onclick="approveAccess('${x.id}')">Godkänn och skicka inbjudan</button>
@@ -9447,15 +9444,17 @@ function vCustomer(){
     <div class="eyebrow">DINA BOKNINGAR<span class="ln"></span></div>
     ${upcoming.length ? upcoming.map(b=>myRow(b, sub(b), mineBtn(b))).join('') + confirmedCard(upcoming[0]) : `<div class="empty">Inga bekräftade bokningar än.</div>`}
     <div class="tiny muted" style="margin-top:4px;line-height:1.55">Avboka senast en timme innan. Efter det: hör av dig till
-      ${esc(p ? p.name : 'din producent')}.</div>
+      ${esc(p ? p.name : 'din producent')}.${lateNote()}</div>
     ${past.length?`<div class="eyebrow">TIDIGARE<span class="ln"></span></div>${past.slice(0,6).map(b=>myRow(b, sub(b))).join('')}`:''}
     ${circleCardFor()}
     ${accessCard()}
-    ${interestsCard()}
     ${rewardsCard()}
     ${leadIsContact ? '' : contactCard(p, 'DIN PRODUCENT')}`;
 }
 
+/* Sen avbokning kostar poäng — säg det där avbokningstiden nämns, så reglerna inte motsäger varandra. */
+const lateNote = () => rtop('lateCancel', 500) > 0
+  ? ` Avbokar du mindre än ${rtop('lateHours', 24)} timmar innan dras ${fmtP(rtop('lateCancel', 500))} poäng i Bando Rewards.` : '';
 /* Förfrågan från kund (request_customer_slot) eller deltagare (request_session).
    Bara starttiden väljs — slutet är alltid tre timmar senare. */
 function openSlot(date, hm){
@@ -9474,7 +9473,7 @@ function openSlot(date, hm){
       <textarea id="slN" maxlength="200" placeholder="Vad ska ni göra? Behövs en tekniker?"></textarea>` : ''}
     <button class="btn" id="slBtn" style="margin-top:20px" onclick="sendSlot('${date}')">Skicka förfrågan</button>
     <div class="note">${cust ? 'Crewet väljer studio och bekräftar på mejlen.'
-      : esc(c.leader) + ' väljer studio när förslaget godkänns — då är passet bokat.'} Avboka senast en timme innan.</div>`);
+      : esc(c.leader) + ' väljer studio när förslaget godkänns — då är passet bokat.'} Avboka senast en timme innan.${cust ? lateNote() : ''}</div>`);
   paintSlot(date, booked(), 'sl');
 }
 async function sendSlot(date){
@@ -9514,7 +9513,7 @@ function inboxCard(){
     ${accs.map(x=>`<div class="srow req" data-acc="${x.id}">
       <div class="srow-d"><b>${new Date(x.created_at).getDate()}</b><span>${MON[new Date(x.created_at).getMonth()]}</span></div>
       <div class="grow" style="min-width:0"><div class="srow-t">${esc(x.name)} <span class="badge" style="margin-left:4px;background:rgba(255,62,191,.14);color:#ff8fd8">ACCESS</span></div>
-        <div class="srow-m">${esc(interestText(x.interests||[])) || 'ingen inriktning'}${x.message ? ' · ' + esc(x.message) : ''}</div></div>
+        <div class="srow-m">${esc([x.email, interestText(x.interests||[]), x.message].filter(Boolean).join(' · '))}</div></div>
       <div class="srow-a">${sm('Svara',`openAccessReq('${x.id}')`)}</div></div>`).join('')}
     ${leads.map(l=>`<div class="srow req">
       <div class="srow-d"><b>${fromIso(l.date).getDate()}</b><span>${MON[fromIso(l.date).getMonth()]}</span></div>

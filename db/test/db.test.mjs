@@ -862,7 +862,6 @@ ok('telefonnumret kontrolleras', /mobilnummer/.test(await boom(()=>reg(AU.a1,{p_
 ok('personnummer med fel kontrollsiffra nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:P1.slice(0,-1) + ((+P1.slice(-1)+1)%10)}))||''));
 ok('personnummer med omöjligt datum nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:pnr('19991332','123')}))||''));
 ok('personnummer i framtiden nekas', /Personnumret stämmer inte/.test(await boom(()=>reg(AU.a1,{p_pnr:pnr('20991201','123')}))||''));
-ok('minst en inriktning', /minst en inriktning/.test(await boom(()=>reg(AU.a1,{p_interests:'[]'}))||''));
 ok('bara inriktningar som finns', /Okänd inriktning: golf/.test(await boom(()=>reg(AU.a1,{p_interests:'["golf"]'}))||''));
 ok('samtycket krävs', /personuppgifter/.test(await boom(()=>reg(AU.a1,{p_consent:false}))||''));
 ok('inget sparades av de nekade försöken', !(await one(`select 1 from members where user_id=$1`,[AU.a1])) && (await one(`select count(*)::int n from member_pnr`)).n===0);
@@ -927,8 +926,8 @@ ok('samma namn som någon annan → eget konto med en siffra', r7.ok && !r7.link
 
 head('Access: befintliga kunder och deltagare');
 const stK = await as(db,AU.old,()=>rpc('access_status',{}));
-ok('en kund från tiden före Access saknar personnummer, inriktning och samtycke', stK.member && !stK.complete
-   && stK.missing.pnr && stK.missing.interests && stK.missing.consent && !stK.missing.phone, stK);
+ok('en kund från tiden före Access saknar personnummer och samtycke (inriktning är valfri)', stK.member && !stK.complete
+   && stK.missing.pnr && !stK.missing.interests && stK.missing.consent && !stK.missing.phone, stK);
 ok('och kan inte använda någon annans personnummer', /annat konto/.test(await boom(()=>reg(AU.old,{p_pnr:P2}))||''));
 const rk = await reg(AU.old, {p_name:'Ignoreras', p_phone:'', p_pnr:pnr('19800505','111'), p_interests:'["industry"]'});
 const mk = await one(`select * from members where id='oldk'`);
@@ -1110,10 +1109,9 @@ const AU_K = await user('kund9@ny.se');
 await q(`insert into members(id,user_id,role,name,email) values('kund9',$1,'customer','Kund Nio','kund9@ny.se')`,[AU_K]);
 const ra = o => asAnon(db,()=>rpc('request_access', Object.assign({p_name:'Mira Ny', p_email:'mira@ny.se', p_phone:'070-765 43 21',
   p_interests:'["production"]', p_message:'Jag skriver och sjunger R&B.', p_consent:true, p_hp:''}, o)));
-ok('förfrågan kräver för- och efternamn, e-post, telefon, inriktning och godkännande',
+ok('förfrågan kräver för- och efternamn, e-post, telefon och godkännande',
    /för- och efternamn/.test(await boom(()=>ra({p_name:'Mira'}))||'') && /e-postadress/.test(await boom(()=>ra({p_email:'mira'}))||'')
-   && /mobilnummer/.test(await boom(()=>ra({p_phone:'12'}))||'') && /minst en inriktning/.test(await boom(()=>ra({p_interests:'["golf"]'}))||'')
-   && /Godkänn/.test(await boom(()=>ra({p_consent:false}))||''));
+   && /mobilnummer/.test(await boom(()=>ra({p_phone:'12'}))||'') && /Godkänn/.test(await boom(()=>ra({p_consent:false}))||''));
 ok('robotar (dolt fält) får "ok" men inget sparas', (await ra({p_hp:'x'})).ok===true && (await q(`select 1 from access_requests`)).length===0);
 const r1 = await ra({});
 const row = await one(`select * from access_requests where email='mira@ny.se'`);
@@ -1790,6 +1788,15 @@ await q(`update records set data = data || '{"start":"10:30","end":"11:30"}', up
 ok('medarbetaren får notisen när ett möte hen är med i flyttas', !!(await one(`select 1 x from outbox where kind='meeting' and member_id='st1'`)));
 ok('admin kan bjuda in en medarbetare', /^[0-9A-F]{4}-/.test(await as(db,U.az,()=>rpc('create_invite',{p_role:'staff',p_circle:null,p_days:14,p_max:1}))));
 ok('en producent kan inte', /Bara admin och manager/.test(await boom(()=>as(db,U.rkay,()=>rpc('create_invite',{p_role:'staff',p_circle:null,p_days:14,p_max:1})))||''));
+}
+/* ============ ACCESS UTAN INRIKTNING ============ */
+{
+head('Access: inriktningen är valfri');
+const rq = await asAnon(db,()=>rpc('request_access',{p_name:'Nova Utan', p_email:'utan@ny.se', p_phone:'0701231234', p_interests:'[]', p_message:'', p_consent:true, p_hp:''}));
+const row = await one(`select interests from access_requests where email='utan@ny.se'`);
+ok('en förfrågan utan inriktning tas emot', rq.ok===true && row && row.interests.length===0, row);
+const mail = await one(`select body from outbox where kind='access-req' and body like '%Nova Utan%' limit 1`);
+ok('och crewets notis har ingen tom inriktningsrad', mail && !/Inriktning/.test(mail.body), mail);
 }
 console.log('\n══════════════════════════════');
 console.log(pass+' PASS · '+fail+' FAIL'); console.log(fail?'✗ TRASIGT':'✓ ALLT GRÖNT');
