@@ -1567,6 +1567,15 @@ const st = await CA(()=>rpc('rewards_stats',{p_from:'2026-01-01',p_to:'2030-12-3
 ok('statistik: kunder per nivå, sessioner, värvningar och rabatterna', st.levels.some(l=>l.name==='Bando Rising' && l.n>=1) && st.pkgBs>=1 && st.bs>=1
    && st.referrals>=1 && st.discount===825 && st.claims===2 && st.topRewards.length===2 && st.penalties>=1000, st);
 ok('och per nivå', st.discountByLevel.some(x=>x.name==='Bando Rising' && x.kr===825), st.discountByLevel);
+/* eget pris på ett betalt pass: intäkten blir exakt det beloppet i stället för timmar × timpris */
+await q(`update records set data = data || '{"price":1234}' where id='nb1'`);
+const st2 = await CA(()=>rpc('rewards_stats',{p_from:'2026-10-20',p_to:'2026-10-20'}));
+await q(`update records set data = data - 'price' where id='nb1'`);
+const st3 = await CA(()=>rpc('rewards_stats',{p_from:'2026-10-20',p_to:'2026-10-20'}));
+await q(`insert into records(kind,id,data,up) values('setting','rates','{"currency":"SEK","default":500,"per":{}}',1) on conflict (kind,id) do update set data = excluded.data`);
+const st4 = await CA(()=>rpc('rewards_stats',{p_from:'2026-10-20',p_to:'2026-10-20'}));
+ok('statistik: passets eget pris räknas som intäkten', +st2.revenue===1234 && +st2.bs===1, st2.revenue);
+ok('utan eget pris: timmar × timpris som förut', +st3.revenue===0 && +st4.revenue===1500, [st3.revenue, st4.revenue]);
 ok('statistiken är bara för admin', /Inte behörig/.test(await boom(()=>RU(()=>rpc('rewards_stats',{p_from:null,p_to:null})))||'')
    && !!(await boom(()=>asAnon(db,()=>rpc('rewards_stats',{p_from:null,p_to:null})))));
 }

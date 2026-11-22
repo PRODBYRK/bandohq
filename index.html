@@ -2393,7 +2393,7 @@ const rwLocal = {
       earned:pts.filter(p=>p.points>0 && ['earn','bonus','adjust'].includes(p.kind)).reduce((a,p)=>a+p.points,0),
       penalties:-pts.filter(p=>p.kind==='penalty').reduce((a,p)=>a+p.points,0),
       bs:bk.filter(b=>!b.pkg).length, pkgBs:bk.filter(b=>b.pkg).length, hours:bk.reduce((a,b)=>a+hrs(b),0),
-      revenue:Math.round(bk.reduce((a,b)=>a+hrs(b)*rateFor(b.who),0)),
+      revenue:Math.round(bk.reduce((a,b)=>a+(hasNum(b.price) ? +b.price : hrs(b)*rateFor(b.who)),0)),
       referrals:accounts().filter(a=>a.referredBy && inP(a.reg)).length, referralPoints:pts.filter(p=>String(p.ref||'').startsWith('referral:')).reduce((a,p)=>a+p.points,0),
       claims:cl.length, discount:Math.round(cl.reduce((a,c)=>a+c.value_kr,0)),
       discountByLevel:grp(cl, c=>c.level_name||'—').map(g=>({name:g.k, kr:Math.round(g.xs.reduce((a,c)=>a+c.value_kr,0)), n:g.xs.length})).sort((a,b)=>b.kr-a.kr),
@@ -2500,7 +2500,8 @@ function openClose(id){
       <span>Genomfört och <b>betalt</b> — ger <b id="clPts">${paid?esc(ptsTxt):'inga poäng'}</b></span></label>
     <div id="clKW" style="${paid?'':'display:none'}"><div class="seg" id="clK" style="margin:14px 0 0">${[['0','Vanlig BS'],['1','Paket BS']].map(([v,l])=>
       `<button type="button" class="${(pkg?'1':'0')===v?'on':''}" data-v="${v}" onclick="this.parentNode.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===this));afterPaint()">${l}</button>`).join('')}</div>
-      <div class="tiny muted" style="margin-top:6px">Paket BS: passet ingår i ett paket kunden köpt. Räknas för sig i Studio → Sessioner.</div></div>
+      <div class="tiny muted" style="margin-top:6px">Paket BS: passet ingår i ett paket kunden köpt. Räknas för sig i Studio → Sessioner.</div>
+      ${priceOf(b) || hasNum(b.price) ? `<div class="kv" style="margin-top:12px"><span>PRIS</span><b>${kr(Math.round(priceOf(b)))}${hasNum(b.price) ? '' : ' (timpris)'}</b></div>` : ''}</div>
     <div class="eyebrow">OMDÖME <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— internt, artisten ser det aldrig</span><span class="ln"></span></div>
     ${NOTE_FIELDS.map(([k,l])=>`<label class="lbl" for="cl_${k}">${l.toUpperCase()}</label><textarea id="cl_${k}" style="min-height:56px"></textarea>`).join('')}
     <button class="btn" style="margin-top:20px" onclick="saveClose('${b.id}')">${b.closed ? 'Spara' : 'Avsluta passet'}</button>`);
@@ -3041,7 +3042,7 @@ function vRewards(){
 /* ---- Uttag: kundernas belöningar att godkänna ---- */
 const claimSuggest = (c, bk) => { const bn = c.benefit || {};
   if(c.minutes > 0) return Math.round(c.minutes / 60 * rateFor(c.name));
-  if(bn.kind==='discount' && bn.scope==='session' && bk) return Math.round(dur(bk) * rateFor(c.name) * (+bn.pct || 0) / 100);
+  if(bn.kind==='discount' && bn.scope==='session' && bk) return Math.round((hasNum(bk.price) ? +bk.price : dur(bk) * rateFor(c.name)) * (+bn.pct || 0) / 100);
   return ''; };
 function claimsPanel(adm){
   const cs = rwAdmin.claims || [];
@@ -3113,7 +3114,7 @@ function statsPanel(){
     ${st.topRewards.length ? `<div class="eyebrow">MEST ANVÄNDA BELÖNINGAR<span class="ln"></span></div>
       <div class="card">${st.topRewards.map(x=>`<div class="agp"><div class="agp-h"><b style="font-weight:500;min-width:0">${esc(x.title)}</b>
         <span class="agp-n" style="white-space:nowrap">${nt(x.n, 'gång', 'gånger')} · ${fmtP(x.kr)} kr</span></div></div>`).join('')}</div>` : ''}
-    <div class="note">Intäkter = betalda kundpass i perioden × timpriset i prislistan (gratistid räknas inte). Rabatter = värdet ni satte när belöningen godkändes.
+    <div class="note">Intäkter = betalda kundpass i perioden: passets eget pris, annars timmarna × timpriset i prislistan (gratistid räknas inte). Rabatter = värdet ni satte när belöningen godkändes.
       ${st.revenue ? `Rabatterna motsvarar <b>${Math.round(st.discount / st.revenue * 100)} %</b> av intäkterna.` : ''}
       ${st.referralPoints ? `Värvningsbonus utbetald: ${fmtP(st.referralPoints)} poäng.` : ''}${st.waiting ? ` ${nt(st.waiting, 'belöning väntar', 'belöningar väntar')} på godkännande.` : ''}</div>`;
 }
@@ -5266,8 +5267,8 @@ function fullPayload(){
       /* index 16–17 (v5): vilka fler producenter som var med, och vilken artist.
          Sist igen av samma skäl — äldre klienter läser bara det de känner till. */
       b.with||[], b.artistId||'',
-      /* index 18 (v8): kört enligt veckoplanen */
-      b.ran?1:0]),
+      /* index 18 (v8): kört enligt veckoplanen; 19: passets eget pris (kr) */
+      b.ran?1:0, hasNum(b.price) ? +b.price : '']),
     ci:S.circles.map(c=>({id:c.id,n:c.n,subject:c.subject||'',leader:c.leader||'',
       curriculumId:c.curriculumId||'',members:c.members||[],active:c.active!==false,up:c.up||0,del:!!c.del})),
     pe:S.accounts.filter(a=>a.r==='participant').map(p=>({id:p.id,n:p.n,email:p.email||'',phone:p.phone||'',
@@ -5289,7 +5290,7 @@ function mergeData(d){
       up:r[8]||0,del:!!r[9],paid:!!r[10],
       circleId:r[11]||'', status:r[12]||'', hours:(r[13]===''||r[13]==null)?null:Number(r[13]),
       present:Array.isArray(r[14])?r[14]:[], completedBy:r[15]||'',
-      with:Array.isArray(r[16])?r[16]:[], artistId:r[17]||'', ran:!!r[18]};
+      with:Array.isArray(r[16])?r[16]:[], artistId:r[17]||'', ran:!!r[18], price:hasNum(r[19]) ? +r[19] : null};
     const ex = S.bookings.find(x=>x.id===nb.id);
     if(!ex){ S.bookings.push(nb); if(!nb.del) add++; }
     else if((nb.up||0) > (ex.up||0)){ Object.assign(ex, nb); upd++; }
@@ -7981,7 +7982,9 @@ function periodRange(p, back){
 }
 function inRange(b, r){ const s=startAt(b); return s>=r.from && s<r.to; }
 function rateFor(who){ const p=S.rates.per||{}; return +(p[who] ?? S.rates.default ?? 0) || 0; }
-function revenue(list){ return list.filter(b=>b.paid).reduce((a,b)=>a+dur(b)*rateFor(b.who),0); }
+/* Vad ett betalt pass kostar: det pris som skrevs in på just det passet, annars timmar × timpriset. */
+const priceOf = b => hasNum(b.price) ? +b.price : dur(b) * rateFor(b.who);
+function revenue(list){ return list.filter(b=>b.paid).reduce((a,b)=>a+priceOf(b),0); }
 
 function vDash(){
   const r = periodRange(period), rp = periodRange(period, true);
@@ -10473,7 +10476,7 @@ function openRates(){
         placeholder="samma som grundpris" value="${(S.rates.per||{})[m.n] ?? ''}">`).join('')}
     <button class="btn" style="margin-top:22px" onclick="saveRates()">Spara</button>
     <div class="note">Intäkten räknas på pass du kryssat som <b>betald session</b>.
-      Kryssrutan finns i bokningsformuläret.</div>`);
+      Kryssrutan finns i bokningsformuläret, och där kan du skriva ett eget pris för just det passet. Utan eget pris räknas timpriset här.</div>`);
 }
 function saveRates(){
   const per = {};
@@ -10570,6 +10573,11 @@ function openForm(id, date, circleId, asCustomer){
     ${circ?'':`<button class="chip ${v.paid?'on':''}" id="fPaidBtn" onclick="togglePaid()"
       style="width:auto">${v.paid?'Ja, räknas som intäkt':'Nej, internt pass'}</button>`}
     <input type="hidden" id="fPaid" value="${v.paid?'1':''}">
+    ${circ || cust || roleView()!=='full' ? '' : `<div id="fPriceW" style="${v.paid?'':'display:none'}">
+      <label class="lbl" for="fPrice">PRIS FÖR SESSIONEN</label>
+      <div class="row" style="gap:10px;align-items:center"><input id="fPrice" type="number" inputmode="numeric" min="0" step="1"
+        value="${hasNum(v.price) ? +v.price : ''}" oninput="priceHint()" style="flex:1"><span class="muted">kr</span></div>
+      <div class="tiny muted" id="fPriceHint" style="margin-top:6px"></div></div>`}
 
     ${b?'':`<label class="lbl">UPPREPA VARJE VECKA</label>
     <select id="fRep" onchange="checkForm()">${(circ?[1,2,3,4,6,8,10,12,16,20]:[1,2,3,4,6,8,12]).map(n=>`<option value="${n}">${n===1?'Nej, bara en gång':n+' veckor i rad'}</option>`).join('')}</select>
@@ -10587,6 +10595,17 @@ function togglePaid(){
   const on = !h.value; h.value = on?'1':'';
   btn.classList.toggle('on', on);
   btn.textContent = on ? 'Ja, räknas som intäkt' : 'Nej, internt pass';
+  const w = document.getElementById('fPriceW'); if(w){ w.style.display = on ? '' : 'none'; priceHint(); }
+}
+/* Prisfältet: tomt = timpriset gånger passets längd (visas som förslag), annars exakt det beloppet. */
+function priceHint(){
+  const el = document.getElementById('fPrice'), hint = document.getElementById('fPriceHint'); if(!el || !hint) return;
+  const f = readForm(), def = f.start && f.end && f.start !== f.end ? Math.round(dur(f) * rateFor(f.who)) : 0;
+  el.placeholder = def ? String(def) : 'Belopp';
+  hint.textContent = hasNum(el.value)
+    ? (+el.value < 0 ? 'Priset kan inte vara negativt.' : `Det här passet räknas som ${kr(+el.value)} i intäkterna.`)
+    : def ? `Tomt: timpriset, ${kr(def)} för ${fmtH(dur(f))} h. Skriv ett belopp om just det här passet kostar något annat.`
+          : 'Skriv vad just det här passet kostar. Utan belopp räknas det som 0 kr.';
 }
 function pickStudio(s){
   document.getElementById('fStudio').value=s;
@@ -10742,6 +10761,9 @@ function readForm(){
     start:document.getElementById('fStart').value, end:document.getElementById('fEnd').value,
     who:document.getElementById('fWho').value, title:document.getElementById('fTitle').value.trim(),
     note:document.getElementById('fNote').value.trim(), paid:!!document.getElementById('fPaid').value,
+    /* eget pris: bara på betalda pass och bara när fältet finns (crewet) */
+    ...(document.getElementById('fPrice') ? {price: document.getElementById('fPaid').value && hasNum(document.getElementById('fPrice').value)
+      ? Math.round(+document.getElementById('fPrice').value) : null} : {}),
     circleId:(document.getElementById('fCircle')||{value:''}).value,
     /* den som bokar räknas aldrig dubbelt som "med" */
     with:[...document.querySelectorAll('.chip.with.on')].map(el=>el.dataset.w)
@@ -10751,6 +10773,7 @@ function readForm(){
 function checkForm(){
   const f = readForm(), box = document.getElementById('clash'), btn = document.getElementById('saveBtn');
   if(!box) return;
+  priceHint();
   ['A','B'].forEach(s=>{
     const el=document.getElementById('st-'+s); if(!el) return;
     if(!f.date||!f.start||!f.end){ el.textContent='–'; return; }
@@ -10799,6 +10822,7 @@ function saveBooking(){
   if(!f.date||!f.start||!f.end) return toast('Fyll i datum och tid');
   if(f.start===f.end) return toast('Start och slut är samma tid');
   if(isExt(f) && f.place.length < 2) return toast('Skriv vilken studio passet är i');
+  if(hasNum(f.price) && f.price < 0) return toast('Priset kan inte vara negativt');
   if(clash(f, editId).length) return toast('Tiden krockar');
   const rep = document.getElementById('fRep') ? +document.getElementById('fRep').value : 1;
   if(f.circleId) return saveCircleBooking(f, rep);
@@ -10917,7 +10941,7 @@ function openDetail(id){
         `<span style="color:${glow(n)}">${esc(n)}</span>`).join(', ')}</b></div>`:''}
       ${b.artistId&&artistById(b.artistId)?`<div class="kv"><span>ARTIST</span><b>${esc(artistById(b.artistId).n)}</b></div>`:''}
       ${b.paid?`<div class="kv"><span>BETALD</span><b>Ja${
-        rateFor(b.who)?' · '+Math.round(dur(b)*rateFor(b.who))+' kr':''}</b></div>`:''}
+        priceOf(b) || hasNum(b.price) ? ' · '+kr(Math.round(priceOf(b))) + (hasNum(b.price) ? '' : ' (timpris)') : ''}</b></div>`:''}
       ${b.note?`<div class="kv"><span>NOTERING</span><b style="font-weight:500;color:var(--mut)">${esc(b.note)}</b></div>`:''}
     </div>
     ${fs.length?`<div class="eyebrow">FILER FRÅN PASSET<span class="ln"></span></div>${fs.map(fileRow).join('')}`:''}

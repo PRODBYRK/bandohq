@@ -2078,7 +2078,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 /* Lönsamheten i en period (admin): kunderna per nivå, poäng, sessioner, värvningar, intäkter och
-   vad belöningarna kostat — totalt, per nivå och per förmån. Intäkt = timmar × pris (setting/rates). */
+   vad belöningarna kostat — totalt, per nivå och per förmån. Intäkt = passets eget pris, annars timmar × pris (setting/rates). */
 create or replace function rewards_stats(p_from date, p_to date) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare rates jsonb := (select data from records where kind = 'setting' and id = 'rates' and not del);
@@ -2103,7 +2103,9 @@ begin
     'penalties', coalesce((select -sum(points) from points where kind = 'penalty' and at::date between f and t), 0),
     'bs', (select count(*) from bk where not pkg), 'pkgBs', (select count(*) from bk where pkg),
     'hours', coalesce((select sum(h - coalesce((d->>'freeMin')::numeric, 0) / 60) from bk), 0),
-    'revenue', round(coalesce((select sum((h - coalesce((d->>'freeMin')::numeric, 0) / 60) * rate) from bk), 0)),
+    /* passets eget pris (satt i bokningen) när det finns, annars betalda timmar × timpris */
+    'revenue', round(coalesce((select sum(case when jsonb_typeof(d->'price') = 'number' then (d->>'price')::numeric
+                                          else (h - coalesce((d->>'freeMin')::numeric, 0) / 60) * rate end) from bk), 0)),
     'referrals', (select count(*) from members where referred_by is not null and registered_at::date between f and t),
     'referralPoints', coalesce((select sum(points) from points where ref like 'referral:%' and at::date between f and t), 0),
     'claims', (select count(*) from cl), 'discount', round(coalesce((select sum(value_kr) from cl), 0)),
