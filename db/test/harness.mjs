@@ -23,7 +23,7 @@ export async function boot(){
     alter default privileges in schema public grant all on sequences to anon, authenticated;
     alter default privileges in schema public grant all on functions to anon, authenticated;`);
   await db.exec(readFileSync(join(DIR, 'test', 'storage-stub.sql'), 'utf8'));   /* Supabase Storage (07 lägger sin bucket där) */
-  for (const f of ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql','06-education-katalog.sql','07-foundation.sql','08-foundation-ungdomar.sql'])
+  for (const f of ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql','06-education-katalog.sql','07-foundation.sql','08-foundation-ungdomar.sql','09-foundation-fas3-5.sql'])
     await db.exec(readFileSync(join(DIR, f), 'utf8'));
   return db;
 }

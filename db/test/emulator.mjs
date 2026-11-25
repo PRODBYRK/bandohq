@@ -60,11 +60,12 @@ await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"
 
 /* ---------- PostgREST: filter → SQL ---------- */
 const IDENT = /^[a-z_][a-z0-9_]*$/;
-const ARRAYS = new Set(['interests', 'perms', 'producers']);
+const ARRAYS = new Set(['interests', 'perms', 'producers', 'options']);
 const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership',
   'access_requests', 'fd_departments', 'fd_memberships', 'fd_contacts', 'fd_tasks', 'fd_handovers', 'fd_threads',
   'fd_thread_members', 'fd_messages', 'fd_mentions', 'fd_notifications', 'fd_documents', 'fd_dept_updates',
-  'fd_applicants', 'fd_contact_log', 'fd_templates', 'fd_activities', 'fd_activity_groups', 'fd_participants', 'fd_consents']);
+  'fd_applicants', 'fd_contact_log', 'fd_templates', 'fd_activities', 'fd_activity_groups', 'fd_participants', 'fd_consents',
+  'fd_productions', 'fd_materials', 'fd_publications', 'fd_agents', 'fd_knowledge', 'fd_agent_runs', 'fd_grants', 'fd_funding_reports', 'fd_deadlines', 'fd_surveys']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){

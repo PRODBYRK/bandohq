@@ -321,6 +321,109 @@ const nav = async (w, h) => { w.location.hash = h; await sleep(150); };
   await until(() => !!w.document.getElementById('ystats'), 4000);
   ok('AZ (admin utan behörigheten) ser bara antal', /2\s*Ansökningar/.test(txt(w, '#ystats')) && !/Lisa|Omar/.test(w.document.body.textContent), txt(w, '#ystats'));
 
+  log('\n── FAS 3 · D → G, redaktionen och Deep Dive ──');
+  /* agenten körs av edge-funktionen fd-agent; här tas kön och resultatet sparas med samma databasfunktioner */
+  const agentDone = async (result, sources) => {
+    const j = await sql(`select fd_agent_claim() v`);
+    const run = j[0].v.run;
+    await sql(`select fd_agent_save('${run.id}', '[]'::jsonb, 'done', ${"$q$" + result + "$q$"}, '${JSON.stringify(sources || [])}'::jsonb,
+      '{"input_tokens":12000,"output_tokens":4000,"web_search_requests":5}'::jsonb, 0.178, null)`);
+    return run;
+  };
+  await sql(`insert into fd_memberships(member_id,dept,role) values('amir','G','member') on conflict do nothing`);
+  w = await open('adrian@b.se', 'contacts');
+  ok('Adrian ser Kontakter med sina profiler (D)', /Profiler/.test(w.document.body.textContent) && !!w.document.getElementById('newContact'));
+  w.openContactForm(null, 'D'); await sleep(300);
+  set(w, 'cf_name', 'Artist X'); set(w, 'cf_phone', '0701234567'); set(w, 'cf_status', 'Positiv, vill bli kontaktad');
+  set(w, 'cf_note', 'Kan tänka sig ett studiobesök i november'); set(w, 'cf_links', 'https://artistx.se');
+  w.document.querySelector('.chip[data-o="intervju"]').click(); w.document.querySelector('.chip[data-o="workshop"]').click();
+  await w.saveContact(null, 'D'); await until(() => /^#contact-/.test(w.location.hash), 3000); await sleep(200);
+  const profId = w.location.hash.slice('#contact-'.length);
+  ok('profilen med Intervju och Workshop, och knappar för att lämna över', /Intervju → G/.test(w.document.body.textContent) && /Workshop → C/.test(w.document.body.textContent));
+  w.handoverFromContact(profId, 'intervju'); await sleep(500);
+  ok('överlämningen till G är förifylld', w.document.getElementById('hTo').value === 'G' && /Intervju: Artist X/.test(w.document.getElementById('hSubj').value));
+  await w.sendHandover(); await until(() => /^#handover-/.test(w.location.hash), 4000); await sleep(200);
+  ok('ett ärende till G med samma kontakt (ingen kopia)', /Artist X/.test(txt(w, '#hoContact') || '') && (await sql(`select count(*)::int n from fd_contacts where name='Artist X'`))[0].n === 1);
+
+  w = await open('amir@b.se', 'productions');
+  ok('Amir (G) ser Redaktionen', !!w.document.getElementById('newProd'));
+  w.openProductionForm(); await sleep(300);
+  set(w, 'pf_title', 'Intervju: Artist X'); set(w, 'pf_guest', profId); set(w, 'pf_recording_date', D(10));
+  await w.saveProduction(null); await until(() => /^#production-/.test(w.location.hash), 3000); await sleep(200);
+  const prodId = w.location.hash.slice('#production-'.length);
+  ok('produktionen med gästen från D', /Artist X/.test(w.document.body.textContent) && /Idé/.test(txt(w, '#pStatus .on') || ''));
+  ok('mobil: produktionen rullar inte i sidled', noScrollX(w));
+  await w.startRun('a_deepdive', 'production', prodId, '');
+  await until(() => !!w.document.querySelector('.airun'), 3000);
+  ok('Starta Deep Dive: körningen står i kö', /I kö/.test(txt(w, '.airun') || ''), txt(w, '.airun'));
+  const rpt = '# Researchrapport\n## 1 Bakgrund\nArtist X debuterade 2019 [Verifierat].\n# Interview Playbook\n- Varför intressant: vägen från låtskrivare till artist\n- Fråga: Vad lärde du dig av att skriva åt andra?\n# Filmbrief\nLugn ton, studiomiljö.';
+  await agentDone(rpt, [{url:'https://sv.wikipedia.org/wiki/Artist_X', title:'Artist X – Wikipedia'}]);
+  w = await open('amir@b.se', 'production-' + prodId);
+  ok('resultatet: rapport, playbook, källor och markeringen Verifierat', /RESEARCHRAPPORT|Researchrapport/i.test(txt(w, '.airun')) && /Källor \(1\)/.test(txt(w, '.airun')) && !!w.document.querySelector('.airun .pill.mute'));
+  w.usePlaybook(prodId, w.eval('F').runs[0].id);
+  ok('Använd Deep Divens playbook fyller i intervjubriefen', /Vad lärde du dig av att skriva åt andra/.test(w.document.getElementById('pBrief').value));
+  w.useFilm(prodId, w.eval('F').runs[0].id);
+  await w.saveBrief(prodId, true); await sleep(200);
+  ok('briefen godkänns av Amir', /Brief godkänd av Amir/.test(txt(w, '.meta') || ''));
+  await w.setProdStatus(prodId, 'planning');
+  ok('produktionen flyttas till Planering', /Planering/.test(txt(w, '#pStatus .on') || ''));
+  w = await open('samuel@b.se', 'production-' + prodId);
+  ok('Samuel (B) ser produktionen men kan inte starta G:s agent', /Intervju: Artist X/.test(txt(w, '.h1')) && /används av avdelning G/.test(w.document.body.textContent));
+
+  log('\n── FAS 4 · finansiering och AI-budget ──');
+  w = await open('az@b.se', 'funding');
+  w.eval("iTab='reports';paint()"); await sleep(150);
+  set(w, 'frBody', 'Veckorapport: Kulturbryggan Snabba spåret, deadline 2027-01-20, upp till 100 000 kr. MUCF projektbidrag kräver två års verksamhet.');
+  await w.importReport(); await sleep(300);
+  ok('admin klistrar in veckorapporten — den läses in', /I kö|Arbetar/.test(txt(w, '#reports') || ''), txt(w, '#reports'));
+  await agentDone(JSON.stringify({grants:[{name:'Snabba spåret',funder:'Kulturbryggan',url:'https://kulturbryggan.se',deadline:D(7),deadline_text:'',amount_text:'upp till 100 000 kr',eligibility:'eligible',priority:'A',fit_projects:'Behind the Release',requirements:'',next_action:'Skriv projektplan',analysis:'Passar workshops.',previous_recipients:'',verified:true},
+    {name:'Projektbidrag',funder:'MUCF',url:'',deadline:'',deadline_text:'löpande',amount_text:'',eligibility:'not_yet',priority:'C',fit_projects:'',requirements:'Två års verksamhet',next_action:'',analysis:'',previous_recipients:'',verified:false}]}));
+  w = await open('az@b.se', 'funding');
+  ok('översikten: A-prioritet och närmaste deadline', /Snabba spåret/.test(w.document.body.textContent) && /1\s*A · Sökbart nu/.test(txt(w, '.stat') || ''), txt(w, '.stat'));
+  const gId = (await sql(`select id from fd_grants where name='Snabba spåret'`))[0].id;
+  await nav(w, 'grant-' + gId);
+  ok('bidraget med behörighet, belopp, nästa åtgärd och länk', /Behörig/.test(w.document.body.textContent) && /upp till 100 000 kr/.test(w.document.body.textContent) && /Officiell utlysning/.test(w.document.body.textContent));
+  await w.setGrantStatus(gId, 'preparing'); await sleep(150);
+  ok('status Förberedelse', /Förberedelse/.test(txt(w, '.seg .on') || ''));
+  w = await open('samuel@b.se', 'funding');
+  ok('Samuel (B) ser inte finansieringen', /Hittades inte/.test(txt(w, '.h1')) && !w.document.querySelector('#nav a[data-r="funding"]'));
+  w = await open('az@b.se', 'admin'); w.eval("aTab='ai';AI={};paint()");
+  await until(() => !!w.document.getElementById('aibudget'), 4000);
+  ok('Admin → AI: månadens kostnad, taket och elva agenter', /av 500 kr/.test(txt(w, '#aibudget')) && w.document.querySelectorAll('#agents .item').length === 11, txt(w, '#aibudget'));
+  w.openAgent('a_deepdive'); await sleep(250);
+  ok('agentens instruktion går att redigera', /deep dive/i.test(w.document.getElementById('ag_i').value));
+
+  log('\n── FAS 5 · undersökningar och administration ──');
+  w = await open('az@b.se', 'surveys');
+  w.openSurveyForm(); await sleep(300);
+  set(w, 'sf_t', 'Ungas framtidsplaner'); w.eval("SQ=[{id:'q1',type:'scale',label:'Hur hoppfull är du inför framtiden?'},{id:'q2',type:'choice',label:'Vad vill du jobba med?',options:['Musik','Film','Annat']},{id:'q3',type:'text',label:'Något mer?'}];sqPaint()");
+  await w.saveSurvey(); await until(() => /^#survey-/.test(w.location.hash), 3000); await sleep(200);
+  const svId = w.location.hash.slice('#survey-'.length);
+  await w.setSurvey(svId, 'open'); await sleep(200);
+  const svTok = (await sql(`select token from fd_surveys where id='${svId}'`))[0].token;
+  ok('enkäten öppnas och får en länk', /enkat\.html\?t=/.test(w.document.body.textContent));
+  for (const [sc, ch, tx] of [[4, 'Musik', 'Mer studiotid'], [2, 'Film', '']]) {
+    w = await open(null, null, 'enkat.html?t=' + svTok);
+    await until(() => fr.contentWindow.READY, 4000); w = fr.contentWindow;
+    w.document.querySelectorAll('.scale button')[sc - 1].click();
+    [...w.document.querySelectorAll('.choice button')].find(b => b.textContent === ch).click();
+    if (tx) { w.document.querySelector('textarea').value = tx; w.document.querySelector('textarea').dispatchEvent(new w.Event('input')); }
+    await w.send(); await until(() => w.SENT, 3000);
+  }
+  ok('två anonyma svar via länken, utan inloggning', w.SENT === true && (await sql(`select count(*)::int n from fd_survey_responses`))[0].n === 2);
+  w = await open('az@b.se', 'survey-' + svId);
+  await until(() => !/skel/.test((w.document.getElementById('sres') || {}).innerHTML || 'skel'), 4000);
+  ok('resultatet: snitt 3, flervalen och fritexten', /Snitt 3 av 5/.test(txt(w, '#sres')) && /Musik\s*1/.test(txt(w, '#sres')) && /Mer studiotid/.test(txt(w, '#sres')), txt(w, '#sres'));
+  w = await open('amir@b.se', 'activities');
+  const act1 = w.eval('F').activities[0];
+  await nav(w, 'activity-' + act1.id); w.makeEval(act1.id); await sleep(300);
+  ok('C skapar en anonym utvärdering efter workshopen med masterplanens fyra frågor', w.eval('SQ').length === 4 && /Vad lärde du dig/.test(w.document.getElementById('sfq').innerHTML));
+  w = await open('az@b.se', 'adminj');
+  w.eval("jTab='dates';paint()"); w.openDeadlineForm(); await sleep(250);
+  set(w, 'dl_t', 'Årsmöte: kallelse'); set(w, 'dl_d', D(14)); await w.saveDeadline(); await sleep(200);
+  ok('J: ett viktigt datum med påminnelse', /Årsmöte: kallelse/.test(txt(w, '#dlist') || ''));
+  ok('mobil: administrationen rullar inte i sidled', noScrollX(w));
+
   log('\n── studion (index.html) ──');
   w = await open(null, null, 'index.html');
   await sleep(500);

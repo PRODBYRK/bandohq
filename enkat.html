@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Enkät · Bando Foundation</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b090e">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="icon-512.png">
+<style>
+/* Bando Foundations enkäter (avdelning H). Anonyma: inget namn, ingen inloggning, inget sparas
+   om vem som svarat. Länken (token) styr vilken enkät som visas. */
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+:root{ --bg:#0b090e; --surface:#141119; --line:rgba(255,255,255,.075); --txt:#f3eff7; --mut:#a39bae; --tube:#ff6ad8; --btn:#d01b8c;
+  --bad:#fb7185; --sans:"Barlow","Helvetica Neue",system-ui,sans-serif; --disp:"Barlow Condensed","Arial Narrow",sans-serif; color-scheme:dark; }
+*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:560px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top,0px)) 20px 48px}
+.brand{font:800 18px/1 var(--disp);letter-spacing:.05em;text-transform:uppercase}.brand span{color:var(--tube)}
+h1{font:800 clamp(32px,9vw,42px)/1.04 var(--disp);text-transform:uppercase;letter-spacing:.02em;margin:26px 0 10px;overflow-wrap:anywhere}
+p{margin:0 0 12px}.mut{color:var(--mut)}
+.q{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px}
+.q b{display:block;margin-bottom:10px}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.scale button,.choice button{min-height:46px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.04);color:var(--txt);font:600 16px var(--sans);cursor:pointer}
+.choice{display:flex;flex-direction:column;gap:8px}
+.choice button{text-align:left;padding:10px 14px}
+.on{background:rgba(255,62,191,.18)!important;border-color:rgba(255,106,216,.6)!important}
+.ends{display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-top:6px}
+textarea{width:100%;min-height:90px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 14px;font:16px var(--sans);color:var(--txt);outline:none}
+textarea:focus{border-color:rgba(255,106,216,.65);box-shadow:0 0 0 3px rgba(255,62,191,.15)}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:18px;border:0;border-radius:999px;background:var(--btn);color:#fff;font:600 16px var(--sans);cursor:pointer}
+.btn:disabled{opacity:.5}
+.box{border-radius:12px;padding:12px 14px;margin-top:16px;border:1px solid rgba(251,113,133,.3);background:rgba(251,113,133,.08)}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Bando <span>Foundation</span></div>
+  <div id="app"><p class="mut" style="margin-top:24px">Hämtar …</p></div>
+</main>
+<script>
+'use strict';
+const CLOUD_CONFIG = { url: 'https://gwvtqrbrkkfgyesamcfy.supabase.co', key: 'sb_publishable_jdhJX4ns98mvM2qSuUFCQg_rRUvmxpf' };
+const CLOUD = Object.assign({}, CLOUD_CONFIG, (() => { try{ return JSON.parse(localStorage.getItem('bandosesh_cloud') || '{}'); }catch(e){ return {}; } })());
+CLOUD.url = String(CLOUD.url || '').replace(/\/$/, '');
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function rpc(fn, args){
+  const r = await fetch(CLOUD.url + '/rest/v1/rpc/' + fn, {method:'POST', headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:JSON.stringify(args)});
+  const t = await r.text(); let j = null; try{ j = t ? JSON.parse(t) : null; }catch(e){}
+  if(!r.ok) throw new Error((j && (j.message || j.msg)) || 'Något gick fel, försök igen');
+  return j;
+}
+const A = {};
+function pick(id, v, el){ A[id] = v; el.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); }
+function render(info){
+  if(!info.ok){ $('app').innerHTML = `<h1>${esc(info.title || 'Enkät')}</h1><div class="box">${esc(info.why || 'Länken fungerar inte')}</div>`; return; }
+  $('app').innerHTML = `<h1>${esc(info.title)}</h1>${info.intro ? `<p>${esc(info.intro)}</p>` : ''}<p class="mut">Du är anonym. Vi sparar inte vem du är.</p>
+    ${info.questions.map((q, i) => `<div class="q"><b>${i + 1}. ${esc(q.label)}</b>${
+      q.type === 'scale' ? `<div class="scale">${[1,2,3,4,5].map(v => `<button type="button" aria-label="${v}" onclick="pick('${esc(q.id)}',${v},this)">${v}</button>`).join('')}</div><div class="ends"><span>Inte alls</span><span>Väldigt mycket</span></div>`
+      : q.type === 'choice' ? `<div class="choice">${(q.options || []).map(o => `<button type="button" onclick="pick('${esc(q.id)}',${esc(JSON.stringify(o))},this)">${esc(o)}</button>`).join('')}</div>`
+      : `<textarea aria-label="${esc(q.label)}" maxlength="2000" oninput="A['${esc(q.id)}']=this.value"></textarea>`}</div>`).join('')}
+    <div id="err"></div><button class="btn" id="send" onclick="send()">Skicka</button>`;
+}
+async function send(){
+  const answers = {}; Object.keys(A).forEach(k => { if(A[k] !== '' && A[k] != null) answers[k] = A[k]; });
+  if(!Object.keys(answers).length){ $('err').innerHTML = '<div class="box">Svara på minst en fråga.</div>'; return; }
+  $('send').disabled = true;
+  try{ await rpc('fd_survey_answer', {p_token:token, p_answers:answers}); $('app').innerHTML = '<h1>Tack!</h1><p>Ditt svar är skickat. Det hjälper oss att göra Bando Foundation bättre.</p>'; window.SENT = true; }
+  catch(e){ $('err').innerHTML = `<div class="box">${esc(e.message)}</div>`; $('send').disabled = false; }
+}
+(async () => {
+  let info;
+  try{ info = token.length >= 16 ? await rpc('fd_survey_info', {p_token:token}) : {ok:false, why:'Länken är ofullständig.'}; }
+  catch(e){ info = {ok:false, why:e.message}; }
+  render(info); window.READY = true;
+})();
+</script>
+</body>
+</html>

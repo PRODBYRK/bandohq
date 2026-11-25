@@ -211,6 +211,12 @@ details.more[open] summary::after{content:" −"}
 .upd p{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
 .upd p.none{color:var(--mut2)}
 .doc{display:flex;gap:12px;align-items:center}
+.mdbody{margin-top:10px;font-size:15.5px;line-height:1.55;overflow-wrap:anywhere}
+.mdbody p{margin:6px 0}
+.mdh1{font:800 22px/1.1 var(--disp);text-transform:uppercase;letter-spacing:.02em;margin:18px 0 6px;color:#fff}
+.mdh2{font-weight:600;margin:14px 0 4px;color:var(--txt)}
+.mdl{margin:6px 0 6px 18px;padding:0}
+.mdl li{margin:3px 0}
 .doc .ic{flex:none;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);display:grid;place-items:center;font-size:10.5px;font-weight:600;letter-spacing:.04em;color:var(--mut)}
 .tbl{width:100%;border-collapse:collapse;font-size:14px}
 .tbl th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);padding:0 8px 8px}
@@ -353,6 +359,12 @@ const ICON = {
   more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
   youth:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.6-.3 4.6 1.3 5 4.3"/>',
   activities:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  contacts:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3"/>',
+  productions:'<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
+  comms:'<path d="M4 10v4h3l6 4V6L7 10z"/><path d="M17 9a4 4 0 0 1 0 6"/>',
+  funding:'<circle cx="12" cy="12" r="8"/><path d="M14.5 9.5c-.5-1-1.4-1.5-2.5-1.5-1.4 0-2.5.8-2.5 2s1.1 1.6 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2c-1.1 0-2-.5-2.5-1.5M12 6.5v11"/>',
+  surveys:'<path d="M5 19V11M10 19V5M15 19v-6M20 19V8"/>',
+  adminj:'<path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3M4 12h16"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'
 };
@@ -360,7 +372,8 @@ const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 
 /* ===================== DATA ===================== */
 const F = {me:null, people:[], depts:[], updates:[], tasks:[], handovers:[], threads:[], tmembers:[], messages:[], docs:[], contacts:[], notes:[],
-  applicants:[], clog:[], templates:[], activities:[], groups:[], participants:[], consents:[]};
+  applicants:[], clog:[], templates:[], activities:[], groups:[], participants:[], consents:[],
+  productions:[], materials:[], publications:[], agents:[], knowledge:[], runs:[], grants:[], reports:[], deadlines:[], surveys:[]};
 let ROSTER = {};
 const TS = {todo:'Att göra', doing:'Pågår', waiting:'Väntar', done:'Klar'};
 const HS = {sent:'Skickad', received:'Mottagen', in_progress:'Pågår', done:'Slutförd'};
@@ -399,7 +412,16 @@ async function loadAll(){
   Object.assign(F, {me, people:people||[], depts:depts||[], updates:ups||[], tasks:tasks||[], handovers:hos||[], threads:threads||[],
     tmembers:tms||[], messages:msgs||[], docs:docs||[], contacts:contacts||[], notes:notes||[],
     applicants:apps||[], clog:clog||[], templates:tpls||[], activities:acts||[], groups:grps||[], participants:parts||[], consents:cons||[]});
-  ROSTER = {};
+  /* fas 3–5 (RLS lämnar tomma listor åt den som inte får se) */
+  const [prods, mats, pubs, ags, kb, runs, grants, reps, dls, svs] = await Promise.all([
+    get('/fd_productions?select=*&order=updated_at.desc'), get('/fd_materials?select=*'), get('/fd_publications?select=*'),
+    get('/fd_agents?select=*'), get('/fd_knowledge?select=*'),
+    get('/fd_agent_runs?select=id,agent_id,owner_type,owner_id,question,status,result,sources,cost_usd,error,started_by,created_at,finished_at&order=created_at.desc&limit=300'),
+    get('/fd_grants?select=*'), get('/fd_funding_reports?select=id,received_at,grants_count,run_id,created_by,created_at&order=created_at.desc'),
+    get('/fd_deadlines?select=*&order=date.asc'), get('/fd_surveys?select=*&order=created_at.desc')]);
+  Object.assign(F, {productions:prods||[], materials:mats||[], publications:pubs||[], agents:ags||[], knowledge:kb||[], runs:runs||[],
+    grants:grants||[], reports:reps||[], deadlines:dls||[], surveys:svs||[]});
+  ROSTER = {}; SVR = {};
 }
 async function refresh(){ await loadAll(); paint(); }
 
@@ -430,18 +452,22 @@ function buildNav(){
     + MAIN.map(([k, l]) => a(k, l)).join('')
     + a('more', 'Mer', 'mob')
     + `<div class="nsep">Arbetsytan</div>` + ((youthOk() || isAdmin()) ? a('youth', 'Ungdomar', 'dsk') : '') + a('activities', 'Aktiviteter', 'dsk')
+    + ((isAdmin() || ['A','D','E','I','H'].some(inDept)) ? a('contacts', 'Kontakter', 'dsk') : '') + a('productions', 'Redaktion', 'dsk')
+    + a('comms', 'Kommunikation', 'dsk') + (fundingOk() ? a('funding', 'Finansiering', 'dsk') : '') + a('surveys', 'Undersökningar', 'dsk')
+    + ((isAdmin() || inDept('J')) ? a('adminj', 'Administration', 'dsk') : '')
     + a('docs', 'Dokument', 'dsk') + a('depts', 'Avdelningar', 'dsk')
     + (isAdmin() ? a('admin', 'Admin', 'dsk') : '');
   $('nav').style.display = '';
 }
 function markNav(){
-  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs', activity:'activities'}[route] || route;
-  const mobileMore = ['docs','depts','admin','youth','activities'].includes(top) && innerWidth < 1024;
+  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs', activity:'activities', contact:'contacts',
+               production:'productions', grant:'funding', survey:'surveys'}[route] || route;
+  const mobileMore = ['docs','depts','admin','youth','activities','contacts','productions','comms','funding','surveys','adminj'].includes(top) && innerWidth < 1024;
   document.querySelectorAll('#nav a[data-r]').forEach(el => el.classList.toggle('on', el.dataset.r === top || (mobileMore && el.dataset.r === 'more')));
 }
 function parseHash(){
   const h = decodeURIComponent(location.hash.slice(1) || 'hq');
-  const m = h.match(/^(task|handover|thread|dept|youth|activity)-(.+)$/);
+  const m = h.match(/^(task|handover|thread|dept|youth|activity|contact|production|grant|survey)-(.+)$/);
   if(m){ route = m[1]; arg = m[2]; } else { route = h.split('/')[0] || 'hq'; arg = h.split('/')[1] || ''; }
 }
 function go(h){ if(location.hash === '#' + h) { parseHash(); paint(); } else location.hash = h; }
@@ -456,11 +482,13 @@ function paint(){
   markNav();
   const V = {hq:vHQ, tasks:vTasks, task:vTask, handovers:vHandovers, handover:vHandover, messages:vMessages, thread:vThread,
              docs:vDocs, depts:vDepts, dept:vDept, admin:vAdmin, more:vMore,
-             youth:vYouth, activities:vActivities, activity:vActivity}[route] || vHQ;
+             youth:vYouth, activities:vActivities, activity:vActivity, contacts:vContacts, contact:vContacts, productions:vProductions,
+             production:vProductions, comms:vComms, funding:vFunding, grant:vFunding, surveys:vSurveys, survey:vSurveys, adminj:vAdminJ}[route] || vHQ;
   let html;
   try{ html = V(); }catch(e){ html = `<div class="h1">Fel</div><p class="sub">${esc(e.message)}</p>`; console.error(e); }
   $('view').innerHTML = html;
   if(route === 'thread') afterThread();
+  pollRuns();
 }
 
 /* ===================== MITT HQ ===================== */
@@ -510,10 +538,9 @@ function vHQ(){
       <div class="eyebrow">Min avdelning</div>
       <div class="list">${myDepts().length ? myDepts().map(deptRow).join('') : `<div class="empty">Du är inte med i någon avdelning än.${isAdmin() ? ' Som admin ser du alla under <a class="linkbtn" href="#depts">Avdelningar</a>.' : ''}</div>`}</div>
 
-      <div class="eyebrow">AI-assistent</div>
-      <div class="card ai"><b>Kommer i en senare fas</b>
-        <p class="sub" style="margin-top:4px">Här ska en assistent sammanfatta din dag, svara på frågor om arbetet och föreslå nästa steg. Den är inte byggd än.</p>
-        <input disabled placeholder="Fråga om ditt arbete" aria-label="AI-assistent, inte tillgänglig än"></div>
+      ${(() => { const d = myDepts().find(c => DEPT_AGENT[c] && agent(DEPT_AGENT[c]) && agent(DEPT_AGENT[c]).mode !== 'deep_dive'); return d
+        ? aiBlock('dept', d, DEPT_AGENT[d], 'AI för avdelning ' + d, {placeholder:'Fråga om ditt arbete', max:1})
+        : `<div class="eyebrow">AI</div><div class="card ai"><p class="sub">Din avdelnings AI-agent finns på avdelningens sida${inDept('G') ? ' och i Redaktionen (Deep Dive)' : ''}.</p></div>`; })()}
     </div></div>`;
 }
 let hqHo = 'in';
@@ -704,7 +731,7 @@ async function sendHandover(){
   if(big){ $('hErr').textContent = big.name + ' är större än 50 MB. Lägg den som länk i stället.'; return; }
   $('hSend').disabled = true; $('hErr').textContent = '';
   try{
-    let cid = null;
+    let cid = window.HO_CONTACT || null; window.HO_CONTACT = null;
     const cname = $('cName').value.trim();
     if(cname){
       const c = await insert('fd_contacts', {dept:from, kind:'org', name:cname, contact_person:$('cPerson').value.trim(), phone:$('cPhone').value.trim(),
@@ -1004,6 +1031,7 @@ function vDept(){
       <div class="eyebrow">Personer <span class="n">${ppl.length}</span></div>
       <div class="card">${ppl.length ? ppl.map(p => `<div class="kv"><span>${(p.depts.find(x => x.dept === d.code) || {}).role === 'chief' ? 'Chef' : 'Medlem'}</span><b>${esc(p.name)}</b></div>`).join('') : '<div class="empty" style="padding:4px 0">Ingen tillsatt än.</div>'}</div>
       ${can ? `<button class="btn ghost slim" style="margin-top:12px" onclick="openDept('${d.code}')">Avdelningens grupp</button>` : ''}
+      ${can && DEPT_AGENT[d.code] && agent(DEPT_AGENT[d.code]) && agent(DEPT_AGENT[d.code]).mode !== 'deep_dive' ? aiBlock('dept', d.code, DEPT_AGENT[d.code], 'Avdelningens AI', {max:2}) : ''}
     </div></div>`;
 }
 function openUpdate(c){
@@ -1025,6 +1053,12 @@ function vMore(){
   return `<div class="h1">Mer</div><div class="list" style="margin-top:16px">
     ${youthOk() || isAdmin() ? row('youth', 'Ungdomar', youthOk() ? nt(F.applicants.length, 'ansökan', 'ansökningar') + ' till Behind the Release' : 'Antal ansökningar och status') : ''}
     ${row('activities', 'Aktiviteter', 'Workshops, grupper, närvaro och uppföljning')}
+    ${isAdmin() || ['A','D','E','I','H'].some(inDept) ? row('contacts', 'Kontakter', 'Aktörer, profiler, partners och konsulter') : ''}
+    ${row('productions', 'Redaktion', 'Produktioner, intervjubriefer och Deep Dive')}
+    ${row('comms', 'Kommunikation', 'Materialbibliotek och publiceringar')}
+    ${fundingOk() ? row('funding', 'Finansiering', 'Bidrag, ansökningar och veckorapporter') : ''}
+    ${row('surveys', 'Undersökningar', 'Utvärderingar och anonyma enkäter')}
+    ${isAdmin() || inDept('J') ? row('adminj', 'Administration', 'Arkiv, viktiga datum och ärenden') : ''}
     ${row('docs', 'Dokument', nt(F.docs.length, 'dokument', 'dokument') + ' du kan se')}
     ${row('depts', 'Avdelningar', 'A till J, uppdateringar och personer')}
     ${isAdmin() ? row('admin', 'Admin', 'Översikt, personer och logg') : ''}
@@ -1040,8 +1074,8 @@ function vAdmin(){
   if(aTab === 'log' && !LOG){ get('/record_history?select=*&kind=like.fd.*&order=id.desc&limit=150').then(r => { LOG = r || []; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
   const tab = (k, l) => `<button class="${aTab===k?'on':''}" onclick="aTab='${k}';OV=null;LOG=null;LINKS=null;paint()">${l}</button>`;
   return `<div class="h1">Admin</div><p class="sub">Alla avdelningar. Skyddade uppgifter syns bara med behörigheten för dem.</p>
-    <div class="seg">${tab('overview', 'Översikt')}${tab('people', 'Personer')}${tab('log', 'Logg')}</div>
-    <div id="admin">${aTab === 'overview' ? adminOverview() : aTab === 'people' ? adminPeople() : adminLog()}</div>`;
+    <div class="seg">${tab('overview', 'Översikt')}${tab('people', 'Personer')}${tab('ai', 'AI')}${tab('log', 'Logg')}</div>
+    <div id="admin">${aTab === 'overview' ? adminOverview() : aTab === 'people' ? adminPeople() : aTab === 'ai' ? adminAI() : adminLog()}</div>`;
 }
 function adminOverview(){
   if(!OV) return '<div class="skel" style="margin-top:14px"></div><div class="skel"></div>';
@@ -1160,7 +1194,7 @@ async function closeLink(token){
   if(!confirm('Stänga länken? Den som redan gått med påverkas inte.')) return;
   try{ await rpc('fd_close_link', {p_token:token}); LINKS = null; paint(); toast('Länken är stängd'); }catch(e){ toast(e.message); }
 }
-const LOGOP = {'fd.link':'Inbjudningslänk', 'fd.task':'Uppgift', 'fd.handover':'Överlämning', 'fd.document':'Dokument', 'fd.membership':'Medlemskap', 'fd.perm':'Behörighet', 'fd.person':'Person', 'fd.update':'Avdelningsuppdatering'};
+const LOGOP = {'fd.ai':'AI', 'fd.grant':'Bidrag', 'fd.production':'Produktion', 'fd.link':'Inbjudningslänk', 'fd.task':'Uppgift', 'fd.handover':'Överlämning', 'fd.document':'Dokument', 'fd.membership':'Medlemskap', 'fd.perm':'Behörighet', 'fd.person':'Person', 'fd.update':'Avdelningsuppdatering'};
 function adminLog(){
   if(!LOG) return '<div class="skel" style="margin-top:14px"></div><div class="skel"></div>';
   const what = r => {
@@ -1466,7 +1500,10 @@ function vActivity(){
       <div class="chips" id="groups" style="margin-top:0">${groups.map(g => `<span class="chip">${esc(g.name)} <span class="n">${ro ? ro.filter(r => r.group_id === g.id).length : ''}</span></span>`).join('')}
         <button class="chip" onclick="addGroup('${attr(a.id)}')">+ Grupp</button></div>
       <div class="list" style="margin-top:12px" id="roster">${ro === null ? '<div class="skel"></div>' : ro.map(r => rosterRow(a, r, groups, past)).join('') || '<div class="empty">Ingen inbjuden än.</div>'}</div>
-      ${youthOk() && a.status === 'planned' ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openBulkInvite('${attr(a.id)}')">Bjud in ungdomar</button>` : ''}`
+      ${youthOk() && a.status === 'planned' ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openBulkInvite('${attr(a.id)}')">Bjud in ungdomar</button>` : ''}
+      <div class="eyebrow">Utvärdering</div>
+      <div class="list">${F.surveys.filter(s => s.activity_id === a.id).map(s => `<a class="item" href="#survey-${attr(s.id)}"><span class="grow"><b>${esc(s.title)}</b><em>${{draft:'Utkast', open:'Öppen', closed:'Stängd'}[s.status]}</em></span></a>`).join('')}</div>
+      <button class="btn ghost slim" style="margin-top:10px" onclick="makeEval('${attr(a.id)}')">Skapa en anonym utvärdering</button>`
       : '<p class="sub" style="margin-top:14px">Deltagarlistan ser B och den avdelning som har aktiviteten.</p>'}
     </div><div>
       ${staff ? `<div class="eyebrow">Uppföljning</div>
@@ -1532,10 +1569,537 @@ async function setActStatus(id, s){
   try{ await patch('fd_activities', id, {status:s}); await loadAll(); paint(); }catch(e){ toast(e.message); }
 }
 
+/* ===================== FAS 3–5: KONTAKTER, REDAKTION, KOMMUNIKATION, FINANSIERING, UNDERSÖKNINGAR, ADMINISTRATION, AI ===================== */
+const fundingOk = () => isAdmin() || inDept('I') || inDept('J') || inDept('E');
+const contact_ = id => F.contacts.find(c => c.id === id);
+const production = id => F.productions.find(p => p.id === id);
+const grant = id => F.grants.find(g => g.id === id);
+const survey = id => F.surveys.find(s => s.id === id);
+const agent = id => F.agents.find(a => a.id === id);
+const OPTS = {stod:'Visa stöd', intervju:'Intervju', workshop:'Workshop', mentor:'Inspirationsmentor'};
+const OPT_TO = {stod:'F', intervju:'G', workshop:'C', mentor:'C'};
+const STAGES = {identified:'Identifierad', first_contact:'Första kontakt', dialog:'Dialog', proposal:'Förslag', anchoring:'Förankring', agreement:'Överenskommelse', active:'Aktivt samarbete', paused:'Pausad'};
+const PST = {idea:'Idé', research:'Research', planning:'Planering', recording:'Inspelning', editing:'Redigering', review:'Granskning', published:'Publicerad', paused:'Pausad'};
+const AREAS = {manniskorna:'Människorna bakom kulturen', kultur:'Kultur, bransch och samhälle', foundation:'Foundation i verkligheten', ungdomarna:'Ungdomarnas perspektiv'};
+const PUB = {received:'Material mottaget', review:'Granskning', approved:'Godkänt', planned:'Planerat', published:'Publicerat'};
+const MATCAT = {presentation:'Presentation', ungdomar:'Till ungdomar', partner:'Till partners', bidrag:'Bidrag', profil:'Profilpaket', logotyp:'Logotyper', grafik:'Grafik', annat:'Annat'};
+const GST = {identified:'Identifierad', reviewed:'Granskad', preparing:'Förberedelse', ready:'Klar för godkännande', submitted:'Inskickad', granted:'Beviljad', denied:'Avslag', closed:'Stängd'};
+const ELIG = {eligible:'Behörig', not_yet:'Inte än', unclear:'Oklart', not_eligible:'Ej behörig'};
+const ARCH = {stadgar:'Stadgar', protokoll:'Styrelseprotokoll', firma:'Firmateckning', avtal:'Avtal', budget:'Budgetar', faktura:'Fakturaunderlag', bidragsbeslut:'Bidragsbeslut', aterrapport:'Återrapporteringar', ovrigt:'Övrigt'};
+const RUNST = {queued:'I kö', running:'Arbetar', continuing:'Arbetar', done:'Klar', error:'Misslyckades', cancelled:'Avbruten', blocked:'Stoppad (budget)'};
+const DEPT_AGENT = {A:'a_outreach', B:'a_youthops', C:'a_workshop', D:'a_profile', E:'a_partner', F:'a_comms', G:'a_deepdive', H:'a_insights', I:'a_funding', J:'a_admin'};
+
+/* ---------- enkel markdown för AI-resultat (allt är escapat först) ---------- */
+function md(s){
+  const lines = esc(s || '').split('\n'); let out = '', list = false;
+  const inline = t => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\[(Verifierat|Hypotes|Öppen fråga)\]/g, '<span class="pill mute" style="padding:1px 6px">$1</span>');
+  for(const l of lines){
+    const h = l.match(/^(#{1,3})\s+(.*)/), li = l.match(/^\s*[-*•]\s+(.*)/) || l.match(/^\s*\d+[.)]\s+(.*)/);
+    if(li){ if(!list){ out += '<ul class="mdl">'; list = true; } out += `<li>${inline(li[1])}</li>`; continue; }
+    if(list){ out += '</ul>'; list = false; }
+    if(h) out += `<div class="${h[1].length === 1 ? 'mdh1' : 'mdh2'}">${inline(h[2])}</div>`;
+    else if(l.trim()) out += `<p>${inline(l)}</p>`;
+  }
+  return out + (list ? '</ul>' : '');
+}
+const section = (s, title) => { const m = String(s || '').split(/^#\s+/m).find(x => x.toLowerCase().startsWith(title.toLowerCase())); return m ? m.slice(title.length).trim() : ''; };
+
+/* ---------- AI-körningar på ett ärende ---------- */
+let RUNPOLL = null;
+function runsFor(type, id){ return F.runs.filter(r => r.owner_type === type && r.owner_id === id); }
+function pollRuns(){
+  clearTimeout(RUNPOLL);
+  if(F.runs.some(r => ['queued','running','continuing'].includes(r.status)) && !document.hidden)
+    RUNPOLL = setTimeout(() => { if(!$('sheet').classList.contains('on')) refresh().catch(() => {}); else pollRuns(); }, 12000);
+}
+function runCard(r, opts){
+  const a = agent(r.agent_id) || {name:r.agent_id};
+  const busy = ['queued','running','continuing'].includes(r.status);
+  return `<div class="card airun" data-run="${attr(r.id)}" style="margin-top:10px">
+    <div class="row" style="flex-wrap:wrap"><b style="flex:1">${esc(a.name)}</b><span class="pill ${r.status==='done'?'ok':busy?'live':r.status==='error'||r.status==='blocked'?'bad':'mute'}">${RUNST[r.status]}</span></div>
+    <p class="hint" style="margin-top:4px">${esc(pname(r.started_by))} · ${when(r.created_at)}${r.question ? ' · ' + esc(r.question.slice(0, 120)) : ''}${+r.cost_usd ? ' · ' + (+r.cost_usd * (AI.usd_sek || 10.5)).toFixed(2).replace('.', ',') + ' kr' : ''}</p>
+    ${busy ? `<p class="sub" style="margin-top:8px">Agenten söker och läser. Det tar oftast några minuter, du får en notis när den är klar.</p>
+      <button class="btn ghost slim" style="margin-top:8px" onclick="cancelRun('${attr(r.id)}')">Avbryt</button>` : ''}
+    ${r.status === 'error' || r.status === 'blocked' ? `<p class="err">${esc(r.error)}</p>` : ''}
+    ${r.status === 'done' && !(opts && opts.noBody) ? `<div class="mdbody">${md(r.result)}</div>` : ''}
+    ${r.status === 'done' && r.sources && r.sources.length ? `<details class="more"><summary>Källor (${r.sources.length})</summary>
+      <ol class="mdl">${r.sources.map(s => `<li><a class="linkbtn" href="${attr(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title || s.url)}</a></li>`).join('')}</ol></details>` : ''}
+    ${r.status === 'done' ? `<p class="hint" style="margin-top:8px">${esc(a.approval || 'Ett förslag. En människa granskar och beslutar.')}</p>` : ''}
+  </div>`;
+}
+function aiBlock(type, id, agentId, label, opts){
+  const a = agent(agentId), runs = runsFor(type, id);
+  const can = a && a.active && (isAdmin() || !a.dept || inDept(a.dept));
+  return `<div class="eyebrow">${esc(label || 'AI')}</div>
+    ${can ? `<div class="row" style="flex-wrap:wrap;gap:8px">${opts && opts.ask === false ? '' : `<input id="aiq-${attr(id)}" placeholder="${attr(opts && opts.placeholder || 'Vad vill du att agenten tar reda på?')}" style="flex:1;min-width:180px">`}
+      <button class="btn slim" onclick="startRun('${attr(agentId)}','${type}','${attr(id)}')">${esc(opts && opts.button || 'Starta')}</button></div>
+      <p class="hint">${esc(a.purpose)} Kostar bara när den körs.</p>` : a ? `<p class="hint">${esc(a.name)} används av avdelning ${esc(a.dept)}.</p>` : ''}
+    ${runs.slice(0, opts && opts.max || 3).map(r => runCard(r, opts)).join('')}`;
+}
+async function startRun(agentId, type, id, question){
+  const el = $('aiq-' + id), q = question != null ? question : el ? el.value.trim() : '';
+  try{ await rpc('fd_agent_request', {p_agent:agentId, p_owner_type:type, p_owner_id:id, p_question:q}); if(el) el.value = '';
+       toast('Agenten har startat. Du får en notis när den är klar.'); await loadAll(); paint(); }
+  catch(e){ toast(e.message); }
+}
+async function cancelRun(id){ try{ await rpc('fd_agent_cancel', {p_run:id}); await loadAll(); paint(); }catch(e){ toast(e.message); } }
+
+/* ---------- KONTAKTER (A aktörer, D profiler, E partners, I konsulter, H partners) ---------- */
+let cDept = '';
+const CDEPTS = {A:'Aktörer', D:'Profiler', E:'Partners', I:'Konsulter', H:'Undersökningspartners'};
+function vContacts(){
+  if(arg) return vContact();
+  const mine = Object.keys(CDEPTS).filter(d => isAdmin() || inDept(d));
+  if(!cDept || !mine.includes(cDept)) cDept = mine[0] || '';
+  const list = F.contacts.filter(c => !cDept || c.dept === cDept).sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+  return `<div class="h1">Kontakter</div><p class="sub">Verksamheter, profiler och partners. En kontakt finns en gång och följer med överlämningar.</p>
+    <div class="chips">${mine.map(d => `<button class="chip ${cDept===d?'on':''}" onclick="cDept='${d}';paint()">${d} · ${CDEPTS[d]} <span class="n">${F.contacts.filter(c => c.dept === d).length}</span></button>`).join('')}</div>
+    ${cDept ? `<div style="margin:14px 0"><button class="btn" id="newContact" onclick="openContactForm(null,'${cDept}')">Lägg till ${CDEPTS[cDept].toLowerCase().replace(/er$/, '')}</button></div>` : '<div class="empty">Du är inte med i någon avdelning som har kontakter.</div>'}
+    <div class="list grid3" id="contactlist">${list.map(contactRow).join('') || (cDept ? '<div class="empty">Inga kontakter än.</div>' : '')}</div>`;
+}
+function contactRow(c){
+  return `<a class="item" href="#contact-${attr(c.id)}"><span class="dept sm">${esc(c.dept)}</span><span class="grow"><b>${esc(c.name)}</b>
+    <em>${[c.area, c.status].filter(Boolean).map(esc).join(' · ') || (c.kind === 'org' ? 'Organisation' : 'Person')}</em>
+    <span class="meta">${(c.options||[]).map(o => `<span class="pill live">${OPTS[o]}</span>`).join('')}${c.stage ? `<span class="pill">${STAGES[c.stage]}</span>` : ''}</span></span></a>`;
+}
+function openContactForm(id, d){
+  const c = id ? contact_(id) : {dept:d, kind:d === 'D' || d === 'I' ? 'person' : 'org', options:[], stage:d === 'E' ? 'identified' : ''};
+  const f = (k, l, type) => `<label class="lbl" for="cf_${k}">${l}</label><input id="cf_${k}" ${type ? `type="${type}"` : ''} value="${attr(c[k] || '')}" autocomplete="off">`;
+  openSheet(`<h2>${id ? 'Ändra' : 'Ny kontakt'}</h2><p class="sub">Avdelning ${esc(c.dept)} · ${CDEPTS[c.dept] || ''}</p>
+    <label class="lbl" for="cf_kind">Typ</label><select id="cf_kind"><option value="org" ${c.kind==='org'?'selected':''}>Organisation</option><option value="person" ${c.kind==='person'?'selected':''}>Person</option></select>
+    ${f('name', c.dept === 'D' ? 'Artist eller profil' : 'Namn')}${f('contact_person', 'Kontaktperson')}${f('phone', 'Telefon', 'tel')}${f('email', 'E-post', 'email')}${f('area', 'Område')}
+    ${f('status', 'Status')}${c.dept === 'D' ? f('met_at', 'Träffades', 'date') : ''}
+    <label class="lbl" for="cf_links">Länker</label><textarea id="cf_links" placeholder="Webbsida, Instagram, Spotify">${esc(c.links || '')}</textarea>
+    ${c.dept === 'D' ? `<div class="lbl">Medverkan som passar</div><div class="chips" style="margin-top:0">${Object.keys(OPTS).map(o => `<button type="button" class="chip ${(c.options||[]).includes(o)?'on':''}" data-o="${o}" onclick="this.classList.toggle('on')">${OPTS[o]}</button>`).join('')}</div>` : ''}
+    ${c.dept === 'E' || c.dept === 'I' || c.dept === 'H' ? `<label class="lbl" for="cf_stage">Process</label><select id="cf_stage"><option value="">–</option>${Object.keys(STAGES).map(s => `<option value="${s}" ${c.stage===s?'selected':''}>${STAGES[s]}</option>`).join('')}</select>` : ''}
+    <label class="lbl" for="cf_note">Kommentar</label><textarea id="cf_note">${esc(c.note || '')}</textarea>${f('next_step', 'Nästa steg')}
+    <div class="err" id="cfErr"></div><button class="btn" id="cfSave" onclick="saveContact(${id ? `'${attr(id)}'` : 'null'},'${attr(c.dept)}')">Spara</button>`);
+}
+async function saveContact(id, d){
+  const v = k => ($('cf_' + k) || {value:''}).value.trim();
+  const row = {kind:v('kind'), name:v('name'), contact_person:v('contact_person'), phone:v('phone'), email:v('email'), area:v('area'), status:v('status'),
+    links:v('links'), note:v('note'), next_step:v('next_step'), stage:$('cf_stage') ? v('stage') : undefined, met_at:$('cf_met_at') ? (v('met_at') || null) : undefined,
+    options:d === 'D' ? [...document.querySelectorAll('.chip[data-o].on')].map(x => x.dataset.o) : undefined};
+  Object.keys(row).forEach(k => row[k] === undefined && delete row[k]);
+  if(row.name.length < 2){ $('cfErr').textContent = 'Fyll i namn.'; return; }
+  try{ const r = id ? await patch('fd_contacts', id, row) : await insert('fd_contacts', Object.assign(row, {dept:d, created_by:myId()}));
+       closeSheet(); await loadAll(); id ? paint() : go('contact-' + r.id); toast('Sparat'); }
+  catch(e){ $('cfErr').textContent = e.message; }
+}
+function vContact(){
+  const c = contact_(arg); if(!c) return notFound('Kontakten');
+  const hos = F.handovers.filter(h => h.contact_id === c.id), can = isAdmin() || inDept(c.dept);
+  const ag = {D:'a_profile', E:'a_partner', A:'a_outreach', I:'a_funding', H:'a_insights'}[c.dept];
+  return `<a class="back" href="#contacts">‹ Kontakter</a><div class="h1">${esc(c.name)}</div>
+    <div class="meta"><span class="pill mute">Avdelning ${esc(c.dept)}</span>${(c.options||[]).map(o => `<span class="pill live">${OPTS[o]}</span>`).join('')}${c.stage ? `<span class="pill">${STAGES[c.stage]}</span>` : ''}</div>
+    <div class="grid2"><div>
+      <div class="card" style="margin-top:14px">
+        ${[['Kontaktperson', c.contact_person], ['Telefon', c.phone], ['E-post', c.email], ['Område', c.area], ['Status', c.status], ['Träffades', c.met_at ? dlabel(c.met_at) : ''], ['Nästa steg', c.next_step]]
+          .filter(x => x[1]).map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v)}</b></div>`).join('') || '<div class="empty" style="padding:4px 0">Inga uppgifter än.</div>'}
+      </div>
+      ${c.note ? `<div class="card prose" style="margin-top:10px">${esc(c.note)}</div>` : ''}
+      ${c.links ? `<div class="card prose" style="margin-top:10px">${esc(c.links)}</div>` : ''}
+      ${can ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openContactForm('${attr(c.id)}')">Ändra</button>` : ''}
+      ${c.dept === 'D' && can ? `<div class="eyebrow">Lämna över</div><div class="row" style="flex-wrap:wrap">${(c.options||[]).map(o => `<button class="btn slim" onclick="handoverFromContact('${attr(c.id)}','${o}')">${OPTS[o]} → ${OPT_TO[o]}</button>`).join('') || '<p class="hint">Välj medverkan under Ändra, så visas knapparna här.</p>'}</div>` : ''}
+      ${c.dept === 'E' && can ? `<div class="eyebrow">Lämna över</div><div class="row" style="flex-wrap:wrap">${['C','J','I'].map(d => `<button class="btn ghost slim" onclick="handoverFromContact('${attr(c.id)}','','${d}')">Till ${d} · ${esc(dept(d).name)}</button>`).join('')}</div>` : ''}
+      <div class="eyebrow">Överlämningar <span class="n">${hos.length || ''}</span></div>
+      <div class="list">${hos.map(handoverRow).join('') || '<div class="empty" style="padding-top:4px">Inga än.</div>'}</div>
+      ${docsBlock('contact', c.id, c.dept, can)}
+    </div><div>${ag ? aiBlock('contact', c.id, ag, 'Research inför mötet', {placeholder:'Till exempel: vad har de gjort de senaste två åren?'}) : ''}</div></div>`;
+}
+function handoverFromContact(cid, opt, toDept){
+  const c = contact_(cid), to = toDept || OPT_TO[opt];
+  openHandoverForm();
+  setTimeout(() => {
+    $('hFrom').value = c.dept; $('hTo').value = to; hoPeople();
+    $('hSubj').value = (opt ? OPTS[opt] + ': ' : '') + c.name;
+    $('hBg').value = [c.status, c.note].filter(Boolean).join('\n');
+    $('hExp').value = {intervju:'Planera intervjun (G).', stod:'Bild med Foundation-tröjan för publicering (F).', workshop:'Planera besöket eller workshopen (C).', mentor:'Planera mentorskapet i Behind the Release (C).'}[opt] || '';
+    $('hCont').open = false; window.HO_CONTACT = cid;
+  }, 50);
+}
+
+/* ---------- G: REDAKTIONEN ---------- */
+let pFilter = 'open';
+function vProductions(){
+  if(arg) return vProduction();
+  const can = isAdmin() || inDept('G');
+  const list = F.productions.filter(p => pFilter === 'open' ? !['published','paused'].includes(p.status) : pFilter === 'all' ? true : p.status === pFilter);
+  return `<div class="h1">Redaktion</div><p class="sub">G:s gemensamma redaktion: idé, research, planering, inspelning, redigering, granskning och publicering.</p>
+    <div class="chips">${[['open','Pågående'],['all','Alla']].concat(Object.entries(PST)).map(([k, l]) => `<button class="chip ${pFilter===k?'on':''}" onclick="pFilter='${k}';paint()">${l} <span class="n">${k==='open'?F.productions.filter(p=>!['published','paused'].includes(p.status)).length:k==='all'?F.productions.length:F.productions.filter(p=>p.status===k).length}</span></button>`).join('')}</div>
+    ${can ? `<div style="margin:14px 0"><button class="btn" id="newProd" onclick="openProductionForm()">Ny idé eller produktion</button></div>` : ''}
+    <div class="list grid3" id="prodlist">${list.map(productionRow).join('') || '<div class="empty">Inga produktioner här.</div>'}</div>`;
+}
+function productionRow(p){
+  const dd = runsFor('production', p.id).find(r => agent(r.agent_id) && agent(r.agent_id).mode === 'deep_dive');
+  return `<a class="item" href="#production-${attr(p.id)}"><span class="dept sm">G</span><span class="grow"><b>${esc(p.title)}</b>
+    <em>${esc(AREAS[p.area])}${p.owner ? ' · ' + esc(pname(p.owner)) : ''}${p.recording_date ? ' · inspelning ' + esc(dlabel(p.recording_date)) : ''}</em>
+    <span class="meta"><span class="pill ${p.status==='published'?'ok':p.status==='idea'?'mute':'live'}">${PST[p.status]}</span>${dd ? `<span class="pill ${dd.status==='done'?'ok':'mute'}">Deep Dive ${RUNST[dd.status].toLowerCase()}</span>` : ''}${p.brief_approved_at ? '<span class="pill ok">Brief godkänd</span>' : ''}</span></span></a>`;
+}
+function openProductionForm(id){
+  const p = id ? production(id) : {area:'manniskorna', kind:'intervju', status:'idea', owner:myId()};
+  const guests = F.contacts.filter(c => c.kind === 'person' || c.dept === 'D');
+  openSheet(`<h2>${id ? 'Ändra produktion' : 'Ny produktion'}</h2>
+    <label class="lbl" for="pf_title">Titel</label><input id="pf_title" value="${attr(p.title || '')}" placeholder="Till exempel Intervju: Artist X">
+    <label class="lbl" for="pf_area">Innehållsområde</label><select id="pf_area">${Object.entries(AREAS).map(([k, l]) => `<option value="${k}" ${p.area===k?'selected':''}>${l}</option>`).join('')}</select>
+    <label class="lbl" for="pf_kind">Typ</label><select id="pf_kind">${['intervju','reportage','film','artikel','annat'].map(k => `<option ${p.kind===k?'selected':''}>${k}</option>`).join('')}</select>
+    <label class="lbl" for="pf_guest">Gäst från D</label><select id="pf_guest"><option value="">Ingen kontakt</option>${guests.map(c => `<option value="${attr(c.id)}" ${p.guest_contact===c.id?'selected':''}>${esc(c.name)} · ${esc(c.dept)}</option>`).join('')}</select>
+    <label class="lbl" for="pf_guest_name">Eller gästens namn</label><input id="pf_guest_name" value="${attr(p.guest_name || '')}">
+    <label class="lbl" for="pf_guest_links">Länkar och projekt som hjälper researchen</label><textarea id="pf_guest_links">${esc(p.guest_links || '')}</textarea>
+    <label class="lbl" for="pf_owner">Ansvarig</label><select id="pf_owner">${F.people.filter(x => (x.depts||[]).some(d => d.dept === 'G') || x.admin).map(x => `<option value="${attr(x.id)}" ${p.owner===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>
+    <div class="row"><div style="flex:1"><label class="lbl" for="pf_recording_date">Inspelning</label><input id="pf_recording_date" type="date" value="${attr(p.recording_date || '')}"></div>
+      <div style="flex:1"><label class="lbl" for="pf_publish_date">Publicering</label><input id="pf_publish_date" type="date" value="${attr(p.publish_date || '')}"></div></div>
+    <label class="lbl" for="pf_angle">Vinkel</label><textarea id="pf_angle">${esc(p.angle || '')}</textarea>
+    <label class="lbl" for="pf_notes">Anteckningar</label><textarea id="pf_notes">${esc(p.notes || '')}</textarea>
+    <div class="err" id="pfErr"></div><button class="btn" onclick="saveProduction(${id ? `'${attr(id)}'` : 'null'})">Spara</button>`);
+}
+async function saveProduction(id){
+  const v = k => ($('pf_' + k) || {value:''}).value.trim();
+  const row = {title:v('title'), area:v('area'), kind:v('kind'), guest_contact:v('guest') || null, guest_name:v('guest_name'), guest_links:v('guest_links'),
+    owner:v('owner') || null, recording_date:v('recording_date') || null, publish_date:v('publish_date') || null, angle:v('angle'), notes:v('notes')};
+  if(row.title.length < 2){ $('pfErr').textContent = 'Fyll i en titel.'; return; }
+  try{ const r = id ? await patch('fd_productions', id, row) : await insert('fd_productions', Object.assign(row, {created_by:myId()}));
+       closeSheet(); await loadAll(); id ? paint() : go('production-' + r.id); toast('Sparat'); }
+  catch(e){ $('pfErr').textContent = e.message; }
+}
+function vProduction(){
+  const p = production(arg); if(!p) return notFound('Produktionen');
+  const can = isAdmin() || inDept('G') || p.owner === myId();
+  const dd = runsFor('production', p.id).filter(r => agent(r.agent_id) && agent(r.agent_id).mode === 'deep_dive');
+  const lastDone = dd.find(r => r.status === 'done');
+  const g = p.guest_contact && contact_(p.guest_contact);
+  return `<a class="back" href="#productions">‹ Redaktion</a><div class="h1">${esc(p.title)}</div>
+    <div class="meta"><span class="pill live">${PST[p.status]}</span><span class="pill mute">${esc(AREAS[p.area])}</span>${p.brief_approved_at ? `<span class="pill ok">Brief godkänd av ${esc(pname(p.brief_approved_by))}</span>` : ''}</div>
+    ${can ? `<div class="seg" id="pStatus">${Object.keys(PST).filter(k => k !== 'paused').map(k => `<button class="${p.status===k?'on':''}" onclick="setProdStatus('${attr(p.id)}','${k}')">${PST[k]}</button>`).join('')}</div>` : ''}
+    <div class="grid2"><div>
+      <div class="card" style="margin-top:12px">
+        <div class="kv"><span>Gäst</span><b>${g ? `<a class="linkbtn" href="#contact-${attr(g.id)}">${esc(g.name)}</a>` : esc(p.guest_name || '–')}</b></div>
+        <div class="kv"><span>Ansvarig</span><b>${esc(pname(p.owner) || '–')}</b></div>
+        <div class="kv"><span>Inspelning</span><b>${p.recording_date ? esc(dlabel(p.recording_date)) : '–'}</b></div>
+        <div class="kv"><span>Publicering</span><b>${p.publish_date ? esc(dlabel(p.publish_date)) : '–'}</b></div>
+      </div>
+      ${p.angle ? `<div class="eyebrow">Vinkel</div><div class="card prose">${esc(p.angle)}</div>` : ''}
+      ${can ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openProductionForm('${attr(p.id)}')">Ändra</button>` : ''}
+      <div class="eyebrow">Intervjubrief</div>
+      ${can ? `<textarea id="pBrief" style="min-height:220px">${esc(p.interview_brief)}</textarea>
+        <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn slim" onclick="saveBrief('${attr(p.id)}',false)">Spara briefen</button>
+          <button class="btn ghost slim" onclick="saveBrief('${attr(p.id)}',true)">${p.brief_approved_at ? 'Godkänn igen' : 'Godkänn briefen'}</button>
+          ${lastDone ? `<button class="btn ghost slim" onclick="usePlaybook('${attr(p.id)}','${attr(lastDone.id)}')">Använd Deep Divens playbook</button>` : ''}</div>`
+        : `<div class="card"><div class="mdbody">${md(p.interview_brief) || '<p class="hint">Ingen brief än.</p>'}</div></div>`}
+      <div class="eyebrow">Filmbrief (D2L)</div>
+      ${can ? `<textarea id="pFilm" style="min-height:120px">${esc(p.film_brief)}</textarea><div class="row" style="margin-top:8px"><button class="btn slim" onclick="saveFilm('${attr(p.id)}')">Spara filmbriefen</button>
+        ${lastDone ? `<button class="btn ghost slim" onclick="useFilm('${attr(p.id)}','${attr(lastDone.id)}')">Använd Deep Divens filmbrief</button>` : ''}</div>`
+        : `<div class="card prose">${esc(p.film_brief || '–')}</div>`}
+      ${docsBlock('production', p.id, 'G', true)}
+    </div><div>
+      ${aiBlock('production', p.id, 'a_deepdive', 'Deep Dive inför intervjun', {ask:false, button:dd.length ? 'Starta en ny Deep Dive' : 'Starta Deep Dive', max:1})}
+      ${lastDone && can ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><input id="aiq-${attr(p.id)}" placeholder="Be agenten undersöka något djupare" style="flex:1;min-width:180px">
+        <button class="btn ghost slim" onclick="startRun('a_deepdive','production','${attr(p.id)}')">Fördjupa</button></div>` : ''}
+      ${dd.slice(1, 4).map(r => runCard(r)).join('')}
+      ${commentsBlock('production', p.id)}
+    </div></div>`;
+}
+async function setProdStatus(id, s){ try{ await patch('fd_productions', id, {status:s}); await loadAll(); paint(); }catch(e){ toast(e.message); } }
+async function saveBrief(id, approve){
+  const row = {interview_brief:$('pBrief').value};
+  if(approve){ row.brief_approved_at = new Date().toISOString(); row.brief_approved_by = myId(); }
+  try{ await patch('fd_productions', id, row); await loadAll(); paint(); toast(approve ? 'Briefen är godkänd' : 'Sparat'); }catch(e){ toast(e.message); }
+}
+async function saveFilm(id){ try{ await patch('fd_productions', id, {film_brief:$('pFilm').value}); await loadAll(); paint(); toast('Sparat'); }catch(e){ toast(e.message); } }
+function usePlaybook(id, rid){ const r = F.runs.find(x => x.id === rid); const t = section(r.result, 'Interview Playbook'); if(!t) return toast('Hittar ingen playbook i resultatet');
+  $('pBrief').value = t; toast('Inklistrad. Redigera och spara eller godkänn.'); }
+function useFilm(id, rid){ const r = F.runs.find(x => x.id === rid); const t = section(r.result, 'Filmbrief'); if(!t) return toast('Hittar ingen filmbrief i resultatet');
+  $('pFilm').value = t; toast('Inklistrad. Spara när den ser bra ut.'); }
+
+/* ---------- F: KOMMUNIKATION ---------- */
+let fTab = 'material';
+function vComms(){
+  const can = isAdmin() || inDept('F'), canPub = can || inDept('G');
+  const mats = F.materials.slice().sort((a, b) => a.category.localeCompare(b.category) || a.title.localeCompare(b.title, 'sv'));
+  return `<div class="h1">Kommunikation</div><p class="sub">F:s gemensamma materialbibliotek och publiceringar. Senaste godkända versionen gäller.</p>
+    <div class="seg"><button class="${fTab==='material'?'on':''}" onclick="fTab='material';paint()">Materialbibliotek</button><button class="${fTab==='pub'?'on':''}" onclick="fTab='pub';paint()">Publiceringar</button></div>
+    ${fTab === 'material' ? `${can ? `<div style="margin:14px 0"><button class="btn" onclick="openMaterialForm()">Nytt material</button></div>` : ''}
+      <div class="list grid3" id="matlist">${mats.map(m => { const d = F.docs.find(x => x.id === m.current_doc); return `<div class="item"><span class="grow"><b>${esc(m.title)}</b>
+        <em>${MATCAT[m.category]}${m.audience ? ' · ' + esc(m.audience) : ''} · version ${m.version}${m.updated_at ? ' · ' + when(m.updated_at) : ''}</em>
+        <span class="row" style="margin-top:10px;flex-wrap:wrap">${d ? `<button class="btn slim" onclick="openDoc('${attr(d.id)}')">Öppna version ${m.version}</button>` : '<span class="hint">Ingen fil än</span>'}
+        ${can ? `<button class="btn ghost slim" onclick="openDocForm('material','${attr(m.id)}','F')">Ny version</button>` : ''}</span></span></div>`; }).join('') || '<div class="empty">Biblioteket är tomt än.</div>'}</div>`
+    : `${canPub ? `<div style="margin:14px 0"><button class="btn" onclick="openPubForm()">Ny publicering</button></div>` : ''}
+      <div class="list" id="publist">${F.publications.slice().sort((a, b) => (a.planned_date || '9') < (b.planned_date || '9') ? -1 : 1).map(p => `<div class="item"><span class="grow"><b>${esc(p.title)}</b>
+        <em>${esc(p.channel || 'Kanal ej vald')}${p.planned_date ? ' · ' + esc(dlabel(p.planned_date)) : ''}${p.production_id && production(p.production_id) ? ' · från ' + esc(production(p.production_id).title) : ''}</em>
+        ${canPub ? `<span class="row" style="margin-top:8px"><select aria-label="Status" style="width:auto;padding:6px 32px 6px 10px;font-size:14px" onchange="setPub('${attr(p.id)}',this.value)">${Object.entries(PUB).map(([k, l]) => `<option value="${k}" ${p.status===k?'selected':''}>${l}</option>`).join('')}</select></span>`
+          : `<span class="meta"><span class="pill">${PUB[p.status]}</span></span>`}
+        ${p.published_url ? `<em><a class="linkbtn" href="${attr(p.published_url)}" target="_blank" rel="noopener">${esc(p.published_url)}</a></em>` : ''}</span></div>`).join('') || '<div class="empty">Inga publiceringar än.</div>'}</div>
+      <p class="hint" style="margin-top:12px">Inget publiceras automatiskt. Status Publicerat sätts av den som publicerat.</p>`}
+    ${aiBlock('dept', 'F', 'a_comms', 'Textutkast med AI', {placeholder:'Till exempel: en kort text till skolor om Behind the Release'})}`;
+}
+function openMaterialForm(){
+  openSheet(`<h2>Nytt material</h2><label class="lbl" for="mf_t">Namn</label><input id="mf_t" placeholder="Till exempel Foundation-presentation">
+    <label class="lbl" for="mf_c">Kategori</label><select id="mf_c">${Object.entries(MATCAT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+    <label class="lbl" for="mf_a">Målgrupp</label><input id="mf_a" placeholder="Till exempel fritidsgårdar och skolor">
+    <div class="err" id="mfErr"></div><button class="btn" onclick="saveMaterial()">Skapa och lägg till första versionen</button>`);
+}
+async function saveMaterial(){
+  try{ const m = await insert('fd_materials', {title:$('mf_t').value.trim(), category:$('mf_c').value, audience:$('mf_a').value.trim(), updated_by:myId()});
+       await loadAll(); openDocForm('material', m.id, 'F'); }
+  catch(e){ $('mfErr').textContent = e.message; }
+}
+function openPubForm(){
+  openSheet(`<h2>Ny publicering</h2><label class="lbl" for="pb_t">Vad</label><input id="pb_t">
+    <label class="lbl" for="pb_c">Kanal</label><input id="pb_c" placeholder="Instagram, TikTok, hemsidan">
+    <label class="lbl" for="pb_p">Från produktion</label><select id="pb_p"><option value="">Ingen</option>${F.productions.map(p => `<option value="${attr(p.id)}">${esc(p.title)}</option>`).join('')}</select>
+    <label class="lbl" for="pb_d">Planerat datum</label><input id="pb_d" type="date">
+    <div class="err" id="pbErr"></div><button class="btn" onclick="savePub()">Spara</button>`);
+}
+async function savePub(){
+  try{ await insert('fd_publications', {title:$('pb_t').value.trim(), channel:$('pb_c').value.trim(), production_id:$('pb_p').value || null, planned_date:$('pb_d').value || null, created_by:myId()});
+       closeSheet(); await loadAll(); paint(); toast('Sparat'); }
+  catch(e){ $('pbErr').textContent = e.message; }
+}
+async function setPub(id, s){
+  const row = {status:s};
+  if(s === 'published'){ const u = prompt('Länk till publiceringen (valfritt)', ''); if(u && /^https?:\/\//.test(u)) row.published_url = u; }
+  try{ await patch('fd_publications', id, row); await loadAll(); paint(); }catch(e){ toast(e.message); }
+}
+
+/* ---------- I: FINANSIERING ---------- */
+let iTab = 'overview', gFilter = 'open';
+function vFunding(){
+  if(arg) return vGrant();
+  if(!fundingOk()) return notFound('Sidan');
+  const can = isAdmin() || inDept('I'), t = TODAY();
+  const open = F.grants.filter(g => !['granted','denied','closed'].includes(g.status));
+  const soon = open.filter(g => g.deadline && g.deadline >= t).sort((a, b) => a.deadline < b.deadline ? -1 : 1).slice(0, 8);
+  const tabs = [['overview','Översikt'],['grants','Bidrag'],['reports','Veckorapporter'],['consultants','Konsulter']];
+  return `<div class="h1">Finansiering</div><p class="sub">Bidrag, ansökningar och finansieringskontakter. En människa ansvarar alltid för ansökan och inskickandet.</p>
+    <div class="seg">${tabs.map(([k, l]) => `<button class="${iTab===k?'on':''}" onclick="iTab='${k}';paint()">${l}</button>`).join('')}</div>
+    ${iTab === 'overview' ? `<div class="stat" style="margin-top:14px">${[['A','Sökbart nu'],['B','Förbered'],['C','Bevaka']].map(([p, l]) => `<div><b>${open.filter(g => g.priority === p).length}</b><span>${p} · ${l}</span></div>`).join('')}
+        <div><b>${F.grants.filter(g => ['preparing','ready'].includes(g.status)).length}</b><span>Arbetar med</span></div></div>
+      <div class="grid2"><div><div class="eyebrow">Närmaste deadlines</div><div class="list">${soon.map(grantRow).join('') || '<div class="empty">Inga kommande deadlines.</div>'}</div></div>
+      <div><div class="eyebrow">Prioritet A</div><div class="list">${open.filter(g => g.priority === 'A').map(grantRow).join('') || '<div class="empty">Inget märkt som sökbart nu.</div>'}</div></div></div>`
+    : iTab === 'grants' ? `<div class="chips">${[['open','Öppna'],['all','Alla']].concat(Object.entries(GST)).map(([k, l]) => `<button class="chip ${gFilter===k?'on':''}" onclick="gFilter='${k}';paint()">${l}</button>`).join('')}</div>
+      ${can ? `<div style="margin:14px 0"><button class="btn" onclick="openGrantForm()">Nytt bidrag</button></div>` : ''}
+      <div class="list grid3" id="grantlist">${F.grants.filter(g => gFilter === 'open' ? !['granted','denied','closed'].includes(g.status) : gFilter === 'all' ? true : g.status === gFilter)
+        .sort((a, b) => a.priority.localeCompare(b.priority) || (a.deadline || '9') < (b.deadline || '9') ? -1 : 1).map(grantRow).join('') || '<div class="empty">Inga bidrag här.</div>'}</div>`
+    : iTab === 'reports' ? `${can ? `<div class="card" style="margin-top:14px"><b>Läs in veckorapporten</b>
+        <p class="sub">Klistra in mejlet från måndagsbevakningen. AI gör om det till poster i bidragsdatabasen och uppdaterar de som redan finns.</p>
+        <label class="lbl" for="frBody">Rapporten</label><textarea id="frBody" style="min-height:180px"></textarea>
+        <button class="btn" style="margin-top:12px" onclick="importReport()">Läs in</button></div>` : ''}
+      <div class="list" style="margin-top:12px" id="reports">${F.reports.map(r => { const run = F.runs.find(x => x.id === r.run_id) || F.runs.find(x => x.owner_type === 'funding_report' && x.owner_id === r.id);
+        return `<div class="item"><span class="grow"><b>Veckorapport ${esc(dlabel(r.received_at))}</b><em>${run ? RUNST[run.status] : 'Inte inläst'}${r.grants_count ? ' · ' + nt(r.grants_count, 'bidrag', 'bidrag') : ''} · ${esc(pname(r.created_by))}</em>
+        ${run && (run.status === 'error' || run.status === 'blocked') ? `<em class="err">${esc(run.error)}</em>` : ''}</span></div>`; }).join('') || '<div class="empty">Inga rapporter inlästa än.</div>'}</div>`
+    : `<p class="sub" style="margin-top:14px">Bidragsexperter och finansieringskontakter ligger i Kontakter under I.</p>
+      <div class="list grid3" style="margin-top:12px">${F.contacts.filter(c => c.dept === 'I').map(contactRow).join('') || '<div class="empty">Inga konsulter än.</div>'}</div>
+      ${can ? `<button class="btn ghost slim" style="margin-top:12px" onclick="openContactForm(null,'I')">Lägg till konsult</button>` : ''}`}`;
+}
+function grantRow(g){
+  return `<a class="item" href="#grant-${attr(g.id)}"><span class="dept sm">${esc(g.priority)}</span><span class="grow"><b>${esc(g.name)}</b>
+    <em>${esc(g.funder || 'Finansiär okänd')}${g.amount_text ? ' · ' + esc(g.amount_text) : ''}</em>
+    <span class="meta"><span class="pill">${GST[g.status]}</span><span class="pill ${g.eligibility==='eligible'?'ok':g.eligibility==='not_eligible'?'bad':'mute'}">${ELIG[g.eligibility]}</span>
+    ${g.deadline ? `<span class="pill ${g.deadline < TODAY() ? 'bad' : 'mute'}">${esc(dueText(g.deadline))}</span>` : g.deadline_text ? `<span class="pill mute">${esc(g.deadline_text)}</span>` : ''}</span></span></a>`;
+}
+function openGrantForm(id){
+  const g = id ? grant(id) : {priority:'B', eligibility:'unclear', status:'identified'};
+  const f = (k, l, type) => `<label class="lbl" for="gf_${k}">${l}</label><input id="gf_${k}" ${type ? `type="${type}"` : ''} value="${attr(g[k] || '')}" autocomplete="off">`;
+  const ta = (k, l) => `<label class="lbl" for="gf_${k}">${l}</label><textarea id="gf_${k}">${esc(g[k] || '')}</textarea>`;
+  const sel = (k, l, o) => `<label class="lbl" for="gf_${k}">${l}</label><select id="gf_${k}">${Object.entries(o).map(([v, t]) => `<option value="${v}" ${g[k]===v?'selected':''}>${t}</option>`).join('')}</select>`;
+  openSheet(`<h2>${id ? 'Ändra bidrag' : 'Nytt bidrag'}</h2>${f('name', 'Bidragets namn')}${f('funder', 'Finansiär')}${f('url', 'Officiell länk', 'url')}
+    ${f('deadline', 'Deadline', 'date')}${f('deadline_text', 'Deadline (text, t.ex. klockslag)')}${f('amount_text', 'Belopp')}
+    ${sel('eligibility', 'Behörighet', ELIG)}${sel('priority', 'Prioritet', {A:'A · Sökbart nu', B:'B · Förbered', C:'C · Bevaka'})}${sel('status', 'Status', GST)}
+    ${ta('fit_projects', 'Passande Foundation-projekt')}${ta('requirements', 'Krav och begränsningar')}${f('next_action', 'Nästa åtgärd')}${f('verified_at', 'Senast verifierad', 'date')}
+    ${f('applied_amount', 'Sökt belopp')}${f('granted_amount', 'Beviljat belopp')}${ta('decision_terms', 'Beslut och villkor')}${f('report_due', 'Återrapportering', 'date')}
+    <label class="lbl" for="gf_owner">Ansvarig</label><select id="gf_owner"><option value="">Ingen än</option>${F.people.filter(p => (p.depts||[]).some(d => ['I','J','E'].includes(d.dept)) || p.admin).map(p => `<option value="${attr(p.id)}" ${g.owner===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    <div class="err" id="gfErr"></div><button class="btn" onclick="saveGrant(${id ? `'${attr(id)}'` : 'null'})">Spara</button>`);
+}
+async function saveGrant(id){
+  const v = k => ($('gf_' + k) || {value:''}).value.trim();
+  const row = {}; ['name','funder','url','deadline_text','amount_text','eligibility','priority','status','fit_projects','requirements','next_action','applied_amount','granted_amount','decision_terms'].forEach(k => row[k] = v(k));
+  ['deadline','verified_at','report_due','owner'].forEach(k => row[k] = v(k) || null);
+  if(row.name.length < 2){ $('gfErr').textContent = 'Fyll i namn.'; return; }
+  if(row.url && !/^https?:\/\//.test(row.url)){ $('gfErr').textContent = 'Länken ska börja med https://'; return; }
+  try{ const r = id ? await patch('fd_grants', id, row) : await insert('fd_grants', Object.assign(row, {created_by:myId()}));
+       closeSheet(); await loadAll(); id ? paint() : go('grant-' + r.id); toast('Sparat'); }
+  catch(e){ $('gfErr').textContent = e.message; }
+}
+function vGrant(){
+  const g = grant(arg); if(!g) return notFound('Bidraget');
+  const can = isAdmin() || inDept('I');
+  return `<a class="back" href="#funding">‹ Finansiering</a><div class="h1">${esc(g.name)}</div>
+    <div class="meta"><span class="pill live">Prioritet ${esc(g.priority)}</span><span class="pill">${GST[g.status]}</span><span class="pill ${g.eligibility==='eligible'?'ok':'mute'}">${ELIG[g.eligibility]}</span></div>
+    ${can ? `<div class="seg">${['identified','reviewed','preparing','ready','submitted'].map(k => `<button class="${g.status===k?'on':''}" onclick="setGrantStatus('${attr(g.id)}','${k}')">${GST[k]}</button>`).join('')}</div>` : ''}
+    <div class="grid2"><div>
+      <div class="card" style="margin-top:12px">${[['Finansiär', g.funder], ['Deadline', g.deadline ? dlabel(g.deadline) + ' · ' + dueText(g.deadline) : g.deadline_text], ['Belopp', g.amount_text],
+        ['Passande projekt', g.fit_projects], ['Krav', g.requirements], ['Nästa åtgärd', g.next_action], ['Senast verifierad', g.verified_at ? dlabel(g.verified_at) : 'Inte verifierad'],
+        ['Ansvarig', pname(g.owner)], ['Sökt', g.applied_amount], ['Beviljat', g.granted_amount], ['Beslut och villkor', g.decision_terms], ['Återrapportering', g.report_due ? dlabel(g.report_due) : '']]
+        .filter(x => x[1]).map(([k, v]) => `<div class="kv"><span>${k}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      ${g.url ? `<p style="margin-top:10px"><a class="linkbtn" href="${attr(g.url)}" target="_blank" rel="noopener noreferrer">Officiell utlysning</a></p>` : ''}
+      ${can ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn ghost slim" onclick="openGrantForm('${attr(g.id)}')">Ändra</button>
+        ${g.status === 'submitted' ? `<button class="btn ghost slim" onclick="setGrantStatus('${attr(g.id)}','granted')">Beviljat</button><button class="btn ghost slim" onclick="setGrantStatus('${attr(g.id)}','denied')">Avslag</button>` : ''}</div>` : ''}
+      ${g.analysis ? `<div class="eyebrow">Analys</div><div class="card"><div class="mdbody">${md(g.analysis)}</div></div>` : ''}
+      ${g.previous_recipients ? `<div class="eyebrow">Tidigare mottagare</div><div class="card prose">${esc(g.previous_recipients)}</div>` : ''}
+      ${docsBlock('grant', g.id, 'I', true)}
+    </div><div>${aiBlock('grant', g.id, 'a_funding', 'Fördjupad analys', {placeholder:'Till exempel: är vi behöriga, och vilka kostnader godkänns?', button:'Analysera'})}${commentsBlock('grant', g.id)}</div></div>`;
+}
+async function setGrantStatus(id, s){ try{ await patch('fd_grants', id, {status:s}); await loadAll(); paint(); toast(GST[s]); }catch(e){ toast(e.message); } }
+async function importReport(){
+  const body = $('frBody').value.trim(); if(body.length < 20) return toast('Klistra in rapporten först');
+  try{ const r = await insert('fd_funding_reports', {body, created_by:myId()});
+       await rpc('fd_agent_request', {p_agent:'a_fundimport', p_owner_type:'funding_report', p_owner_id:r.id, p_question:''});
+       await loadAll(); paint(); toast('Rapporten läses in. Bidragen dyker upp om några minuter.'); }
+  catch(e){ toast(e.message); }
+}
+
+/* ---------- H: UNDERSÖKNINGAR ---------- */
+let SVR = {};
+const surveyUrl = s => location.origin + '/enkat.html?t=' + s.token;
+function vSurveys(){
+  if(arg) return vSurvey();
+  const can = isAdmin() || inDept('H');
+  return `<div class="h1">Undersökningar</div><p class="sub">Utvärderingar efter aktiviteter och större undersökningar om ungas villkor. Svaren är alltid anonyma.</p>
+    ${can ? `<div style="margin:14px 0"><button class="btn" onclick="openSurveyForm()">Ny undersökning</button></div>` : ''}
+    <div class="list grid3" id="surveylist">${F.surveys.map(s => `<a class="item" href="#survey-${attr(s.id)}"><span class="dept sm">H</span><span class="grow"><b>${esc(s.title)}</b>
+      <em>${s.kind === 'internal' ? 'Utvärdering' : 'Samhällsundersökning'}${s.activity_id && activity(s.activity_id) ? ' · ' + esc(activity(s.activity_id).title) : ''} · ${nt(s.questions.length, 'fråga', 'frågor')}</em>
+      <span class="meta"><span class="pill ${s.status==='open'?'live':s.status==='closed'?'mute':''}">${{draft:'Utkast', open:'Öppen', closed:'Stängd'}[s.status]}</span></span></span></a>`).join('') || '<div class="empty">Inga undersökningar än.</div>'}</div>`;
+}
+const DEFAULT_EVAL = [{id:'q1', type:'scale', label:'Vad tyckte du om aktiviteten?'}, {id:'q2', type:'text', label:'Vad lärde du dig?'},
+  {id:'q3', type:'text', label:'Upptäckte du något nytt?'}, {id:'q4', type:'text', label:'Vad vill du göra mer av?'}];
+function openSurveyForm(actId){
+  window.SQ = actId ? DEFAULT_EVAL.map(q => Object.assign({}, q)) : [{id:'q1', type:'scale', label:''}];
+  openSheet(`<h2>${actId ? 'Utvärdering' : 'Ny undersökning'}</h2>
+    <label class="lbl" for="sf_t">Namn</label><input id="sf_t" value="${actId ? attr('Utvärdering: ' + activity(actId).title) : ''}">
+    <label class="lbl" for="sf_k">Typ</label><select id="sf_k"><option value="internal">Utvärdering</option><option value="societal" ${actId ? '' : 'selected'}>Samhällsundersökning</option></select>
+    <label class="lbl" for="sf_a">Aktivitet</label><select id="sf_a"><option value="">Ingen</option>${F.activities.map(a => `<option value="${attr(a.id)}" ${a.id===actId?'selected':''}>${esc(a.title)} · ${esc(dlabel(a.date))}</option>`).join('')}</select>
+    <label class="lbl" for="sf_i">Inledning</label><textarea id="sf_i">${actId ? 'Tack för att du var med! Dina svar är anonyma och hjälper oss att göra nästa gång bättre.' : 'Dina svar är anonyma.'}</textarea>
+    <div class="lbl">Frågor</div><div id="sfq"></div><button class="btn ghost slim" onclick="SQ.push({id:'q'+(SQ.length+1)+Math.random().toString(36).slice(2,5),type:'text',label:''});sqPaint()">Lägg till fråga</button>
+    <div class="err" id="sfErr"></div><button class="btn" onclick="saveSurvey()">Spara som utkast</button>`);
+  sqPaint();
+}
+function sqPaint(){
+  $('sfq').innerHTML = SQ.map((q, i) => `<div class="card" style="margin-bottom:8px"><input value="${attr(q.label)}" placeholder="Frågan" oninput="SQ[${i}].label=this.value">
+    <div class="row" style="margin-top:8px"><select style="flex:1" onchange="SQ[${i}].type=this.value;sqPaint()">${[['scale','Skala 1–5'],['choice','Flerval'],['text','Fritext']].map(([k, l]) => `<option value="${k}" ${q.type===k?'selected':''}>${l}</option>`).join('')}</select>
+    <button class="btn ghost slim" onclick="SQ.splice(${i},1);sqPaint()">Ta bort</button></div>
+    ${q.type === 'choice' ? `<input style="margin-top:8px" placeholder="Alternativ, separerade med komma" value="${attr((q.options||[]).join(', '))}" oninput="SQ[${i}].options=this.value.split(',').map(x=>x.trim()).filter(Boolean)">` : ''}</div>`).join('');
+}
+async function saveSurvey(){
+  const qs = SQ.filter(q => q.label.trim()).map(q => q.type === 'choice' ? q : {id:q.id, type:q.type, label:q.label});
+  if(!$('sf_t').value.trim() || !qs.length){ $('sfErr').textContent = 'Fyll i namn och minst en fråga.'; return; }
+  try{ const s = await insert('fd_surveys', {title:$('sf_t').value.trim(), kind:$('sf_k').value, activity_id:$('sf_a').value || null, intro:$('sf_i').value.trim(), questions:qs, created_by:myId()});
+       closeSheet(); await loadAll(); go('survey-' + s.id); }
+  catch(e){ $('sfErr').textContent = e.message; }
+}
+function vSurvey(){
+  const s = survey(arg); if(!s) return notFound('Undersökningen');
+  const can = isAdmin() || inDept('H') || s.created_by === myId();
+  const seeRes = isAdmin() || inDept('H') || (s.activity_id && (youthOk() || (activity(s.activity_id) && inDept(activity(s.activity_id).dept))));
+  if(seeRes && SVR[s.id] === undefined){ SVR[s.id] = null; rpc('fd_survey_report', {p_survey:s.id}).then(r => { SVR[s.id] = r; if(route === 'survey') paint(); }).catch(() => { SVR[s.id] = false; }); }
+  const R = SVR[s.id];
+  return `<a class="back" href="#surveys">‹ Undersökningar</a><div class="h1">${esc(s.title)}</div>
+    <div class="meta"><span class="pill live">${{draft:'Utkast', open:'Öppen', closed:'Stängd'}[s.status]}</span><span class="pill mute">${s.kind === 'internal' ? 'Utvärdering' : 'Samhällsundersökning'}</span></div>
+    <div class="grid2"><div>
+      ${can ? `<div class="row" style="margin-top:12px;flex-wrap:wrap">${s.status !== 'open' ? `<button class="btn slim" onclick="setSurvey('${attr(s.id)}','open')">Öppna för svar</button>` : `<button class="btn ghost slim" onclick="setSurvey('${attr(s.id)}','closed')">Stäng</button>`}</div>` : ''}
+      ${s.status === 'open' ? `<div class="card" style="margin-top:12px"><b>Länken till enkäten</b><p class="hint" style="user-select:all;overflow-wrap:anywhere">${esc(surveyUrl(s))}</p>
+        <button class="btn slim" style="margin-top:8px" onclick="copyText('${attr(surveyUrl(s))}').then(()=>toast('Kopierad'),()=>toast('Markera och kopiera'))">Kopiera länken</button>
+        <p class="hint">Skicka den i gruppchatten eller visa som QR. Ingen behöver logga in, och svaren sparas utan namn.</p></div>` : ''}
+      <div class="eyebrow">Frågor</div><div class="card">${s.questions.map((q, i) => `<div class="kv"><span>${i + 1}</span><b>${esc(q.label)} <span class="hint">${{scale:'Skala 1–5', choice:'Flerval', text:'Fritext'}[q.type]}</span></b></div>`).join('')}</div>
+    </div><div>
+      ${seeRes ? `<div class="eyebrow">Resultat ${R ? `<span class="n">${nt(+R.svar, 'svar', 'svar')}</span>` : ''}</div>
+        <div id="sres">${R === null ? '<div class="skel"></div>' : !R ? '<div class="empty">Kunde inte hämta resultatet.</div>' : (R['frågor'] || []).map(q => `<div class="card" style="margin-bottom:8px"><b>${esc(q['fråga'])}</b>
+          ${q.typ === 'scale' && q.resultat ? `<p class="sub">Snitt ${q.resultat.snitt == null ? '–' : String(q.resultat.snitt).replace('.', ',')} av 5</p>${[1,2,3,4,5].map(v => { const n = +((q.resultat['fördelning'] || {})[v] || 0), tot = +R.svar || 1;
+              return `<div class="row" style="gap:8px;margin-top:4px"><span class="nums" style="width:14px">${v}</span><span style="flex:1;height:8px;border-radius:99px;background:rgba(255,255,255,.06)"><span style="display:block;height:8px;border-radius:99px;background:var(--tube);width:${Math.round(n / tot * 100)}%"></span></span><span class="nums hint" style="margin:0">${n}</span></div>`; }).join('')}`
+          : q.typ === 'choice' ? Object.entries(q.resultat || {}).map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b class="nums">${v}</b></div>`).join('')
+          : `<ul class="mdl">${(q.resultat || []).slice(0, 30).map(t => `<li>${esc(t)}</li>`).join('')}</ul>`}</div>`).join('')}</div>
+        ${aiBlock('survey', s.id, 'a_insights', 'Sammanställ med AI', {placeholder:'Till exempel: vilka mönster ser du, med metodförbehåll?'})}` : '<p class="hint" style="margin-top:14px">Resultatet ser H och admin, och för en utvärdering även aktivitetens ansvariga.</p>'}
+    </div></div>`;
+}
+async function setSurvey(id, st){ try{ await patch('fd_surveys', id, {status:st}); await loadAll(); paint(); }catch(e){ toast(e.message); } }
+async function makeEval(aid){ openSurveyForm(aid); }
+
+/* ---------- J: ADMINISTRATION ---------- */
+let jTab = 'archive';
+function vAdminJ(){
+  if(!(isAdmin() || inDept('J'))) return notFound('Sidan');
+  const toJ = F.handovers.filter(h => h.to_dept === 'J' && h.status !== 'done');
+  return `<div class="h1">Administration</div><p class="sub">J:s arkiv, viktiga datum och ärenden som kräver godkännande. HQ är inte bokföringssystemet.</p>
+    <div class="seg"><button class="${jTab==='archive'?'on':''}" onclick="jTab='archive';paint()">Arkiv</button><button class="${jTab==='dates'?'on':''}" onclick="jTab='dates';paint()">Viktiga datum</button><button class="${jTab==='cases'?'on':''}" onclick="jTab='cases';paint()">Ärenden · ${toJ.length}</button></div>
+    ${jTab === 'archive' ? `<div class="list" style="margin-top:12px">${Object.entries(ARCH).map(([k, l]) => { const ds = F.docs.filter(d => d.owner_type === 'archive' && d.owner_id === k);
+        return `<details class="more"><summary>${l} <span class="hint">${ds.length || ''}</span></summary>${docsBlock('archive', k, 'J', true).replace('<div class="eyebrow">Dokument', '<div class="eyebrow" style="display:none">Dokument')}</details>`; }).join('')}</div>`
+    : jTab === 'dates' ? `<div style="margin:14px 0"><button class="btn" onclick="openDeadlineForm()">Nytt datum</button></div>
+      <div class="list" id="dlist">${F.deadlines.filter(d => !d.done).sort((a, b) => a.date < b.date ? -1 : 1).map(d => `<div class="item"><span class="dept sm">${esc(d.dept)}</span><span class="grow"><b>${esc(d.title)}</b>
+        <em>${esc(dlabel(d.date))} · ${esc(dueText(d.date))}${d.note ? ' · ' + esc(d.note) : ''}</em></span><button class="btn ghost slim" onclick="doneDeadline('${attr(d.id)}')">Klart</button></div>`).join('') || '<div class="empty">Inga kommande datum.</div>'}</div>
+      <p class="hint" style="margin-top:10px">Påminnelse en vecka och en dag före.</p>`
+    : `<div class="list" style="margin-top:12px">${toJ.map(handoverRow).join('') || '<div class="empty">Inga öppna ärenden till J.</div>'}</div>
+      <p class="hint" style="margin-top:10px">Andra avdelningar lämnar över avtal, underlag och kontroller till J. Markera vad som är klart och vad som saknas i ärendets kommentarer.</p>`}
+    ${aiBlock('dept', 'J', 'a_admin', 'Administrativ hjälp med AI', {placeholder:'Till exempel: checklista inför årsmötet'})}`;
+}
+function openDeadlineForm(){
+  openSheet(`<h2>Nytt datum</h2><label class="lbl" for="dl_t">Vad</label><input id="dl_t"><label class="lbl" for="dl_d">Datum</label><input id="dl_d" type="date">
+    <label class="lbl" for="dl_dept">Avdelning</label><select id="dl_dept">${deptOptions('J', true)}</select><label class="lbl" for="dl_n">Anteckning</label><input id="dl_n">
+    <div class="err" id="dlErr"></div><button class="btn" onclick="saveDeadline()">Spara</button>`);
+}
+async function saveDeadline(){
+  try{ await insert('fd_deadlines', {title:$('dl_t').value.trim(), date:$('dl_d').value, dept:$('dl_dept').value, note:$('dl_n').value.trim(), created_by:myId()});
+       closeSheet(); await loadAll(); paint(); }
+  catch(e){ $('dlErr').textContent = e.message; }
+}
+async function doneDeadline(id){ try{ await sb('/fd_deadlines?id=eq.' + encodeURIComponent(id), {method:'PATCH', body:JSON.stringify({done:true})}); await loadAll(); paint(); }catch(e){ toast(e.message); } }
+
+/* ---------- ADMIN → AI ---------- */
+let AI = {}, KTab = 'agents';
+function adminAI(){
+  if(!AI.loaded){ rpc('fd_ai_budget').then(r => { AI = Object.assign(r || {}, {loaded:true}); if(route === 'admin') paint(); }).catch(e => toast(e.message)); return '<div class="skel" style="margin-top:14px"></div>'; }
+  const pct = AI.budget_sek ? Math.min(100, Math.round(AI.spent_sek / AI.budget_sek * 100)) : 0;
+  return `<div class="card" style="margin-top:14px" id="aibudget"><div class="row"><b style="flex:1">Den här månaden</b><span class="pill ${AI.enabled ? 'ok' : 'bad'}">${AI.enabled ? 'På' : 'Avstängt'}</span></div>
+      <p style="margin-top:6px"><span class="nums" style="font:600 22px var(--sans)">${String(AI.spent_sek).replace('.', ',')} kr</span> <span class="sub">av ${AI.budget_sek} kr · ${nt(+AI.runs, 'körning', 'körningar')}</span></p>
+      <span style="display:block;height:8px;border-radius:99px;background:rgba(255,255,255,.06);margin-top:8px"><span style="display:block;height:8px;border-radius:99px;background:${pct >= 90 ? 'var(--bad2)' : 'var(--tube)'};width:${pct}%"></span></span>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px"><label class="sr" for="aiB">Tak kr</label><input id="aiB" type="number" min="0" value="${AI.budget_sek}" style="width:110px"><span class="hint" style="margin:0">kr/mån · växelkurs</span>
+        <label class="sr" for="aiR">SEK per USD</label><input id="aiR" type="number" step="0.01" min="1" value="${AI.usd_sek}" style="width:90px">
+        <label class="check" style="margin:0"><input type="checkbox" id="aiOn" ${AI.enabled ? 'checked' : ''}><span>På</span></label>
+        <button class="btn slim" onclick="saveAI()">Spara</button></div>
+      <p class="hint">Claude Opus 5.5 med webbsökning. Kostnaden räknas per körning (tokens och sökningar) och nya körningar stoppas när taket nås.</p></div>
+    <div class="seg"><button class="${KTab==='agents'?'on':''}" onclick="KTab='agents';paint()">Agenter</button><button class="${KTab==='kb'?'on':''}" onclick="KTab='kb';paint()">Kunskapsbas</button><button class="${KTab==='runs'?'on':''}" onclick="KTab='runs';paint()">Körningar</button></div>
+    ${KTab === 'agents' ? `<div class="list grid3" id="agents">${F.agents.map(a => `<button class="item" onclick="openAgent('${attr(a.id)}')"><span class="dept sm">${esc(a.dept || '·')}</span><span class="grow"><b>${esc(a.name)}</b>
+        <em>${esc(a.purpose)}</em><span class="meta"><span class="pill ${a.active?'ok':'mute'}">${a.active?'Aktiv':'Av'}</span><span class="pill mute">${esc(a.effort)}</span>${a.web ? `<span class="pill mute">Webb · ${a.max_searches}</span>` : ''}</span></span></button>`).join('')}</div>`
+    : KTab === 'kb' ? `<div style="margin:12px 0"><button class="btn ghost slim" onclick="openKnowledge()">Ny text</button></div>
+      <div class="list">${F.knowledge.map(k => `<button class="item" onclick="openKnowledge('${attr(k.id)}')"><span class="grow"><b>${esc(k.title)}</b><em>${k.dept ? 'Avdelning ' + esc(k.dept) : 'Alla agenter'} · ${esc(k.body.slice(0, 120))}</em></span></button>`).join('')}</div>
+      <p class="hint" style="margin-top:10px">Agenterna får den godkända kunskapen i varje körning, så att ingen behöver förklara Foundation på nytt.</p>`
+    : `<div class="card scrollx" style="margin-top:12px"><table class="tbl"><thead><tr><th>När</th><th>Agent</th><th>Status</th><th>Kostnad</th><th>Vem</th></tr></thead><tbody>
+      ${F.runs.slice(0, 60).map(r => `<tr><td class="nums">${when(r.created_at)}</td><td>${esc((agent(r.agent_id) || {}).name || r.agent_id)}</td><td>${RUNST[r.status]}</td><td class="nums">${(+r.cost_usd * (AI.usd_sek || 10.5)).toFixed(2).replace('.', ',')} kr</td><td>${esc(pname(r.started_by))}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Inga körningar än.</td></tr>'}</tbody></table></div>`}`;
+}
+async function saveAI(){ try{ AI = Object.assign(await rpc('fd_save_ai_settings', {p_budget_sek:+$('aiB').value, p_usd_sek:+$('aiR').value, p_enabled:$('aiOn').checked}), {loaded:true}); paint(); toast('Sparat'); }catch(e){ toast(e.message); } }
+function openAgent(id){
+  const a = agent(id);
+  openSheet(`<h2>${esc(a.name)}</h2><p class="sub">${esc(a.purpose)}</p>
+    <label class="lbl" for="ag_i">Arbetsinstruktion</label><textarea id="ag_i" style="min-height:200px">${esc(a.instructions)}</textarea>
+    <label class="lbl" for="ag_o">Vad den levererar</label><textarea id="ag_o">${esc(a.output)}</textarea>
+    <label class="lbl" for="ag_ap">Regel för mänskligt godkännande</label><input id="ag_ap" value="${attr(a.approval)}">
+    <label class="lbl" for="ag_e">Ansträngning</label><select id="ag_e">${['low','medium','high','xhigh','max'].map(e => `<option ${a.effort===e?'selected':''}>${e}</option>`).join('')}</select>
+    <label class="lbl" for="ag_s">Max webbsökningar per steg</label><input id="ag_s" type="number" min="0" max="40" value="${a.max_searches}">
+    <label class="check"><input type="checkbox" id="ag_w" ${a.web?'checked':''} ${a.mode==='funding_import'?'disabled':''}><span>Får söka och läsa på webben</span></label>
+    <label class="check"><input type="checkbox" id="ag_a" ${a.active?'checked':''}><span>Aktiv</span></label>
+    <p class="hint">Modell: ${esc(a.model)}. Agenten får bara det körningen gäller och kunskapsbasen, aldrig ungdomarnas uppgifter.</p>
+    <div class="err" id="agErr"></div><button class="btn" onclick="saveAgent('${attr(id)}')">Spara</button>`);
+}
+async function saveAgent(id){
+  try{ await patch('fd_agents', id, {instructions:$('ag_i').value, output:$('ag_o').value, approval:$('ag_ap').value, effort:$('ag_e').value,
+         max_searches:Math.max(0, Math.min(40, +$('ag_s').value || 0)), web:$('ag_w').checked, active:$('ag_a').checked, updated_by:myId()});
+       closeSheet(); await loadAll(); paint(); toast('Sparat'); }
+  catch(e){ $('agErr').textContent = e.message; }
+}
+function openKnowledge(id){
+  const k = id ? F.knowledge.find(x => x.id === id) : {title:'', body:'', dept:null};
+  openSheet(`<h2>Kunskapsbas</h2><label class="lbl" for="kb_t">Rubrik</label><input id="kb_t" value="${attr(k.title)}">
+    <label class="lbl" for="kb_d">Gäller</label><select id="kb_d"><option value="">Alla agenter</option>${F.depts.map(d => `<option value="${d.code}" ${k.dept===d.code?'selected':''}>${d.code} · ${esc(d.name)}</option>`).join('')}</select>
+    <label class="lbl" for="kb_b">Text</label><textarea id="kb_b" style="min-height:240px">${esc(k.body)}</textarea>
+    <div class="err" id="kbErr"></div><button class="btn" onclick="saveKnowledge(${id ? `'${attr(id)}'` : 'null'})">Spara</button>`);
+}
+async function saveKnowledge(id){
+  const row = {title:$('kb_t').value.trim(), body:$('kb_b').value, dept:$('kb_d').value || null, updated_by:myId()};
+  try{ id ? await patch('fd_knowledge', id, row) : await insert('fd_knowledge', row); closeSheet(); await loadAll(); paint(); toast('Sparat'); }
+  catch(e){ $('kbErr').textContent = e.message; }
+}
 /* ===================== NOTISER, PROFIL, ARK ===================== */
 function openNotes(){
   const ids = F.notes.filter(n => !n.read_at).map(n => n.id);
-  openSheet(`<h2>Notiser</h2><div class="list" style="margin-top:14px" id="notes">${F.notes.length ? F.notes.map(n => `<a class="item${n.read_at ? '' : ' attn'}" href="#${attr(n.ref_type)}-${attr(n.ref_id)}" onclick="closeSheet()">
+  openSheet(`<h2>Notiser</h2><div class="list" style="margin-top:14px" id="notes">${F.notes.length ? F.notes.map(n => `<a class="item${n.read_at ? '' : ' attn'}" href="#${n.ref_type === 'admin' ? 'admin' : attr(n.ref_type) + '-' + attr(n.ref_id)}" onclick="closeSheet()">
       <span class="grow"><b>${esc(n.title)}</b><em>${esc(n.body)}</em></span><span class="side">${when(n.created_at)}</span></a>`).join('') : '<div class="empty">Inga notiser.</div>'}</div>`);
   if(ids.length) rpc('fd_mark_read', {p_ids:ids}).then(() => { F.notes.forEach(n => { if(ids.includes(n.id)) n.read_at = new Date().toISOString(); }); paintBell(); }).catch(() => {});
 }
