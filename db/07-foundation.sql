@@ -876,30 +876,45 @@ create table if not exists fd_invite_links (
   created_by text references members(id) on delete set null,
   created_at timestamptz not null default now()
 );
+/* 2026-11-25: en länk kan gälla flera avdelningar (en person kan vara med i flera). dept = den första. */
+alter table fd_invite_links add column if not exists depts text[] not null default '{}';
+update fd_invite_links set depts = array[dept] where depts = '{}';
 alter table fd_invite_links enable row level security;
 drop policy if exists fd_invite_links_read on fd_invite_links;
 create policy fd_invite_links_read on fd_invite_links for select to authenticated using (fd_admin());
 
+/* "A och E" */
+create or replace function fd_depts_text(p text[]) returns text
+language sql immutable as $$
+  select case when cardinality(p) <= 1 then coalesce(p[1], '')
+              else array_to_string(p[1:cardinality(p)-1], ', ') || ' och ' || p[cardinality(p)] end
+$$;
+
+/* p_dept: en avdelning ("B") eller flera, kommaseparerade ("A,E"). */
 create or replace function fd_create_link(p_dept text, p_days int default 30, p_max int default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare tok text; days int := least(greatest(coalesce(p_days, 30), 1), 90);
+        ds text[] := array(select distinct upper(trim(x)) from unnest(string_to_array(coalesce(p_dept, ''), ',')) x where trim(x) <> '' order by 1);
 begin
   if not fd_admin() then raise exception 'Bara Foundation-admin skapar länkar'; end if;
-  if not exists (select 1 from fd_departments where code = p_dept) then raise exception 'Avdelningen finns inte'; end if;
+  if cardinality(ds) = 0 then raise exception 'Välj minst en avdelning'; end if;
+  if exists (select 1 from unnest(ds) x where not exists (select 1 from fd_departments where code = x)) then raise exception 'Avdelningen finns inte'; end if;
   if p_max is not null and p_max < 1 then raise exception 'Antalet måste vara minst 1'; end if;
   tok := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 4) || '-' ||
                substr(md5(clock_timestamp()::text || random()::text), 1, 6));
   insert into invites(token, role, created_by, expires_at, max_uses, team)
-  values (tok, 'foundation', bs_my_id(), now() + make_interval(days => days), p_max, 'Bando Foundation, avdelning ' || p_dept);
-  insert into fd_invite_links(token, dept, created_by) values (tok, p_dept, bs_my_id());
-  perform fd_log('link', tok, 'länk skapad', null, jsonb_build_object('dept', p_dept, 'days', days, 'max', p_max));
-  return jsonb_build_object('token', tok, 'dept', p_dept, 'expires_at', now() + make_interval(days => days), 'max_uses', p_max);
+  values (tok, 'foundation', bs_my_id(), now() + make_interval(days => days), p_max,
+          'Bando Foundation, avdelning ' || fd_depts_text(ds));
+  insert into fd_invite_links(token, dept, depts, created_by) values (tok, ds[1], ds, bs_my_id());
+  perform fd_log('link', tok, 'länk skapad', null, jsonb_build_object('depts', to_jsonb(ds), 'days', days, 'max', p_max));
+  return jsonb_build_object('token', tok, 'dept', ds[1], 'depts', to_jsonb(ds), 'expires_at', now() + make_interval(days => days), 'max_uses', p_max);
 end $$;
 
 create or replace function fd_links() returns jsonb
 language sql stable security definer set search_path = public as $$
   select case when not fd_admin() then '[]'::jsonb else coalesce(jsonb_agg(jsonb_build_object(
-      'token', l.token, 'dept', l.dept, 'by', l.created_by, 'created_at', l.created_at, 'expires_at', i.expires_at,
+      'token', l.token, 'dept', l.dept, 'depts', to_jsonb(case when l.depts = '{}' then array[l.dept] else l.depts end),
+      'by', l.created_by, 'created_at', l.created_at, 'expires_at', i.expires_at,
       'max_uses', i.max_uses, 'uses', i.uses, 'open', not i.closed and i.expires_at > now() and (i.max_uses is null or i.uses < i.max_uses))
     order by l.created_at desc), '[]'::jsonb) end
   from fd_invite_links l join invites i on i.token = l.token
@@ -914,21 +929,48 @@ begin
   perform fd_log('link', p_token, 'länk stängd', null, null);
 end $$;
 
-/* När en avdelningslänk används: personen som just fick sitt konto (redeem_invite, samma
-   transaktion) blir medlem i avdelningen. Andra inbjudningar berörs inte. */
+/* Den som redan har ett konto (i studion eller i en annan avdelning) och öppnar en länk:
+   samma kontroller som redeem_invite, sedan räknas länken upp och triggern lägger in avdelningarna. */
+create or replace function fd_join_link(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare inv invites; l fd_invite_links; mid text := bs_my_id(); ds text[]; added text[];
+begin
+  if mid is null then raise exception 'Logga in först'; end if;
+  select * into inv from invites where token = upper(trim(coalesce(p_token,''))) for update;
+  select * into l from fd_invite_links where token = inv.token;
+  if inv.token is null or l.token is null then raise exception 'Länken finns inte'; end if;
+  if inv.closed then raise exception 'Länken är stängd'; end if;
+  if inv.expires_at <= now() then raise exception 'Länken har gått ut'; end if;
+  if inv.max_uses is not null and inv.uses >= inv.max_uses then raise exception 'Länken är redan använd'; end if;
+  ds := case when l.depts = '{}' then array[l.dept] else l.depts end;
+  added := array(select x from unnest(ds) x where not exists (select 1 from fd_memberships where member_id = mid and dept = x));
+  if cardinality(added) = 0 then return jsonb_build_object('ok', true, 'added', '[]'::jsonb, 'depts', to_jsonb(ds)); end if;
+  update invites set uses = uses + 1 where token = inv.token;     /* fd_link_redeemed lägger in avdelningarna */
+  return jsonb_build_object('ok', true, 'added', to_jsonb(added), 'depts', to_jsonb(ds));
+end $$;
+
+/* När en avdelningslänk används (redeem_invite för ett nytt konto, eller fd_join_link för ett
+   befintligt): personen blir medlem i länkens avdelningar. Andra inbjudningar berörs inte. */
 create or replace function fd_link_redeemed() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare l fd_invite_links; mid text;
+declare l fd_invite_links; mid text; nm text; d text; added text[] := '{}';
 begin
   if new.uses <= old.uses then return new; end if;
   select * into l from fd_invite_links where token = new.token;
   if l.token is null then return new; end if;
-  select id into mid from members where user_id = auth.uid();
+  select id, name into mid, nm from members where user_id = auth.uid();
   if mid is null then return new; end if;
-  insert into fd_memberships(member_id, dept, role) values (mid, l.dept, 'member') on conflict (member_id, dept) do nothing;
-  perform fd_log('membership', mid || ':' || l.dept, 'gick med via länk', null, jsonb_build_object('role', 'member', 'link', new.token));
-  perform fd_notify(l.created_by, 'member', 'Ny i avdelning ' || l.dept || ': ' || (select name from members where id = mid),
-    (select name from members where id = mid) || ' gick med via din inbjudningslänk.', 'dept', l.dept);
+  foreach d in array (case when l.depts = '{}' then array[l.dept] else l.depts end) loop
+    insert into fd_memberships(member_id, dept, role) values (mid, d, 'member') on conflict (member_id, dept) do nothing;
+    if found then
+      added := added || d;
+      perform fd_log('membership', mid || ':' || d, 'gick med via länk', null, jsonb_build_object('role', 'member', 'link', new.token));
+    end if;
+  end loop;
+  if cardinality(added) > 0 then
+    perform fd_notify(l.created_by, 'member', 'Ny i avdelning ' || fd_depts_text(added) || ': ' || nm,
+      nm || ' gick med via din inbjudningslänk.', 'dept', added[1]);
+  end if;
   return new;
 end $$;
 drop trigger if exists fd_link_redeemed on invites;
@@ -944,13 +986,13 @@ revoke all on function fd_handover_send(text, text, text, text, text, text, date
   fd_handover_status(text, text), fd_set_membership(text, text, text), fd_set_perm(text, text, boolean), fd_add_person(text, text, jsonb),
   fd_dept_thread(text), fd_comments_thread(text, text), fd_open_thread(text, jsonb, text), fd_thread_add(text, text),
   fd_post(text, text, jsonb), fd_mark_read(jsonb), fd_thread_seen(text), fd_save_update(text, text, text, text, text), fd_overview(int),
-  fd_me(), fd_people(), fd_create_link(text, int, int), fd_links(), fd_close_link(text)
+  fd_me(), fd_people(), fd_create_link(text, int, int), fd_links(), fd_close_link(text), fd_join_link(text)
   from public, anon;
 grant execute on function fd_handover_send(text, text, text, text, text, text, date, text, boolean), fd_handover_receive(text),
   fd_handover_status(text, text), fd_set_membership(text, text, text), fd_set_perm(text, text, boolean), fd_add_person(text, text, jsonb),
   fd_dept_thread(text), fd_comments_thread(text, text), fd_open_thread(text, jsonb, text), fd_thread_add(text, text),
   fd_post(text, text, jsonb), fd_mark_read(jsonb), fd_thread_seen(text), fd_save_update(text, text, text, text, text), fd_overview(int),
-  fd_me(), fd_people(), fd_create_link(text, int, int), fd_links(), fd_close_link(text)
+  fd_me(), fd_people(), fd_create_link(text, int, int), fd_links(), fd_close_link(text), fd_join_link(text)
   to authenticated;
 revoke all on table fd_departments, fd_memberships, fd_contacts, fd_handovers, fd_tasks, fd_threads, fd_thread_members,
   fd_messages, fd_mentions, fd_notifications, fd_documents, fd_dept_updates, fd_invite_links from anon;

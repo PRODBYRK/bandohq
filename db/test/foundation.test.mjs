@@ -108,6 +108,27 @@ const one1 = await AZ(()=>rpc('fd_create_link',{p_dept:'C',p_days:7,p_max:1}));
 await as(db,U.ny3,()=>rpc('redeem_invite',{p_token:one1.token,p_name:'Sen Person',p_username:'sen'}));
 U.ny4 = await user('ny4@b.se');
 ok('en engångslänk räcker till en person', /redan använd/.test(await boom(()=>as(db,U.ny4,()=>rpc('redeem_invite',{p_token:one1.token,p_name:'Fyra',p_username:'fyra'})))||''));
+/* flera avdelningar: en länk till A och E, och en person som redan har ett konto använder en länk till */
+const multi = await AZ(()=>rpc('fd_create_link',{p_dept:'e, a',p_days:30,p_max:null}));
+ok('en länk kan gälla flera avdelningar', JSON.stringify(multi.depts)==='["A","E"]', multi);
+ok('inbjudan säger avdelning A och E', /avdelning A och E/.test((await asAnon(db,()=>rpc('invite_info',{p_token:multi.token}))).team||''));
+U.ny6 = await user('ny6@b.se');
+const r6 = await as(db,U.ny6,()=>rpc('redeem_invite',{p_token:multi.token,p_name:'Multi Person',p_username:'multi'}));
+ok('den som går med hamnar i båda avdelningarna', (await q(`select dept from fd_memberships where member_id=$1 order by dept`,[r6.id])).map(r=>r.dept).join()==='A,E');
+ok('admin får en notis: Ny i avdelning A och E', (await q(`select 1 from fd_notifications where member_id='az' and title like 'Ny i avdelning A och E:%'`)).length===1);
+const lkB = await AZ(()=>rpc('fd_create_link',{p_dept:'B',p_days:30,p_max:null}));
+const j1 = await AM(()=>rpc('fd_join_link',{p_token:lkB.token}));
+ok('Amir (redan i C och G) använder B-länken och är nu med i B också', JSON.stringify(j1.added)==='["B"]'
+   && (await q(`select dept from fd_memberships where member_id='amir' order by dept`)).map(r=>r.dept).join()==='B,C,G', j1);
+const j2 = await AM(()=>rpc('fd_join_link',{p_token:lkB.token}));
+ok('samma länk igen: inget nytt, räknas inte två gånger', JSON.stringify(j2.added)==='[]' && (await one(`select uses from invites where token=$1`,[lkB.token])).uses===1);
+await ADREY(()=>rpc('fd_join_link',{p_token:lkB.token}));
+ok('en studio-producent utan avdelning kan gå med via länken', (await q(`select dept from fd_memberships where member_id='adrey'`)).map(r=>r.dept).join()==='B');
+await AZ(()=>rpc('fd_close_link',{p_token:lkB.token}));
+ok('en stängd länk går inte att använda med konto heller', /stängd/.test(await boom(()=>SA(()=>rpc('fd_join_link',{p_token:lkB.token})))||''));
+ok('en studiolänk (inte Foundation) går inte att använda här', /finns inte/.test(await boom(()=>AM(()=>rpc('fd_join_link',{p_token:link.token.replace(/./,'Z')})))||''));
+ok('utan inloggning: nej', !!(await boom(()=>asAnon(db,()=>rpc('fd_join_link',{p_token:multi.token})))));
+await q(`delete from fd_memberships where (member_id='amir' and dept='B') or member_id in ('adrey',$1)`,[r6.id]);
 const stud = await C2(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:5}));
 U.ny5 = await user('ny5@b.se');
 const r5 = await as(db,U.ny5,()=>rpc('redeem_invite',{p_token:stud,p_name:'Prod Ny',p_username:'prodny'}));

@@ -270,7 +270,12 @@ function toLogin(){
   try{ if(location.hash.length > 1) sessionStorage.setItem('fd_next', location.hash); }catch(e){}
   location.replace('index.html');
 }
-if(!AUTH || !CLOUD.url) toLogin();
+/* En inbjudningslänk (#join=KOD): ny person → studions vanliga join-sida (konto och lösenord);
+   inloggad → läggs in i länkens avdelningar här (fd_join_link). */
+const JOIN = (location.hash.match(/^#join=([A-Za-z0-9-]{6,})/) || [])[1] || '';
+if(!AUTH && JOIN && CLOUD.url) location.replace('index.html#join=' + JOIN);
+else if(!AUTH || !CLOUD.url) toLogin();
+const deptsText = a => (a || []).length <= 1 ? (a || [''])[0] : a.slice(0, -1).join(', ') + ' och ' + a[a.length - 1];
 
 async function sbErr(r){
   let m = 'Servern svarade ' + r.status;
@@ -1065,8 +1070,9 @@ function adminPeople(){
   const ppl = F.people.slice().sort((a, b) => ((b.depts||[]).length > 0) - ((a.depts||[]).length > 0) || a.name.localeCompare(b.name, 'sv'));
   return `<div class="eyebrow">Inbjudningslänkar</div>
     <div class="card"><p class="sub">Skicka länken i ett sms eller en gruppchatt. Den som öppnar den skapar ett konto och hamnar direkt i avdelningen, ingen e-post behövs i förväg. Länken gäller i 30 dagar eller tills du stänger den.</p>
-      <div class="row" style="margin-top:12px;flex-wrap:wrap"><label class="sr" for="lkD">Avdelning</label><select id="lkD" style="flex:1;min-width:200px">${deptOptions('A', false)}</select>
-      <button class="btn slim" id="lkNew" onclick="makeLink()">Skapa länk</button></div></div>
+      <div class="lbl" id="lkL">Avdelningar, en eller flera</div>
+      <div class="chips" id="lkD" role="group" aria-labelledby="lkL" style="margin-top:0">${F.depts.map(d => `<button class="chip" data-d="${d.code}" title="${attr(d.name)}" aria-pressed="false" onclick="this.classList.toggle('on');this.setAttribute('aria-pressed',this.classList.contains('on'))">${d.code}</button>`).join('')}</div>
+      <button class="btn slim" id="lkNew" style="margin-top:12px" onclick="makeLink()">Skapa länk</button></div>
     <div class="list" id="links" style="margin-top:10px">${LINKS === null ? '<div class="skel"></div>' : LINKS.filter(l => l.open).map(linkRow).join('')}</div>
     ${LINKS && LINKS.some(l => !l.open) ? `<p class="hint" style="margin-top:8px">${nt(LINKS.filter(l => !l.open).length, 'stängd eller utgången länk', 'stängda eller utgångna länkar')} visas inte.</p>` : ''}
     <div class="eyebrow">Personer</div>
@@ -1101,15 +1107,19 @@ function openAddPerson(){
   openSheet(`<h2>Lägg till</h2><p class="sub">Personen får en inbjudan med e-post och skapar sitt konto. Finns e-posten redan (till exempel någon i studion) läggs avdelningen bara till.</p>
     <label class="lbl" for="npN">Namn</label><input id="npN" autocomplete="off">
     <label class="lbl" for="npE">E-post</label><input id="npE" type="email" autocomplete="off">
-    <label class="lbl" for="npD">Avdelning</label><select id="npD">${deptOptions('A', false)}</select>
-    <label class="lbl" for="npR">Roll</label><select id="npR"><option value="member">Medlem</option><option value="chief">Chef</option></select>
+    <div class="lbl">Avdelningar och roll</div>
+    ${F.depts.map(d => `<div class="kv" style="align-items:center"><span>${d.code} · ${esc(d.name)}</span>
+      <select id="np-${d.code}" style="width:auto;min-width:130px;padding:8px 34px 8px 12px"><option value="">Inte med</option><option value="member">Medlem</option>
+      ${d.has_chief ? '<option value="chief">Chef</option>' : ''}</select></div>`).join('')}
     <div class="err" id="npErr"></div><button class="btn" id="npSave" onclick="addPerson()">Lägg till och bjud in</button>`);
 }
 async function addPerson(){
   const name = $('npN').value.trim(), email = $('npE').value.trim();
   $('npSave').disabled = true; $('npErr').textContent = '';
   try{
-    const id = await rpc('fd_add_person', {p_name:name, p_email:email, p_depts:[{dept:$('npD').value, role:$('npR').value}]});
+    const depts = F.depts.map(d => ({dept:d.code, role:$('np-' + d.code).value})).filter(x => x.role);
+    if(!depts.length) throw new Error('Välj minst en avdelning');
+    const id = await rpc('fd_add_person', {p_name:name, p_email:email, p_depts:depts});
     await loadAll();
     const p = person(id);
     if(p && !p.login){
@@ -1120,19 +1130,22 @@ async function addPerson(){
     closeSheet(); paint();
   }catch(e){ $('npErr').textContent = e.message; $('npSave').disabled = false; }
 }
-const linkUrl = t => location.origin + '/#join=' + encodeURIComponent(t);
+const linkUrl = t => location.origin + '/foundation.html#join=' + encodeURIComponent(t);
 function linkRow(l){
-  return `<div class="item" data-link="${attr(l.token)}"><span class="dept sm">${esc(l.dept)}</span>
-    <span class="grow"><b>Avdelning ${esc(l.dept)} · ${esc(dept(l.dept).name)}</b>
+  const ds = l.depts && l.depts.length ? l.depts : [l.dept];
+  return `<div class="item" data-link="${attr(l.token)}"><span class="dept sm" style="width:auto;min-width:22px;padding:0 7px;border-radius:999px">${esc(ds.join(''))}</span>
+    <span class="grow"><b>Avdelning ${esc(deptsText(ds))}${ds.length === 1 ? ' · ' + esc(dept(ds[0]).name) : ''}</b>
       <em>${nt(+l.uses, 'person har', 'personer har')} gått med · gäller till ${esc(dlabel(String(l.expires_at).slice(0, 10)))}${l.max_uses ? ' · högst ' + l.max_uses : ''}</em>
       <em class="nums" style="color:var(--txt);user-select:all;overflow-wrap:anywhere">${esc(linkUrl(l.token))}</em>
-      <span class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn slim" onclick="shareLink('${attr(l.token)}','${attr(l.dept)}')">${navigator.share ? 'Dela' : 'Kopiera'}</button>
+      <span class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn slim" onclick="shareLink('${attr(l.token)}','${attr(deptsText(ds))}')">${navigator.share ? 'Dela' : 'Kopiera'}</button>
         <button class="btn ghost slim" onclick="closeLink('${attr(l.token)}')">Stäng länken</button></span></span></div>`;
 }
 async function makeLink(){
   const b = $('lkNew'); b.disabled = true;
   try{
-    const l = await rpc('fd_create_link', {p_dept:$('lkD').value, p_days:30, p_max:null});
+    const ds = [...document.querySelectorAll('#lkD .chip.on')].map(x => x.dataset.d);
+    if(!ds.length){ toast('Välj minst en avdelning'); b.disabled = false; return; }
+    const l = await rpc('fd_create_link', {p_dept:ds.join(','), p_days:30, p_max:null});
     LINKS = null; paint();
     await copyText(linkUrl(l.token)).then(() => toast('Länken är skapad och kopierad'), () => toast('Länken är skapad'));
   }catch(e){ toast(e.message); b.disabled = false; }
@@ -1563,6 +1576,19 @@ async function start(){
   if(!AUTH) return;
   try{ await loadAll(); }
   catch(e){ return gate(esc(e.message)); }
+  /* länken: direkt, eller sparad genom inloggningen */
+  let jt = JOIN, joinMsg = '';
+  try{ const m = (sessionStorage.getItem('fd_next') || '').match(/^#join=([A-Za-z0-9-]{6,})/); if(!jt && m) jt = m[1]; if(m) sessionStorage.removeItem('fd_next'); }catch(e){}
+  if(jt){
+    history.replaceState(null, '', location.pathname + location.search + '#hq');
+    try{
+      const r = await rpc('fd_join_link', {p_token:jt});
+      joinMsg = r.added.length ? 'Du är nu med i avdelning ' + deptsText(r.added) : 'Du är redan med i avdelning ' + deptsText(r.depts);
+      await loadAll();
+    }catch(e){ joinMsg = e.message; }
+  }
+  setTimeout(() => { if(joinMsg) toast(joinMsg); }, 300);
+  window.FD_JOIN = joinMsg;
   if(!F.me || !F.me.member) return gate('Du har inte tillgång till Bando Foundations arbetsyta än. En admin lägger till dig i en avdelning.');
   try{ const nx = sessionStorage.getItem('fd_next'); if(nx && location.hash.length < 2){ sessionStorage.removeItem('fd_next'); history.replaceState(null, '', nx); } }catch(e){}
   buildNav(); parseHash(); paint();
