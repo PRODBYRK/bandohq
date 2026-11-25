@@ -1010,12 +1010,13 @@ function vMore(){
 }
 
 /* ===================== ADMIN ===================== */
-let aTab = 'overview', OV = null, LOG = null;
+let aTab = 'overview', OV = null, LOG = null, LINKS = null;
 function vAdmin(){
   if(!isAdmin()) return notFound('Sidan');
   if(aTab === 'overview' && !OV){ rpc('fd_overview', {p_days:14}).then(r => { OV = r; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
+  if(aTab === 'people' && !LINKS){ rpc('fd_links').then(r => { LINKS = r || []; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
   if(aTab === 'log' && !LOG){ get('/record_history?select=*&kind=like.fd.*&order=id.desc&limit=150').then(r => { LOG = r || []; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
-  const tab = (k, l) => `<button class="${aTab===k?'on':''}" onclick="aTab='${k}';OV=null;LOG=null;paint()">${l}</button>`;
+  const tab = (k, l) => `<button class="${aTab===k?'on':''}" onclick="aTab='${k}';OV=null;LOG=null;LINKS=null;paint()">${l}</button>`;
   return `<div class="h1">Admin</div><p class="sub">Alla avdelningar. Skyddade uppgifter syns bara med behörigheten för dem.</p>
     <div class="seg">${tab('overview', 'Översikt')}${tab('people', 'Personer')}${tab('log', 'Logg')}</div>
     <div id="admin">${aTab === 'overview' ? adminOverview() : aTab === 'people' ? adminPeople() : adminLog()}</div>`;
@@ -1045,7 +1046,14 @@ function adminOverview(){
 }
 function adminPeople(){
   const ppl = F.people.slice().sort((a, b) => ((b.depts||[]).length > 0) - ((a.depts||[]).length > 0) || a.name.localeCompare(b.name, 'sv'));
-  return `<div style="margin:14px 0"><button class="btn" onclick="openAddPerson()">Lägg till en person</button></div>
+  return `<div class="eyebrow">Inbjudningslänkar</div>
+    <div class="card"><p class="sub">Skicka länken i ett sms eller en gruppchatt. Den som öppnar den skapar ett konto och hamnar direkt i avdelningen, ingen e-post behövs i förväg. Länken gäller i 30 dagar eller tills du stänger den.</p>
+      <div class="row" style="margin-top:12px;flex-wrap:wrap"><label class="sr" for="lkD">Avdelning</label><select id="lkD" style="flex:1;min-width:200px">${deptOptions('A', false)}</select>
+      <button class="btn slim" id="lkNew" onclick="makeLink()">Skapa länk</button></div></div>
+    <div class="list" id="links" style="margin-top:10px">${LINKS === null ? '<div class="skel"></div>' : LINKS.filter(l => l.open).map(linkRow).join('')}</div>
+    ${LINKS && LINKS.some(l => !l.open) ? `<p class="hint" style="margin-top:8px">${nt(LINKS.filter(l => !l.open).length, 'stängd eller utgången länk', 'stängda eller utgångna länkar')} visas inte.</p>` : ''}
+    <div class="eyebrow">Personer</div>
+    <div style="margin:0 0 14px"><button class="btn ghost" onclick="openAddPerson()">Lägg till en person med e-post</button></div>
     <div class="list" id="people">${ppl.map(p => `<button class="item" onclick="openPerson('${attr(p.id)}')"><span class="av">${esc(initials(p.name))}</span>
       <span class="grow"><b>${esc(p.name)}</b><em>${(p.depts||[]).length ? p.depts.map(d => d.dept + (d.role === 'chief' ? ' chef' : '')).join(' · ') : 'Ingen avdelning'}${p.email ? ' · ' + esc(p.email) : ''}</em>
       <span class="meta">${p.admin ? '<span class="pill live">Admin</span>' : ''}${p.protected ? '<span class="pill">Skyddade uppgifter</span>' : ''}${p.role === 'foundation' ? '<span class="pill mute">Bara Foundation</span>' : '<span class="pill mute">Studion också</span>'}${!p.login ? '<span class="pill warn">Inte inloggad än</span>' : ''}</span></span></button>`).join('')}</div>`;
@@ -1095,7 +1103,34 @@ async function addPerson(){
     closeSheet(); paint();
   }catch(e){ $('npErr').textContent = e.message; $('npSave').disabled = false; }
 }
-const LOGOP = {'fd.task':'Uppgift', 'fd.handover':'Överlämning', 'fd.document':'Dokument', 'fd.membership':'Medlemskap', 'fd.perm':'Behörighet', 'fd.person':'Person', 'fd.update':'Avdelningsuppdatering'};
+const linkUrl = t => location.origin + '/#join=' + encodeURIComponent(t);
+function linkRow(l){
+  return `<div class="item" data-link="${attr(l.token)}"><span class="dept sm">${esc(l.dept)}</span>
+    <span class="grow"><b>Avdelning ${esc(l.dept)} · ${esc(dept(l.dept).name)}</b>
+      <em>${nt(+l.uses, 'person har', 'personer har')} gått med · gäller till ${esc(dlabel(String(l.expires_at).slice(0, 10)))}${l.max_uses ? ' · högst ' + l.max_uses : ''}</em>
+      <em class="nums" style="color:var(--txt);user-select:all;overflow-wrap:anywhere">${esc(linkUrl(l.token))}</em>
+      <span class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn slim" onclick="shareLink('${attr(l.token)}','${attr(l.dept)}')">${navigator.share ? 'Dela' : 'Kopiera'}</button>
+        <button class="btn ghost slim" onclick="closeLink('${attr(l.token)}')">Stäng länken</button></span></span></div>`;
+}
+async function makeLink(){
+  const b = $('lkNew'); b.disabled = true;
+  try{
+    const l = await rpc('fd_create_link', {p_dept:$('lkD').value, p_days:30, p_max:null});
+    LINKS = null; paint();
+    await copyText(linkUrl(l.token)).then(() => toast('Länken är skapad och kopierad'), () => toast('Länken är skapad'));
+  }catch(e){ toast(e.message); b.disabled = false; }
+}
+function copyText(t){ return navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(); }
+async function shareLink(token, d){
+  const url = linkUrl(token), text = 'Välkommen till Bando Foundation, avdelning ' + d + '. Skapa ditt konto här:';
+  if(navigator.share){ try{ await navigator.share({title:'Bando Foundation', text, url}); }catch(e){} return; }
+  copyText(url).then(() => toast('Länken är kopierad'), () => toast('Markera länken och kopiera den'));
+}
+async function closeLink(token){
+  if(!confirm('Stänga länken? Den som redan gått med påverkas inte.')) return;
+  try{ await rpc('fd_close_link', {p_token:token}); LINKS = null; paint(); toast('Länken är stängd'); }catch(e){ toast(e.message); }
+}
+const LOGOP = {'fd.link':'Inbjudningslänk', 'fd.task':'Uppgift', 'fd.handover':'Överlämning', 'fd.document':'Dokument', 'fd.membership':'Medlemskap', 'fd.perm':'Behörighet', 'fd.person':'Person', 'fd.update':'Avdelningsuppdatering'};
 function adminLog(){
   if(!LOG) return '<div class="skel" style="margin-top:14px"></div><div class="skel"></div>';
   const what = r => {

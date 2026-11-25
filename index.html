@@ -5376,6 +5376,10 @@ const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', mo
 let FD_ACCESS = false, fdChecked = null;
 const FD_ICON = '<path d="M12 3 20 7v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>';
 NAVNAME.foundation = 'Foundation';
+/* inbjudningssidan: "medarbetare i Bando Foundation, avdelning B". Dold för Object.entries, så att
+   studions egna inbjudningsval (inviteRoles) är som förut. */
+Object.defineProperty(INVITE_ROLES, 'foundation', {value:'medarbetare', enumerable:false});
+ROLE_NAME.foundation = 'Bando Foundation';
 function checkFoundation(){
   if(PREVIEW_LOGIN || !AUTH || fdChecked === AUTH.uid) return;
   fdChecked = AUTH.uid;

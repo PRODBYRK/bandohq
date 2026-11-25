@@ -131,7 +131,7 @@ def fd(shots_dir=None):
             os.makedirs(shots_dir, exist_ok=True)
             views = [('mitt-hq', 'samuel@b.se', 'hq', ''), ('avdelning-B', 'samuel@b.se', 'dept-B', ''),
                      ('overlamning', 'joseph@b.se', 'handovers', "go('handover-'+F.handovers.find(h=>/Tensta/.test(h.subject)).id)"),
-                     ('admin', 'az@b.se', 'admin', '')]
+                     ('admin', 'az@b.se', 'admin', ''), ('admin-lankar', 'az@b.se', 'admin', "aTab='people';LINKS=null;paint()")]
             for name, who, h, js in views:
                 for w, hh in (('390', '844'), ('1440', '900')):
                     q = urllib.parse.urlencode({'as': who, 'hash': h, 'js': js})

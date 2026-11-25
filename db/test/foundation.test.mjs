@@ -39,7 +39,7 @@ ok('bucketen är privat och tar inte video', await one(`select public=false and 
 ok('rollen foundation finns i bs_role', (await one(`select 'foundation'::bs_role::text r`)).r==='foundation');
 
 head('admin lägger upp avdelningarna');
-const AZ = f=>as(db,U.az,f), JO = f=>as(db,U.joseph,f), SA = f=>as(db,U.samuel,f), AM = f=>as(db,U.amir,f),
+const C2 = f=>as(db,U.az,f), AZ = f=>as(db,U.az,f), JO = f=>as(db,U.joseph,f), SA = f=>as(db,U.samuel,f), AM = f=>as(db,U.amir,f),
       AD = f=>as(db,U.adrian,f), JA = f=>as(db,U.jasmin,f), RK = f=>as(db,U.rkay,f), ADREY = f=>as(db,U.adrey,f);
 for (const [m,d,r] of [['joseph','A','chief'],['joseph','E','chief'],['samuel','B','chief'],['amir','C','chief'],['amir','G','member'],
                        ['adrian','D','chief'],['jasmin','F','chief'],['jasmin','J','chief']])
@@ -80,6 +80,39 @@ ok('fd_people: medlemmen ser Foundation-personerna utan e-post', pplS.some(p=>p.
 const pplA = await AZ(()=>rpc('fd_people',{}));
 ok('fd_people: admin ser också studions crew (för att lägga till) men inga kunder', pplA.some(p=>p.id==='adrey' && p.email) && !pplA.some(p=>p.id==='kund'));
 ok('fd_people: tomt för den utan åtkomst', (await ADREY(()=>rpc('fd_people',{}))).length===0);
+
+head('inbjudningslänk per avdelning (utan e-post)');
+const link = await AZ(()=>rpc('fd_create_link',{p_dept:'B',p_days:30,p_max:null}));
+ok('admin skapar en länk till avdelning B', /^[0-9A-F]{4}-[0-9A-F]{6}$/.test(link.token) && link.dept==='B', link);
+ok('en vanlig medlem kan inte skapa länkar', /Bara Foundation-admin/.test(await boom(()=>SA(()=>rpc('fd_create_link',{p_dept:'B',p_days:30,p_max:null})))||''));
+ok('inte heller en studio-producent', /Bara Foundation-admin/.test(await boom(()=>ADREY(()=>rpc('fd_create_link',{p_dept:'B',p_days:30,p_max:null})))||''));
+const info = await asAnon(db,()=>rpc('invite_info',{p_token:link.token}));
+ok('länken visas som en vanlig inbjudan (studions join-flöde)', !!info, info);
+U.ny1 = await user('ny1@b.se'); U.ny2 = await user('ny2@b.se');
+const r1 = await as(db,U.ny1,()=>rpc('redeem_invite',{p_token:link.token,p_name:'William Berg',p_username:'william'}));
+const r2 = await as(db,U.ny2,()=>rpc('redeem_invite',{p_token:link.token.toLowerCase(),p_name:'Sara Ek',p_username:'sara.ek'}));
+ok('två personer går med via samma länk och får rollen foundation', r1.role==='foundation' && r2.role==='foundation', [r1, r2]);
+const memB = (await q(`select member_id, role from fd_memberships where dept='B' order by member_id`)).map(r=>r.member_id+':'+r.role);
+ok('båda hamnar i avdelning B som medlemmar', memB.includes(r1.id+':member') && memB.includes(r2.id+':member') && memB.includes('samuel:chief'), memB);
+const meNy = await as(db,U.ny1,()=>rpc('fd_me',{}));
+ok('den nya personen har åtkomst till Foundation via avdelningen', meNy.member===true && meNy.admin===false && meNy.depts[0].dept==='B', meNy);
+ok('den som skapade länken får en notis', (await q(`select 1 from fd_notifications where member_id='az' and kind='member'`)).length===2);
+ok('och det loggas', (await q(`select 1 from record_history where kind='fd.membership' and op='gick med via länk'`)).length===2);
+const lst = await AZ(()=>rpc('fd_links',{}));
+ok('admin ser länken med antal som gått med', lst.length===1 && lst[0].uses===2 && lst[0].open===true, lst);
+ok('medlemmar ser inte länkarna', (await SA(()=>rpc('fd_links',{}))).length===0 && (await SA(()=>q(`select 1 from fd_invite_links`))).length===0);
+await AZ(()=>rpc('fd_close_link',{p_token:link.token}));
+U.ny3 = await user('ny3@b.se');
+ok('en stängd länk går inte att använda', /stängd/.test(await boom(()=>as(db,U.ny3,()=>rpc('redeem_invite',{p_token:link.token,p_name:'Sen Person',p_username:'sen'})))||''));
+const one1 = await AZ(()=>rpc('fd_create_link',{p_dept:'C',p_days:7,p_max:1}));
+await as(db,U.ny3,()=>rpc('redeem_invite',{p_token:one1.token,p_name:'Sen Person',p_username:'sen'}));
+U.ny4 = await user('ny4@b.se');
+ok('en engångslänk räcker till en person', /redan använd/.test(await boom(()=>as(db,U.ny4,()=>rpc('redeem_invite',{p_token:one1.token,p_name:'Fyra',p_username:'fyra'})))||''));
+const stud = await C2(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:5}));
+U.ny5 = await user('ny5@b.se');
+const r5 = await as(db,U.ny5,()=>rpc('redeem_invite',{p_token:stud,p_name:'Prod Ny',p_username:'prodny'}));
+ok('studions vanliga inbjudningar påverkas inte (ingen avdelning)', r5.role==='producer' && (await q(`select 1 from fd_memberships where member_id=$1`,[r5.id])).length===0);
+await q(`delete from fd_memberships where member_id in ($1,$2,$3)`, [r1.id, r2.id, (await one(`select id from members where username='sen'`)).id]);
 
 head('KRITERIUM 1a · B läser inte C:s uppgifter');
 const tC = await AM(()=>one(`insert into fd_tasks(dept,title,description,assignee,created_by,due) values('C','Planera workshop i beatmaking','Lokal och schema','amir','amir',current_date+3) returning id`));
@@ -260,7 +293,7 @@ ok('väntande överlämningar (ingen just nu — den skyddade räknas inte)', ov
 ok('översikten säger att skyddade rader är dolda', +ov.protected_hidden===2, ov.protected_hidden);
 ok('vanliga medlemmar når inte översikten', /Bara Foundation-admin/.test(await boom(()=>SA(()=>rpc('fd_overview',{p_days:14})))||''));
 const logKinds = (await AZ(()=>q(`select distinct split_part(kind,'.',2) k from record_history where kind like 'fd.%' order by 1`))).map(r=>r.k).join();
-ok('admin läser granskningsloggen', logKinds.split(',').sort().join()==='document,handover,membership,perm,person,task,update', logKinds);
+ok('admin läser granskningsloggen', logKinds.split(',').sort().join()==='document,handover,link,membership,perm,person,task,update', logKinds);
 ok('en medlem läser den inte', (await SA(()=>q(`select 1 from record_history where kind like 'fd.%'`))).length===0);
 ok('behörighetsändringar loggas med före och efter', (await q(`select 1 from record_history where kind='fd.perm' and rec_id='jasmin'`)).length===2);
 
