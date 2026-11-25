@@ -346,13 +346,17 @@ const ICON = {
   depts:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
   admin:'<path d="M12 3 20 6v6c0 4.6-3.4 8-8 9-4.6-1-8-4.4-8-9V6z"/><path d="m9 12 2 2 4-4"/>',
   more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  youth:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.6-.3 4.6 1.3 5 4.3"/>',
+  activities:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'
 };
 const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
 
 /* ===================== DATA ===================== */
-const F = {me:null, people:[], depts:[], updates:[], tasks:[], handovers:[], threads:[], tmembers:[], messages:[], docs:[], contacts:[], notes:[]};
+const F = {me:null, people:[], depts:[], updates:[], tasks:[], handovers:[], threads:[], tmembers:[], messages:[], docs:[], contacts:[], notes:[],
+  applicants:[], clog:[], templates:[], activities:[], groups:[], participants:[], consents:[]};
+let ROSTER = {};
 const TS = {todo:'Att göra', doing:'Pågår', waiting:'Väntar', done:'Klar'};
 const HS = {sent:'Skickad', received:'Mottagen', in_progress:'Pågår', done:'Slutförd'};
 const TSC = {todo:'', doing:'live', waiting:'warn', done:'ok'};
@@ -382,8 +386,15 @@ async function loadAll(){
     get('/fd_threads?select=*'), get('/fd_thread_members?select=*'), get('/fd_messages?select=*&order=created_at.desc&limit=600'),
     get('/fd_documents?select=*&order=created_at.desc'), get('/fd_contacts?select=*'),
     get('/fd_notifications?select=*&order=created_at.desc&limit=60')]);
+  /* fas 2: RLS lämnar tomma listor åt den som inte får se ungdomarna */
+  const [apps, clog, tpls, acts, grps, parts, cons] = await Promise.all([
+    get('/fd_applicants?select=*&order=created_at.desc'), get('/fd_contact_log?select=*&order=at.desc&limit=1000'),
+    get('/fd_templates?select=*&order=sort.asc'), get('/fd_activities?select=*&order=date.asc'), get('/fd_activity_groups?select=*&order=sort.asc'),
+    get('/fd_participants?select=*'), get('/fd_consents?select=*&order=created_at.desc')]);
   Object.assign(F, {me, people:people||[], depts:depts||[], updates:ups||[], tasks:tasks||[], handovers:hos||[], threads:threads||[],
-    tmembers:tms||[], messages:msgs||[], docs:docs||[], contacts:contacts||[], notes:notes||[]});
+    tmembers:tms||[], messages:msgs||[], docs:docs||[], contacts:contacts||[], notes:notes||[],
+    applicants:apps||[], clog:clog||[], templates:tpls||[], activities:acts||[], groups:grps||[], participants:parts||[], consents:cons||[]});
+  ROSTER = {};
 }
 async function refresh(){ await loadAll(); paint(); }
 
@@ -413,18 +424,19 @@ function buildNav(){
   $('nav').innerHTML = `<a class="brand" href="#hq">Bando <span>Foundation</span></a>`
     + MAIN.map(([k, l]) => a(k, l)).join('')
     + a('more', 'Mer', 'mob')
-    + `<div class="nsep">Arbetsytan</div>` + a('docs', 'Dokument', 'dsk') + a('depts', 'Avdelningar', 'dsk')
+    + `<div class="nsep">Arbetsytan</div>` + ((youthOk() || isAdmin()) ? a('youth', 'Ungdomar', 'dsk') : '') + a('activities', 'Aktiviteter', 'dsk')
+    + a('docs', 'Dokument', 'dsk') + a('depts', 'Avdelningar', 'dsk')
     + (isAdmin() ? a('admin', 'Admin', 'dsk') : '');
   $('nav').style.display = '';
 }
 function markNav(){
-  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs'}[route] || route;
-  const mobileMore = ['docs','depts','admin'].includes(top) && innerWidth < 1024;
+  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs', activity:'activities'}[route] || route;
+  const mobileMore = ['docs','depts','admin','youth','activities'].includes(top) && innerWidth < 1024;
   document.querySelectorAll('#nav a[data-r]').forEach(el => el.classList.toggle('on', el.dataset.r === top || (mobileMore && el.dataset.r === 'more')));
 }
 function parseHash(){
   const h = decodeURIComponent(location.hash.slice(1) || 'hq');
-  const m = h.match(/^(task|handover|thread|dept)-(.+)$/);
+  const m = h.match(/^(task|handover|thread|dept|youth|activity)-(.+)$/);
   if(m){ route = m[1]; arg = m[2]; } else { route = h.split('/')[0] || 'hq'; arg = h.split('/')[1] || ''; }
 }
 function go(h){ if(location.hash === '#' + h) { parseHash(); paint(); } else location.hash = h; }
@@ -438,7 +450,8 @@ function paint(){
   $('bell').setAttribute('aria-label', n ? nt(n, 'oläst notis', 'olästa notiser') : 'Notiser');
   markNav();
   const V = {hq:vHQ, tasks:vTasks, task:vTask, handovers:vHandovers, handover:vHandover, messages:vMessages, thread:vThread,
-             docs:vDocs, depts:vDepts, dept:vDept, admin:vAdmin, more:vMore}[route] || vHQ;
+             docs:vDocs, depts:vDepts, dept:vDept, admin:vAdmin, more:vMore,
+             youth:vYouth, activities:vActivities, activity:vActivity}[route] || vHQ;
   let html;
   try{ html = V(); }catch(e){ html = `<div class="h1">Fel</div><p class="sub">${esc(e.message)}</p>`; console.error(e); }
   $('view').innerHTML = html;
@@ -457,6 +470,8 @@ function agendaItems(){
   });
   /* att bekräfta är dagens sak, oavsett deadline */
   awaitingMe().forEach(h => { if(!h.due || h.due > end) out.push({due:'0', html:handoverRow(h)}); });
+  /* aktiviteter jag leder eller som min avdelning har */
+  F.activities.forEach(a => { if(a.status === 'planned' && a.date >= t && a.date <= end && (a.lead_id === myId() || inDept(a.dept))) out.push({due:a.date, html:activityRow(a)}); });
   return out.sort((a, b) => a.due < b.due ? -1 : 1);
 }
 function vHQ(){
@@ -1003,6 +1018,8 @@ async function saveUpdate(c){
 function vMore(){
   const row = (h, t, s) => `<a class="item" href="#${h}"><span class="grow"><b>${t}</b><em>${s}</em></span></a>`;
   return `<div class="h1">Mer</div><div class="list" style="margin-top:16px">
+    ${youthOk() || isAdmin() ? row('youth', 'Ungdomar', youthOk() ? nt(F.applicants.length, 'ansökan', 'ansökningar') + ' till Behind the Release' : 'Antal ansökningar och status') : ''}
+    ${row('activities', 'Aktiviteter', 'Workshops, grupper, närvaro och uppföljning')}
     ${row('docs', 'Dokument', nt(F.docs.length, 'dokument', 'dokument') + ' du kan se')}
     ${row('depts', 'Avdelningar', 'A till J, uppdateringar och personer')}
     ${isAdmin() ? row('admin', 'Admin', 'Översikt, personer och logg') : ''}
@@ -1145,6 +1162,361 @@ function adminLog(){
   return `<div class="card scrollx" style="margin-top:14px"><table class="tbl" id="logtbl"><thead><tr><th>När</th><th>Vad</th><th>Händelse</th><th>Vem</th></tr></thead><tbody>
     ${LOG.map(r => `<tr><td class="nums">${when(r.at)}</td><td>${LOGOP[r.kind] || r.kind}${r.kind === 'fd.perm' || r.kind === 'fd.person' ? ' · ' + esc(pname(r.rec_id)) : ''}</td><td>${esc(r.op)}<br><span class="sub">${esc(what(r))}</span></td><td>${esc(pname(r.by_id))}</td></tr>`).join('')
       || '<tr><td colspan="4" class="empty">Inget loggat än.</td></tr>'}</tbody></table></div>`;
+}
+
+/* ===================== FAS 2: UNGDOMAR OCH AKTIVITETER =====================
+   B (och den med behörighet för skyddade uppgifter) ser ungdomarna; C planerar aktiviteterna
+   och tar närvaro men ser bara namnen på sina deltagare (fd_roster); admin ser bara antal.
+   Sms går från telefonens egen app med mallen ifylld, och loggas här. */
+const youthOk = () => !!(F.me && (F.me.protected || inDept('B')));
+const YST = {new:'Ny', contacted:'Kontaktad', invited:'Inbjuden', attended:'Har deltagit', selected:'Antagen', not_selected:'Ej antagen', withdrawn:'Avböjt'};
+const YSC = {new:'live', contacted:'', invited:'warn', attended:'ok', selected:'ok', not_selected:'mute', withdrawn:'mute'};
+const INV = {invited:'Inbjuden', yes:'Kommer', no:'Kommer inte'};
+const applicant = id => F.applicants.find(a => a.id === id);
+const activity = id => F.activities.find(a => a.id === id);
+const firstName = n => String(n || '').trim().split(/\s+/)[0] || '';
+const ageOf = a => a && a.birth_year ? new Date().getFullYear() - a.birth_year : null;
+const smsHref = (phone, text) => 'sms:' + String(phone || '').replace(/[^\d+]/g, '') + '?&body=' + encodeURIComponent(text);
+function fillTpl(body, v){
+  return String(body).replace(/\[(förnamn|avsändare|ämne|datum|tid|plats|länk)\]/g, (m, k) => v[k] != null && v[k] !== '' ? v[k] : m);
+}
+const actWhen = a => dlabel(a.date) + (a.start_time ? ' ' + a.start_time + (a.end_time ? '–' + a.end_time : '') : '');
+function activityRow(a){
+  const n = F.participants.filter(p => p.activity_id === a.id), yes = n.filter(p => p.invite_status === 'yes').length;
+  return `<a class="item" href="#activity-${attr(a.id)}" data-act="${attr(a.id)}"><span class="dept sm">${esc(a.dept)}</span>
+    <span class="grow"><b>${esc(a.title)}</b><em>${esc(actWhen(a))}${a.place ? ' · ' + esc(a.place) : ''}</em>
+      <span class="meta"><span class="pill ${a.status === 'done' ? 'ok' : a.status === 'cancelled' ? 'mute' : 'live'}">${{planned:'Planerad', done:'Genomförd', cancelled:'Inställd'}[a.status]}</span>
+      ${n.length ? `<span class="pill mute">${nt(n.length, 'inbjuden', 'inbjudna')}${yes ? ' · ' + yes + ' kommer' : ''}</span>` : ''}
+      ${a.capacity ? `<span class="pill mute">${a.capacity} platser</span>` : ''}</span></span></a>`;
+}
+
+/* ---------- UNGDOMAR ---------- */
+let yFilter = 'open', ySearch = '', yTab = 'list', YS = null;
+function vYouth(){
+  if(arg) return vApplicant();
+  if(!youthOk()){
+    if(!isAdmin()) return notFound('Sidan');
+    if(!YS) rpc('fd_youth_stats').then(r => { YS = r || {}; if(route === 'youth') paint(); }).catch(e => toast(e.message));
+    const s = YS || {}, bs = s.by_status || {};
+    return `<div class="h1">Ungdomar</div>
+      <p class="sub">Ungdomarnas uppgifter ser bara B och de med behörighet för skyddade uppgifter. Här ser du antalen.</p>
+      ${YS ? `<div class="card" style="margin-top:16px" id="ystats"><div class="stat" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div><b>${+s.total || 0}</b><span>Ansökningar</span></div><div><b>${+s.new_7d || 0}</b><span>Nya 7 dagar</span></div>
+        <div><b>${+s.activities_upcoming || 0}</b><span>Kommande aktiviteter</span></div></div>
+        ${Object.keys(YST).map(k => `<div class="kv"><span>${YST[k]}</span><b class="nums">${+bs[k] || 0}</b></div>`).join('')}</div>` : '<div class="skel" style="margin-top:16px"></div>'}`;
+  }
+  const by = k => F.applicants.filter(a => a.status === k).length;
+  const chips = [['open', 'Pågående', F.applicants.filter(a => !['not_selected','withdrawn'].includes(a.status)).length], ['all', 'Alla', F.applicants.length]]
+    .concat(Object.keys(YST).map(k => [k, YST[k], by(k)]));
+  return `<div class="h1">Ungdomar</div>
+    <p class="sub">Ansökningar till Behind the Release, kontakt, inbjudningar och medgivanden.</p>
+    <div class="seg"><button class="${yTab==='list'?'on':''}" onclick="yTab='list';paint()">Ansökningar</button><button class="${yTab==='tpl'?'on':''}" onclick="yTab='tpl';paint()">Mallar</button></div>
+    ${yTab === 'tpl' ? templatesView() : `
+    <div class="chips">${chips.map(([k, l, n]) => `<button class="chip ${yFilter===k?'on':''}" onclick="yFilter='${k}';paint()">${l} <span class="n">${n}</span></button>`).join('')}</div>
+    <div class="row" style="margin-top:12px"><label class="sr" for="ySearch">Sök</label><input id="ySearch" placeholder="Sök namn, område eller roll" value="${attr(ySearch)}" oninput="ySearch=this.value;$('ylist').innerHTML=youthList()" autocomplete="off">
+      <button class="btn ghost slim" onclick="openApplicantForm()">Lägg till</button></div>
+    <div class="list grid3" style="margin-top:12px" id="ylist">${youthList()}</div>`}`;
+}
+function youthList(){
+  const q = ySearch.trim().toLowerCase();
+  const l = F.applicants.filter(a => yFilter === 'all' ? true : yFilter === 'open' ? !['not_selected','withdrawn'].includes(a.status) : a.status === yFilter)
+    .filter(a => !q || [a.name, a.area, a.role_interest].join(' ').toLowerCase().includes(q));
+  return l.map(applicantRow).join('') || '<div class="empty">Inga ansökningar här.</div>';
+}
+function applicantRow(a){
+  const age = ageOf(a), last = F.clog.find(c => c.applicant_id === a.id);
+  return `<a class="item${a.status === 'new' ? ' attn' : ''}" href="#youth-${attr(a.id)}" data-app="${attr(a.id)}"><span class="av">${esc(initials(a.name))}</span>
+    <span class="grow"><b>${esc(a.name)}</b><em>${[a.area, a.role_interest, age ? age + ' år' : ''].filter(Boolean).map(esc).join(' · ') || 'Inga fler uppgifter än'}</em>
+      <span class="meta"><span class="pill ${YSC[a.status]}">${YST[a.status]}</span>${a.origin === 'workshop' ? '<span class="pill mute">Workshopanmälan</span>' : ''}
+      ${last ? `<span class="pill mute">${esc({sms:'Sms', samtal:'Samtal', mejl:'Mejl', anteckning:'Anteckning'}[last.kind])} ${when(last.at)}</span>` : ''}</span></span>
+    <span class="side">${when(a.created_at)}</span></a>`;
+}
+function vApplicant(){
+  const a = applicant(arg); if(!a) return notFound('Ungdomen');
+  const age = ageOf(a), minor = age == null || age < 18;
+  const parts = F.participants.filter(p => p.applicant_id === a.id);
+  const cons = F.consents.filter(c => c.applicant_id === a.id), c0 = cons[0];
+  const log = F.clog.filter(c => c.applicant_id === a.id);
+  const sms = F.templates.filter(t => t.kind === 'sms' && t.id !== 'fm_consent');
+  return `<a class="back" href="#youth">‹ Ungdomar</a>
+    <div class="h1">${esc(a.name)}</div>
+    <div class="meta"><span class="pill ${YSC[a.status]}" id="yStatus">${YST[a.status]}</span>${age ? `<span class="pill mute">${age} år</span>` : '<span class="pill warn">Ålder okänd</span>'}
+      ${a.origin === 'workshop' ? '<span class="pill mute">Workshopanmälan</span>' : a.origin === 'hemsidan' ? '<span class="pill mute">Hemsidan</span>' : ''}</div>
+    <div class="grid2"><div>
+      <div class="eyebrow">Kontakta</div>
+      <div class="row" style="flex-wrap:wrap">${sms.map(t => `<button class="btn ${t.id==='fm_first' && a.status==='new' ? '' : 'ghost'} slim" onclick="openSms('${attr(a.id)}','${attr(t.id)}')">${esc(t.name)}</button>`).join('')}
+        <button class="btn ghost slim" onclick="openLog('${attr(a.id)}')">Logga samtal eller anteckning</button></div>
+      <div class="card" style="margin-top:14px">
+        <div class="kv"><span>Telefon</span><b>${a.phone ? `<a class="linkbtn" href="tel:${attr(a.phone)}">${esc(a.phone)}</a>` : '–'}</b></div>
+        <div class="kv"><span>E-post</span><b>${a.email ? `<a class="linkbtn" href="mailto:${attr(a.email)}">${esc(a.email)}</a>` : '–'}</b></div>
+        <div class="kv"><span>Område</span><b>${esc(a.area || '–')}</b></div>
+        <div class="kv"><span>Roll</span><b>${esc(a.role_interest || '–')}</b></div>
+        <div class="kv"><span>Hittade oss via</span><b>${esc(a.source || '–')}</b></div>
+        <div class="kv"><span>Födelseår</span><b>${a.birth_year || '–'}</b></div>
+        ${minor ? `<div class="kv"><span>Målsman</span><b>${a.guardian_name ? esc(a.guardian_name) + (a.guardian_phone ? ' · ' + esc(a.guardian_phone) : '') : '–'}</b></div>` : ''}
+        <div class="kv"><span>Ansvarig</span><b>${a.assigned ? esc(pname(a.assigned)) : 'Ingen än'}</b></div>
+        <div class="kv"><span>Ansökte</span><b>${when(a.created_at)}</b></div>
+      </div>
+      ${a.note ? `<div class="card prose" style="margin-top:10px">${esc(a.note)}</div>` : ''}
+      <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn ghost slim" onclick="openApplicantForm('${attr(a.id)}')">Ändra uppgifter och status</button></div>
+
+      <div class="eyebrow">Aktiviteter <span class="n">${parts.length || ''}</span></div>
+      <div class="list" id="yActs">${parts.map(p => { const x = activity(p.activity_id); return x ? `<a class="item" href="#activity-${attr(x.id)}"><span class="dept sm">${esc(x.dept)}</span>
+        <span class="grow"><b>${esc(x.title)}</b><em>${esc(actWhen(x))}</em><span class="meta"><span class="pill ${p.invite_status==='yes'?'ok':p.invite_status==='no'?'mute':'warn'}">${INV[p.invite_status]}</span>
+        ${p.attendance ? `<span class="pill ${p.attendance==='present'?'ok':'bad'}">${p.attendance==='present'?'Närvarande':'Frånvarande'}</span>` : ''}</span>
+        ${p.observation ? `<em style="margin-top:6px;color:var(--txt)">${esc(p.observation)}</em>` : ''}</span></a>` : ''; }).join('') || '<div class="empty" style="padding-top:4px">Inte inbjuden till något än.</div>'}</div>
+      <button class="btn ghost slim" style="margin-top:10px" onclick="openInvite('${attr(a.id)}')">Bjud in till en aktivitet</button>
+    </div><div>
+      <div class="eyebrow">Medgivande för foto och film</div>
+      <div class="card" id="yConsent">${c0 ? `<div class="kv"><span>Status</span><b>${{sent:'Skickat, inget svar än', approved:'Godkänt', denied:'Nekat'}[c0.status]}</b></div>
+          ${c0.status === 'approved' ? `<div class="kv"><span>Gäller</span><b>${[c0.choices.photo && 'Foto', c0.choices.film && 'Film', c0.choices.publish && 'Publicering'].filter(Boolean).join(', ')}</b></div>` : ''}
+          ${c0.answered_name ? `<div class="kv"><span>Svar av</span><b>${esc(c0.answered_name)} · ${when(c0.answered_at)}</b></div>` : ''}`
+        : `<p class="sub">Inget medgivande än. ${minor ? 'Ungdomen är under 18 (eller åldern är okänd), så målsman svarar.' : 'Ungdomen är över 18 och svarar själv.'}</p>`}
+        <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn slim" onclick="makeConsent('${attr(a.id)}','${minor ? 'guardian' : 'self'}')">${c0 ? 'Skicka en ny länk' : 'Skapa länk till ' + (minor ? 'målsman' : 'ungdomen')}</button></div></div>
+
+      <div class="eyebrow">Historik <span class="n">${log.length || ''}</span></div>
+      <div class="list" id="yLog">${log.map(c => `<div class="item"><span class="grow"><b>${esc({sms:'Sms', samtal:'Samtal', mejl:'Mejl', anteckning:'Anteckning'}[c.kind])}${c.template_id ? ' · ' + esc((F.templates.find(t => t.id === c.template_id) || {}).name || '') : ''}</b>
+        <em class="prose" style="color:var(--txt)">${esc(c.body)}</em><em>${esc(pname(c.by_id))} · ${when(c.at)}</em></span></div>`).join('') || '<div class="empty" style="padding-top:4px">Ingen kontakt loggad än.</div>'}</div>
+    </div></div>`;
+}
+function openSms(id, tid, actId){
+  const a = applicant(id), t = F.templates.find(x => x.id === tid), x = actId ? activity(actId) : null;
+  const text = fillTpl(t.body, {förnamn:firstName(a.name), avsändare:firstName(F.me.name), ämne:x ? x.title.replace(/^Workshop:\s*/i, '') : '',
+    datum:x ? dlabel(x.date) : '', tid:x ? x.start_time : '', plats:x ? x.place : ''});
+  openSheet(`<h2>${esc(t.name)}</h2><p class="sub">Till ${esc(a.name)}${a.phone ? ' · ' + esc(a.phone) : ''}. Ändra texten om du vill. Sms:et skickas från din telefon och sparas i historiken.</p>
+    <label class="lbl" for="smsT">Meddelande</label><textarea id="smsT" style="min-height:180px">${esc(text)}</textarea>
+    ${/\[[a-zåäö]+\]/i.test(text) ? '<p class="hint">Fyll i det som står inom hakparentes innan du skickar.</p>' : ''}
+    <div class="err" id="smsErr"></div>
+    ${a.phone ? `<a class="btn" id="smsGo" href="#" onclick="return sendSms(event,'${attr(id)}','${attr(tid)}')">Öppna sms-appen</a>` : '<div class="warnbox">Det finns inget telefonnummer. Lägg till det under Ändra uppgifter.</div>'}
+    <button class="btn ghost" style="margin-top:10px" onclick="logContact('${attr(id)}','sms','${attr(tid)}',$('smsT').value,true)">Jag har redan skickat det, spara bara</button>`);
+}
+function sendSms(ev, id, tid){
+  const a = applicant(id), text = $('smsT').value.trim();
+  if(!text){ $('smsErr').textContent = 'Skriv ett meddelande.'; ev.preventDefault(); return false; }
+  logContact(id, 'sms', tid, text, false);
+  ev.currentTarget.href = smsHref(a.phone, text);       /* följer länken: telefonens sms-app öppnas */
+  return true;
+}
+async function logContact(id, kind, tid, body, close){
+  try{
+    await insert('fd_contact_log', {applicant_id:id, kind, template_id:tid || null, body:String(body || '').trim().slice(0, 2000), by_id:myId()});
+    if(close) closeSheet();
+    await loadAll(); paint(); toast('Sparat i historiken');
+  }catch(e){ toast(e.message); }
+}
+function openLog(id){
+  openSheet(`<h2>Logga</h2><div class="seg" id="lgK"><button class="on" data-k="samtal" onclick="segPick(this)">Samtal</button><button data-k="anteckning" onclick="segPick(this)">Anteckning</button><button data-k="mejl" onclick="segPick(this)">Mejl</button></div>
+    <label class="lbl" for="lgB">Vad hände?</label><textarea id="lgB" placeholder="Till exempel: pratade 10 min, vill testa film, kan helger"></textarea>
+    <button class="btn" onclick="logContact('${attr(id)}',document.querySelector('#lgK .on').dataset.k,null,$('lgB').value,true)">Spara</button>`);
+}
+function segPick(b){ b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }
+function openApplicantForm(id){
+  const a = id ? applicant(id) : {status:'new'};
+  const f = (k, l, type) => `<label class="lbl" for="ap_${k}">${l}</label><input id="ap_${k}" ${type ? `type="${type}" inputmode="numeric"` : ''} value="${attr(a[k] == null ? '' : a[k])}" autocomplete="off">`;
+  openSheet(`<h2>${id ? 'Ändra' : 'Lägg till'}</h2>
+    ${id ? `<label class="lbl" for="ap_status">Status</label><select id="ap_status">${Object.keys(YST).map(k => `<option value="${k}" ${a.status===k?'selected':''}>${YST[k]}</option>`).join('')}</select>` : ''}
+    ${f('name', 'Namn')}${f('phone', 'Telefon')}${f('email', 'E-post')}${f('area', 'Område')}${f('role_interest', 'Roll')}${f('birth_year', 'Födelseår', 'number')}
+    <details class="more" ${a.guardian_name ? 'open' : ''}><summary>Målsman (under 18)</summary>${f('guardian_name', 'Namn')}${f('guardian_phone', 'Telefon')}${f('guardian_email', 'E-post')}</details>
+    <label class="lbl" for="ap_assigned">Ansvarig i B</label><select id="ap_assigned"><option value="">Ingen än</option>${deptPeople('B').map(p => `<option value="${attr(p.id)}" ${a.assigned===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    <label class="lbl" for="ap_note">Anteckning</label><textarea id="ap_note">${esc(a.note || '')}</textarea>
+    <div class="err" id="apErr"></div><button class="btn" id="apSave" onclick="saveApplicant(${id ? `'${attr(id)}'` : 'null'})">Spara</button>`);
+}
+async function saveApplicant(id){
+  const v = k => ($('ap_' + k) || {value:''}).value.trim();
+  const row = {name:v('name'), phone:v('phone'), email:v('email').toLowerCase(), area:v('area'), role_interest:v('role_interest'),
+    birth_year:v('birth_year') ? +v('birth_year') : null, guardian_name:v('guardian_name'), guardian_phone:v('guardian_phone'),
+    guardian_email:v('guardian_email').toLowerCase(), assigned:v('assigned') || null, note:v('note')};
+  if(row.name.length < 2){ $('apErr').textContent = 'Fyll i namn.'; return; }
+  if(row.birth_year && (row.birth_year < 1990 || row.birth_year > 2030)){ $('apErr').textContent = 'Födelseåret ser fel ut.'; return; }
+  if(id) row.status = v('status');
+  $('apSave').disabled = true;
+  try{
+    const r = id ? await patch('fd_applicants', id, row) : await insert('fd_applicants', Object.assign(row, {origin:'manuell'}));
+    closeSheet(); await loadAll(); id ? paint() : go('youth-' + r.id); toast('Sparat');
+  }catch(e){ $('apErr').textContent = e.message; $('apSave').disabled = false; }
+}
+function openInvite(id){
+  const done = F.participants.filter(p => p.applicant_id === id).map(p => p.activity_id);
+  const acts = F.activities.filter(a => a.status === 'planned' && a.date >= TODAY() && !done.includes(a.id));
+  if(!acts.length) return toast('Det finns ingen kommande aktivitet att bjuda in till. C lägger upp dem under Aktiviteter.');
+  openSheet(`<h2>Bjud in</h2><p class="sub">${esc(applicant(id).name)}</p>
+    <label class="lbl" for="ivA">Aktivitet</label><select id="ivA" onchange="ivGroups()">${acts.map(a => `<option value="${attr(a.id)}">${esc(a.title)} · ${esc(actWhen(a))}</option>`).join('')}</select>
+    <label class="lbl" for="ivG">Grupp</label><select id="ivG"></select>
+    <div class="err" id="ivErr"></div><button class="btn" onclick="invite(['${attr(id)}'],$('ivA').value,$('ivG').value,true)">Bjud in och skriv sms</button>`);
+  ivGroups();
+}
+function ivGroups(){ const g = F.groups.filter(x => x.activity_id === $('ivA').value);
+  $('ivG').innerHTML = `<option value="">Ingen grupp än</option>` + g.map(x => `<option value="${attr(x.id)}">${esc(x.name)}</option>`).join(''); }
+async function invite(ids, actId, groupId, thenSms){
+  try{
+    for(const id of ids) await insert('fd_participants', {activity_id:actId, applicant_id:id, group_id:groupId || null, invited_by:myId()});
+    closeSheet(); await loadAll(); paint(); toast(nt(ids.length, 'inbjuden', 'inbjudna'));
+    if(thenSms && ids.length === 1) openSms(ids[0], 'fm_invite', actId);
+  }catch(e){ toast(e.message); }
+}
+async function makeConsent(id, signer){
+  try{
+    const c = await rpc('fd_consent_create', {p_applicant:id, p_signer:signer});
+    await loadAll(); paint();
+    const a = applicant(id), url = location.origin + '/samtycke.html?t=' + c.token;
+    const phone = signer === 'guardian' ? a.guardian_phone : a.phone;
+    const t = F.templates.find(x => x.id === 'fm_consent');
+    const text = fillTpl(t ? t.body : '[länk]', {förnamn:firstName(a.name), avsändare:firstName(F.me.name), länk:url});
+    openSheet(`<h2>Medgivande</h2><p class="sub">Länken gäller i 60 dagar. ${signer === 'guardian' ? 'Skicka den till målsman.' : 'Skicka den till ungdomen.'} Svaret syns här och du får en notis.</p>
+      <label class="lbl" for="csT">Meddelande</label><textarea id="csT" style="min-height:140px">${esc(text)}</textarea>
+      <p class="hint" style="user-select:all;overflow-wrap:anywhere">${esc(url)}</p>
+      ${phone ? `<a class="btn" href="${attr(smsHref(phone, text))}" onclick="this.href=smsHref('${attr(phone)}',$('csT').value)">Skicka som sms till ${esc(phone)}</a>`
+              : `<div class="warnbox">${signer === 'guardian' ? 'Målsmans telefonnummer saknas. Lägg till det under Ändra uppgifter, eller kopiera länken.' : 'Telefonnummer saknas.'}</div>`}
+      <button class="btn ghost" style="margin-top:10px" onclick="copyText($('csT').value).then(()=>toast('Kopierat'),()=>toast('Markera texten och kopiera'))">Kopiera meddelandet</button>`);
+  }catch(e){ toast(e.message); }
+}
+function templatesView(){
+  const can = canDept('B');
+  return `<div class="list" style="margin-top:14px" id="tpls">${F.templates.map(t => `<div class="item"><span class="grow"><b>${esc(t.name)}</b>
+    <em class="prose" style="color:var(--txt)">${esc(t.body)}</em>
+    ${can ? `<span class="row" style="margin-top:10px"><button class="btn ghost slim" onclick="openTpl('${attr(t.id)}')">Ändra</button></span>` : ''}</span></div>`).join('')}</div>
+    ${can ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openTpl(null)">Ny mall</button>` : ''}
+    <p class="hint" style="margin-top:12px">[förnamn], [avsändare], [ämne], [datum], [tid], [plats] och [länk] fylls i automatiskt.</p>`;
+}
+function openTpl(id){
+  const t = id ? F.templates.find(x => x.id === id) : {name:'', body:''};
+  openSheet(`<h2>${id ? 'Ändra mall' : 'Ny mall'}</h2><label class="lbl" for="tpN">Namn</label><input id="tpN" value="${attr(t.name)}">
+    <label class="lbl" for="tpB">Text</label><textarea id="tpB" style="min-height:200px">${esc(t.body)}</textarea>
+    <div class="err" id="tpErr"></div><button class="btn" onclick="saveTpl(${id ? `'${attr(id)}'` : 'null'})">Spara mallen</button>`);
+}
+async function saveTpl(id){
+  const row = {name:$('tpN').value.trim(), body:$('tpB').value.trim(), updated_by:myId()};
+  try{ id ? await patch('fd_templates', id, row) : await insert('fd_templates', Object.assign(row, {dept:'B', kind:'sms'}));
+       closeSheet(); await loadAll(); paint(); toast('Mallen är sparad'); }
+  catch(e){ $('tpErr').textContent = e.message; }
+}
+
+/* ---------- AKTIVITETER ---------- */
+let aShow = 'upcoming';
+function vActivities(){
+  const t = TODAY();
+  const up = F.activities.filter(a => a.date >= t && a.status !== 'cancelled'), past = F.activities.filter(a => a.date < t || a.status === 'cancelled').reverse();
+  const canNew = isAdmin() || myDepts().length > 0;
+  return `<div class="h1">Aktiviteter</div>
+    <p class="sub">Workshops och träffar inför urvalet. C planerar och tar närvaro, B bjuder in.</p>
+    <div class="seg"><button class="${aShow==='upcoming'?'on':''}" onclick="aShow='upcoming';paint()">Kommande · ${up.length}</button><button class="${aShow==='past'?'on':''}" onclick="aShow='past';paint()">Tidigare · ${past.length}</button></div>
+    ${canNew ? `<div style="margin:14px 0"><button class="btn" id="newAct" onclick="openActivityForm()">Ny aktivitet</button></div>` : ''}
+    <div class="list grid3" id="actlist">${(aShow === 'upcoming' ? up : past).map(activityRow).join('') || '<div class="empty">Inga aktiviteter här.</div>'}</div>`;
+}
+function openActivityForm(id){
+  const a = id ? activity(id) : {dept:inDept('C') || isAdmin() ? 'C' : myDepts()[0], kind:'workshop', date:addDays(TODAY(), 7), start_time:'14:00', end_time:'17:00', title:'', place:'', description:'', capacity:''};
+  const opts = (isAdmin() ? F.depts : F.depts.filter(d => inDept(d.code))).map(d => `<option value="${d.code}" ${a.dept===d.code?'selected':''}>${d.code} · ${esc(d.name)}</option>`).join('');
+  openSheet(`<h2>${id ? 'Ändra aktivitet' : 'Ny aktivitet'}</h2>
+    <label class="lbl" for="acT">Namn</label><input id="acT" value="${attr(a.title)}" placeholder="Till exempel Workshop: beatmaking" autocomplete="off">
+    <label class="lbl" for="acK">Typ</label><select id="acK">${['workshop','aktivitet','träff'].map(k => `<option ${a.kind===k?'selected':''}>${k}</option>`).join('')}</select>
+    <label class="lbl" for="acD">Avdelning</label><select id="acD">${opts}</select>
+    <label class="lbl" for="acDate">Datum</label><input id="acDate" type="date" value="${attr(a.date)}">
+    <div class="row"><div style="flex:1"><label class="lbl" for="acS">Start</label><input id="acS" type="time" value="${attr(a.start_time)}"></div>
+      <div style="flex:1"><label class="lbl" for="acE">Slut</label><input id="acE" type="time" value="${attr(a.end_time)}"></div></div>
+    <label class="lbl" for="acP">Plats</label><input id="acP" value="${attr(a.place)}" autocomplete="off">
+    <label class="lbl" for="acC">Antal platser</label><input id="acC" type="number" inputmode="numeric" min="1" value="${attr(a.capacity || '')}">
+    <label class="lbl" for="acL">Ansvarig</label><select id="acL"><option value="">Ingen än</option>${F.people.filter(p => (p.depts||[]).length).map(p => `<option value="${attr(p.id)}" ${(a.lead_id || (!id && myId()))===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    <label class="lbl" for="acI">Innehåll</label><textarea id="acI">${esc(a.description)}</textarea>
+    <div class="err" id="acErr"></div><button class="btn" id="acSave" onclick="saveActivity(${id ? `'${attr(id)}'` : 'null'})">Spara</button>`);
+}
+async function saveActivity(id){
+  const row = {title:$('acT').value.trim(), kind:$('acK').value, dept:$('acD').value, date:$('acDate').value, start_time:$('acS').value, end_time:$('acE').value,
+    place:$('acP').value.trim(), capacity:$('acC').value ? +$('acC').value : null, lead_id:$('acL').value || null, description:$('acI').value.trim()};
+  if(row.title.length < 2 || !row.date){ $('acErr').textContent = 'Fyll i namn och datum.'; return; }
+  $('acSave').disabled = true;
+  try{
+    const r = id ? await patch('fd_activities', id, row) : await insert('fd_activities', Object.assign(row, {created_by:myId()}));
+    closeSheet(); await loadAll(); id ? paint() : go('activity-' + r.id); toast('Sparat');
+  }catch(e){ $('acErr').textContent = e.message; $('acSave').disabled = false; }
+}
+function vActivity(){
+  const a = activity(arg); if(!a) return notFound('Aktiviteten');
+  const staff = youthOk() || isAdmin() || inDept(a.dept), own = isAdmin() || inDept(a.dept);
+  if(staff && !ROSTER[a.id]){ ROSTER[a.id] = 'loading'; rpc('fd_roster', {p_activity:a.id}).then(r => { ROSTER[a.id] = r || []; if(route === 'activity' && arg === a.id) paint(); })
+    .catch(() => { ROSTER[a.id] = []; }); }
+  const ro = Array.isArray(ROSTER[a.id]) ? ROSTER[a.id] : null, groups = F.groups.filter(g => g.activity_id === a.id);
+  const past = a.date <= TODAY();
+  const yes = ro ? ro.filter(r => r.invite_status === 'yes').length : 0, here = ro ? ro.filter(r => r.attendance === 'present').length : 0;
+  return `<a class="back" href="#activities">‹ Aktiviteter</a>
+    <div class="h1">${esc(a.title)}</div>
+    <div class="meta"><span class="pill live">${esc(actWhen(a))}</span><span class="pill mute">Avdelning ${esc(a.dept)}</span>${a.capacity ? `<span class="pill mute">${a.capacity} platser</span>` : ''}</div>
+    <div class="grid2"><div>
+      <div class="card" style="margin-top:14px">
+        <div class="kv"><span>Plats</span><b>${esc(a.place || '–')}</b></div>
+        <div class="kv"><span>Ansvarig</span><b>${a.lead_id ? esc(pname(a.lead_id)) : 'Ingen än'}</b></div>
+        <div class="kv"><span>Status</span><b>${{planned:'Planerad', done:'Genomförd', cancelled:'Inställd'}[a.status]}</b></div>
+      </div>
+      ${a.description ? `<div class="card prose" style="margin-top:10px">${esc(a.description)}</div>` : ''}
+      ${own ? `<div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn ghost slim" onclick="openActivityForm('${attr(a.id)}')">Ändra</button>
+        ${a.status === 'planned' ? `<button class="btn ghost slim" onclick="setActStatus('${attr(a.id)}','cancelled')">Ställ in</button>` : ''}</div>` : ''}
+      ${staff ? `<div class="eyebrow">Deltagare <span class="n">${ro ? ro.length + (yes ? ' · ' + yes + ' kommer' : '') + (here ? ' · ' + here + ' var där' : '') : ''}</span></div>
+      <div class="chips" id="groups" style="margin-top:0">${groups.map(g => `<span class="chip">${esc(g.name)} <span class="n">${ro ? ro.filter(r => r.group_id === g.id).length : ''}</span></span>`).join('')}
+        <button class="chip" onclick="addGroup('${attr(a.id)}')">+ Grupp</button></div>
+      <div class="list" style="margin-top:12px" id="roster">${ro === null ? '<div class="skel"></div>' : ro.map(r => rosterRow(a, r, groups, past)).join('') || '<div class="empty">Ingen inbjuden än.</div>'}</div>
+      ${youthOk() && a.status === 'planned' ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openBulkInvite('${attr(a.id)}')">Bjud in ungdomar</button>` : ''}`
+      : '<p class="sub" style="margin-top:14px">Deltagarlistan ser B och den avdelning som har aktiviteten.</p>'}
+    </div><div>
+      ${staff ? `<div class="eyebrow">Uppföljning</div>
+      <div class="card" id="follow">${own ? `<label class="lbl" for="fuS" style="margin-top:0">Hur gick det?</label><textarea id="fuS">${esc(a.follow_summary)}</textarea>
+        <label class="lbl" for="fuG">Det som fungerade</label><textarea id="fuG">${esc(a.follow_good)}</textarea>
+        <label class="lbl" for="fuI">Det vi gör bättre nästa gång</label><textarea id="fuI">${esc(a.follow_improve)}</textarea>
+        <button class="btn slim" style="margin-top:12px" onclick="saveFollow('${attr(a.id)}')">${a.status === 'done' ? 'Spara' : 'Spara och markera som genomförd'}</button>`
+        : `<div class="upd"><div><span>Hur gick det?</span><p class="${a.follow_summary?'':'none'}">${esc(a.follow_summary || 'Inget skrivet än.')}</p></div>
+           <div><span>Det som fungerade</span><p class="${a.follow_good?'':'none'}">${esc(a.follow_good || '–')}</p></div>
+           <div><span>Gör bättre</span><p class="${a.follow_improve?'':'none'}">${esc(a.follow_improve || '–')}</p></div></div>`}</div>` : ''}
+    </div></div>`;
+}
+function rosterRow(a, r, groups, past){
+  const nm = youthOk() ? `<a class="linkbtn" style="color:var(--txt);font-weight:600" href="#youth-${attr(r.applicant_id)}">${esc(r.name)}</a>` : `<b>${esc(r.name)}</b>`;
+  const id = attr(r.applicant_id), aid = attr(a.id);
+  return `<div class="item" data-p="${id}"><span class="av">${esc(initials(r.name))}</span><span class="grow">${nm}
+    <span class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+      <select aria-label="Grupp" style="width:auto;padding:6px 32px 6px 10px;font-size:14px" onchange="setPart('${aid}','${id}',{group_id:this.value||null})"><option value="">Ingen grupp</option>${groups.map(g => `<option value="${attr(g.id)}" ${r.group_id===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}</select>
+      <select aria-label="Svar" style="width:auto;padding:6px 32px 6px 10px;font-size:14px" onchange="setPart('${aid}','${id}',{invite_status:this.value})">${Object.keys(INV).map(k => `<option value="${k}" ${r.invite_status===k?'selected':''}>${INV[k]}</option>`).join('')}</select>
+      ${youthOk() && a.status === 'planned' ? `<button class="btn ghost slim" onclick="openSms('${id}','fm_invite','${aid}')">Sms</button>` : ''}
+    </span>
+    ${past || a.status === 'done' ? `<span class="row" style="margin-top:8px;gap:6px"><button class="chip ${r.attendance==='present'?'on':''}" onclick="setPart('${aid}','${id}',{attendance:${r.attendance==='present'?'null':"'present'"}})">Närvarande</button>
+      <button class="chip ${r.attendance==='absent'?'on':''}" onclick="setPart('${aid}','${id}',{attendance:${r.attendance==='absent'?'null':"'absent'"}})">Frånvarande</button>
+      <button class="chip" onclick="openObs('${aid}','${id}')">${r.observation ? 'Ändra observation' : 'Observation'}</button></span>` : ''}
+    ${r.observation ? `<em style="margin-top:6px;color:var(--txt)">${esc(r.observation)}</em>` : ''}</span></div>`;
+}
+async function setPart(aid, pid, row){
+  try{
+    const r = await sb('/fd_participants?activity_id=eq.' + encodeURIComponent(aid) + '&applicant_id=eq.' + encodeURIComponent(pid),
+      {method:'PATCH', headers:{Prefer:'return=representation'}, body:JSON.stringify(row)});
+    if(!r || !r.length) throw new Error('Du har inte behörighet till det här');
+    await loadAll(); paint();
+  }catch(e){ toast(e.message); }
+}
+function openObs(aid, pid){
+  const r = (ROSTER[aid] || []).find(x => x.applicant_id === pid) || {};
+  openSheet(`<h2>Observation</h2><p class="sub">${esc(r.name || '')}. Sakligt och kort, det här delas mellan B och C inför urvalet.</p>
+    <label class="lbl" for="obT">Observation</label><textarea id="obT" maxlength="2000">${esc(r.observation || '')}</textarea>
+    <button class="btn" onclick="setPart('${attr(aid)}','${attr(pid)}',{observation:$('obT').value.trim()}).then(()=>closeSheet())">Spara</button>`);
+}
+async function addGroup(aid){
+  const n = prompt('Gruppens namn', 'Grupp ' + (F.groups.filter(g => g.activity_id === aid).length + 1)); if(!n || !n.trim()) return;
+  try{ await insert('fd_activity_groups', {activity_id:aid, name:n.trim().slice(0, 40), sort:F.groups.filter(g => g.activity_id === aid).length}); await loadAll(); paint(); }
+  catch(e){ toast(e.message); }
+}
+function openBulkInvite(aid){
+  const done = F.participants.filter(p => p.activity_id === aid).map(p => p.applicant_id);
+  const list = F.applicants.filter(a => !done.includes(a.id) && !['not_selected','withdrawn'].includes(a.status));
+  const groups = F.groups.filter(g => g.activity_id === aid);
+  openSheet(`<h2>Bjud in</h2><p class="sub">${esc(activity(aid).title)} · ${esc(actWhen(activity(aid)))}</p>
+    ${groups.length ? `<label class="lbl" for="biG">Grupp</label><select id="biG"><option value="">Ingen grupp än</option>${groups.map(g => `<option value="${attr(g.id)}">${esc(g.name)}</option>`).join('')}</select>` : ''}
+    <div class="lbl">Ungdomar</div><div id="biL">${list.map(a => `<label class="check"><input type="checkbox" name="biA" value="${attr(a.id)}"><span>${esc(a.name)} <span class="sub">${esc(YST[a.status])}${a.area ? ' · ' + esc(a.area) : ''}</span></span></label>`).join('') || '<div class="empty">Alla är redan inbjudna.</div>'}</div>
+    <button class="btn" onclick="invite([...document.querySelectorAll('input[name=biA]:checked')].map(x=>x.value),'${attr(aid)}',($('biG')||{}).value,false)">Bjud in de valda</button>
+    <p class="hint">Sedan skickar du sms till var och en från deltagarlistan.</p>`);
+}
+async function saveFollow(id){
+  try{ await patch('fd_activities', id, {follow_summary:$('fuS').value.trim(), follow_good:$('fuG').value.trim(), follow_improve:$('fuI').value.trim(), status:'done'});
+       await loadAll(); paint(); toast('Uppföljningen är sparad'); }
+  catch(e){ toast(e.message); }
+}
+async function setActStatus(id, s){
+  if(s === 'cancelled' && !confirm('Ställa in aktiviteten?')) return;
+  try{ await patch('fd_activities', id, {status:s}); await loadAll(); paint(); }catch(e){ toast(e.message); }
 }
 
 /* ===================== NOTISER, PROFIL, ARK ===================== */

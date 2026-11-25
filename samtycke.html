@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Medgivande · Bando Foundation</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b090e">
+<meta name="color-scheme" content="dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="icon-512.png">
+<style>
+/* Medgivande för foto och film (Bando Foundation, fas 2). Sidan bakom länken som målsman (eller
+   ungdomen själv, 18+) får. Visar bara förnamnet; svaret kan ändras med samma länk. */
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+:root{ --bg:#0b090e; --surface:#141119; --line:rgba(255,255,255,.075); --txt:#f3eff7; --mut:#a39bae; --tube:#ff6ad8; --btn:#d01b8c;
+  --ok:#34d399; --bad:#fb7185; --sans:"Barlow","Helvetica Neue",system-ui,sans-serif; --disp:"Barlow Condensed","Arial Narrow",sans-serif; color-scheme:dark; }
+*{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:17px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:560px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top,0px)) 20px 48px}
+.brand{font:800 18px/1 var(--disp);letter-spacing:.05em;text-transform:uppercase}.brand span{color:var(--tube)}
+h1{font:800 clamp(34px,10vw,44px)/1.02 var(--disp);text-transform:uppercase;letter-spacing:.02em;margin:26px 0 10px}
+p{margin:0 0 12px} .mut{color:var(--mut)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:18px}
+.check{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)} .check:first-child{border-top:0}
+.check input{width:22px;height:22px;flex:none;accent-color:var(--tube);margin-top:2px}
+label.lbl{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:20px 2px 8px}
+input[type=text]{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:13px 14px;font:16px var(--sans);color:var(--txt);outline:none}
+input[type=text]:focus{border-color:rgba(255,106,216,.65);box-shadow:0 0 0 3px rgba(255,62,191,.15)}
+.btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:14px;border:0;border-radius:999px;background:var(--btn);color:#fff;font:600 16px var(--sans);cursor:pointer}
+.btn.ghost{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.18);color:var(--txt)}
+.btn:disabled{opacity:.5}
+.box{border-radius:12px;padding:12px 14px;margin-top:16px}
+.box.ok{border:1px solid rgba(52,211,153,.3);background:rgba(52,211,153,.08)} .box.err{border:1px solid rgba(251,113,133,.3);background:rgba(251,113,133,.08)}
+a{color:var(--tube)}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Bando <span>Foundation</span></div>
+  <h1>Foto och film</h1>
+  <div id="app"><p class="mut">Hämtar …</p></div>
+</main>
+<script>
+'use strict';
+const CLOUD_CONFIG = { url: 'https://gwvtqrbrkkfgyesamcfy.supabase.co', key: 'sb_publishable_jdhJX4ns98mvM2qSuUFCQg_rRUvmxpf' };
+const CLOUD = Object.assign({}, CLOUD_CONFIG, (() => { try{ return JSON.parse(localStorage.getItem('bandosesh_cloud') || '{}'); }catch(e){ return {}; } })());
+CLOUD.url = String(CLOUD.url || '').replace(/\/$/, '');
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function rpc(fn, args){
+  const r = await fetch(CLOUD.url + '/rest/v1/rpc/' + fn, {method:'POST', headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:JSON.stringify(args)});
+  const t = await r.text(); let j = null; try{ j = t ? JSON.parse(t) : null; }catch(e){}
+  if(!r.ok) throw new Error((j && (j.message || j.msg)) || 'Något gick fel, försök igen');
+  return j;
+}
+let info = null;
+function render(saved){
+  if(!info.ok){ $('app').innerHTML = `<div class="box err">${esc(info.why || 'Länken fungerar inte')}</div>`; return; }
+  const who = esc(info.first_name || 'ungdomen'), guardian = info.signer === 'guardian', c = info.choices || {};
+  const answered = info.status !== 'sent';
+  $('app').innerHTML = `
+    <p>${guardian ? `Du får den här länken som målsman till <b>${who}</b>, som är med i Behind the Release.` : `Hej ${who}! Du är med i Behind the Release.`}</p>
+    <p>Under workshops och aktiviteter fotograferar och filmar vi ibland för att dokumentera programmet och berätta om det.
+       Här väljer ${guardian ? 'du' : 'du själv'} vad som är okej. Att säga nej påverkar inte ${guardian ? who + 's' : 'dina'} möjligheter att vara med.</p>
+    ${answered ? `<div class="box ${info.status === 'approved' ? 'ok' : 'err'}" id="state">${info.status === 'approved'
+        ? 'Ditt svar: godkänt för ' + [c.photo && 'foto', c.film && 'film', c.publish && 'publicering'].filter(Boolean).join(', ') + '.'
+        : 'Ditt svar: nej tack.'} Du kan ändra det nedan.</div>` : ''}
+    ${saved ? '<div class="box ok" id="saved">Tack, svaret är sparat.</div>' : ''}
+    <div class="card">
+      <label class="check"><input type="checkbox" id="cPhoto" ${c.photo ? 'checked' : ''}><span>Foto får tas där ${guardian ? who : 'jag'} är med</span></label>
+      <label class="check"><input type="checkbox" id="cFilm" ${c.film ? 'checked' : ''}><span>Film får spelas in där ${guardian ? who : 'jag'} är med</span></label>
+      <label class="check"><input type="checkbox" id="cPub" ${c.publish ? 'checked' : ''}><span>Bilder och film får publiceras i Bando Foundations kanaler (hemsida och sociala medier)</span></label>
+    </div>
+    <label class="lbl" for="nm">${guardian ? 'Ditt namn (målsman)' : 'Ditt namn'}</label><input type="text" id="nm" autocomplete="name">
+    <div id="err"></div>
+    <button class="btn" id="yes">Jag godkänner det jag kryssat i</button>
+    <button class="btn ghost" id="no">Nej tack</button>
+    <p class="mut" style="margin-top:20px;font-size:15px">Du kan ändra ditt svar när som helst med samma länk, så länge den gäller. Läs mer i
+      <a href="https://bandofoundation.com/integritetspolicy.html">Bando Foundations integritetspolicy</a>.</p>`;
+  $('yes').onclick = () => answer(true); $('no').onclick = () => answer(false);
+}
+async function answer(ok){
+  const name = $('nm').value.trim();
+  if(name.length < 2){ $('err').innerHTML = '<div class="box err">Skriv ditt namn.</div>'; return; }
+  const choices = {photo:$('cPhoto').checked, film:$('cFilm').checked, publish:$('cPub').checked};
+  if(ok && !choices.photo && !choices.film){ $('err').innerHTML = '<div class="box err">Kryssa i vad du godkänner, eller tryck Nej tack.</div>'; return; }
+  $('yes').disabled = $('no').disabled = true;
+  try{
+    await rpc('fd_consent_answer', {p_token:token, p_name:name, p_approve:ok, p_choices:choices});
+    info = await rpc('fd_consent_info', {p_token:token}); render(true); window.SAVED = true;
+  }catch(e){ $('err').innerHTML = `<div class="box err">${esc(e.message)}</div>`; $('yes').disabled = $('no').disabled = false; }
+}
+(async () => {
+  try{ info = token.length >= 20 ? await rpc('fd_consent_info', {p_token:token}) : {ok:false, why:'Länken är ofullständig. Öppna den igen från meddelandet.'}; }
+  catch(e){ info = {ok:false, why:e.message}; }
+  render(false); window.READY = true;
+})();
+</script>
+</body>
+</html>

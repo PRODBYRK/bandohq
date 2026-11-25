@@ -63,7 +63,8 @@ const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ARRAYS = new Set(['interests', 'perms', 'producers']);
 const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership',
   'access_requests', 'fd_departments', 'fd_memberships', 'fd_contacts', 'fd_tasks', 'fd_handovers', 'fd_threads',
-  'fd_thread_members', 'fd_messages', 'fd_mentions', 'fd_notifications', 'fd_documents', 'fd_dept_updates']);
+  'fd_thread_members', 'fd_messages', 'fd_mentions', 'fd_notifications', 'fd_documents', 'fd_dept_updates',
+  'fd_applicants', 'fd_contact_log', 'fd_templates', 'fd_activities', 'fd_activity_groups', 'fd_participants', 'fd_consents']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){

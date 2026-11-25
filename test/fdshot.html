@@ -23,6 +23,12 @@ fr.style.width = (P.get('w') || 390) + 'px'; fr.style.height = (P.get('h') || 84
     };
     tick();
   };
+  /* consent=1: sidan bakom medgivandelänken (första länken i emulatorn) */
+  if(P.get('consent')){
+    const t = await (await fetch(EMU + '/__sql', {method:'POST', body:JSON.stringify({sql:'select token from fd_consents order by created_at limit 1'})})).json();
+    fr.onload = () => setTimeout(() => { document.title = 'READY'; }, 800);
+    fr.src = '../samtycke.html?t=' + t[0].token; return;
+  }
   fr.src = '../foundation.html?cb=' + Math.random() + '#' + (P.get('hash') || 'hq');
 })();
 </script>

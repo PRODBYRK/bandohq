@@ -34,7 +34,7 @@ async function open(email, hash, page){
   localStorage.clear();
   localStorage.setItem('bandosesh_cloud', JSON.stringify({url:EMU, key:KEY}));
   if(email) localStorage.setItem('bandosesh_auth', JSON.stringify(await session(email)));
-  await new Promise(res => { fr.onload = res; fr.src = '../' + (page || 'foundation.html') + '?cb=' + Math.random() + (hash ? '#' + hash : ''); });
+  await new Promise(res => { fr.onload = res; fr.src = '../' + (page || 'foundation.html') + ((page || '').includes('?') ? '&' : '?') + 'cb=' + Math.random() + (hash ? '#' + hash : ''); });
   const w = fr.contentWindow;
   if(!page) await until(() => w.FD_READY, 8000);
   return w;
@@ -219,6 +219,85 @@ const nav = async (w, h) => { w.location.hash = h; await sleep(150); };
   ok('men inte den skyddade uppgiften', !w.eval('F').tasks.some(t => t.protected));
   w = await open('az@b.se', 'hq');
   ok('AZ får en notis om att William gick med', w.eval('F').notes.some(n => /Ny i avdelning B: William Berg/.test(n.title)));
+
+  log('\n── FAS 2 · ansökan från hemsidan → Samuel → workshop → närvaro → medgivande ──');
+  const secret = (await sql(`select value from bs_secrets where name='fd_intake'`))[0].value;
+  const apply = d => fetch(EMU + '/rest/v1/rpc/fd_apply', {method:'POST', headers:{apikey:KEY, 'Content-Type':'application/json'},
+    body:JSON.stringify({p_secret:secret, p_data:d})}).then(r => r.json());
+  const ap1 = await apply({name:'Lisa Ung', email:'lisa@x.se', phone:'070-111 22 33', area:'Tensta', role:'Artist', source:'Instagram', member:true, external_id:'web-1'});
+  const ap2 = await apply({name:'Omar Ny', phone:'0702223344', origin:'workshop', external_id:'ws-1'});
+  ok('två ansökningar kommer in från hemsidan och workshopanmälan', ap1.ok && ap2.ok, [ap1, ap2]);
+  const bad = await fetch(EMU + '/rest/v1/rpc/fd_apply', {method:'POST', headers:{apikey:KEY, 'Content-Type':'application/json'}, body:JSON.stringify({p_secret:'fel', p_data:{name:'X Y', email:'x@y.se'}})});
+  ok('utan hemsidans nyckel: nekas', bad.status === 400);
+  w = await open('samuel@b.se', 'youth');
+  ok('Samuel ser båda under Ungdomar', /Lisa Ung/.test(txt(w, '#ylist')) && /Omar Ny/.test(txt(w, '#ylist')) && /Workshopanmälan/.test(txt(w, '#ylist')), txt(w, '#ylist'));
+  ok('och fick notiser om nya ansökningar (utan namn)', w.eval('F').notes.filter(n => n.kind === 'youth').length === 2 && !w.eval('F').notes.some(n => /Lisa|Omar/.test(n.title + n.body)));
+  ok('mobil: Ungdomar rullar inte i sidled', noScrollX(w));
+  await nav(w, 'youth-' + ap1.id);
+  ok('ansökan öppnas med status Ny och ålder okänd', /Lisa Ung/.test(txt(w, '.h1')) && txt(w, '#yStatus') === 'Ny' && /Ålder okänd/.test(w.document.body.textContent));
+  w.openSms(ap1.id, 'fm_first'); await sleep(300);
+  const smsText = w.document.getElementById('smsT').value;
+  ok('mallen Första kontakt fylls i med Lisa och Samuel', /^Hej Lisa! Jag heter Samuel/.test(smsText), smsText.slice(0, 60));
+  const aEl = w.document.getElementById('smsGo');
+  w.sendSms({preventDefault(){}, currentTarget:aEl}, ap1.id, 'fm_first');
+  ok('knappen öppnar telefonens sms-app med numret och texten', /^sms:0701112233\?&body=Hej%20Lisa!/.test(aEl.getAttribute('href')) || /^sms:\+46701112233\?&body=Hej%20Lisa!/.test(aEl.getAttribute('href')), aEl.getAttribute('href').slice(0, 60));
+  await until(() => w.eval('F').clog.length === 1, 4000); w.closeSheet(); await sleep(200);
+  ok('sms:et sparas i historiken och Lisa blir Kontaktad', txt(w, '#yStatus') === 'Kontaktad' && /Första kontakt/.test(txt(w, '#yLog')), txt(w, '#yStatus'));
+  w.openApplicantForm(ap1.id); await sleep(300);
+  set(w, 'ap_birth_year', '2010'); set(w, 'ap_guardian_name', 'Maria Ung'); set(w, 'ap_guardian_phone', '0709998877');
+  await w.saveApplicant(ap1.id); await sleep(200);
+  ok('Samuel lägger in födelseår och målsman', /Maria Ung/.test(w.document.body.textContent) && /\d+ år/.test(txt(w, '.meta')));
+
+  w = await open('amir@b.se', 'activities');
+  ok('Amir (C) ser Aktiviteter men inte Ungdomar', !!w.document.getElementById('newAct') && !w.document.querySelector('#nav a[data-r="youth"]') && w.eval('F').applicants.length === 0);
+  w.openActivityForm(); await sleep(300);
+  set(w, 'acT', 'Workshop: beatmaking'); set(w, 'acDate', D(0)); set(w, 'acS', '14:00'); set(w, 'acE', '18:00'); set(w, 'acP', 'Råsundavägen 102, Solna'); set(w, 'acC', '20');
+  await w.saveActivity(null);
+  await until(() => /^#activity-/.test(w.location.hash), 3000); await sleep(200);
+  const actId = w.location.hash.slice('#activity-'.length);
+  ok('Amir skapar workshopen', /beatmaking/i.test(txt(w, '.h1')), w.location.hash);
+  await w.eval(`insert('fd_activity_groups', {activity_id:'${actId}', name:'Grupp 1', sort:0}).then(()=>loadAll()).then(()=>paint())`); await sleep(300);
+  ok('och en grupp', /Grupp 1/.test(txt(w, '#groups')));
+
+  w = await open('samuel@b.se', 'activity-' + actId);
+  await until(() => !!w.document.getElementById('roster') && !/skel/.test(w.document.getElementById('roster').innerHTML), 3000);
+  w.openBulkInvite(actId); await sleep(300);
+  w.document.querySelectorAll('input[name=biA]').forEach(x => x.checked = true); set(w, 'biG', w.eval('F').groups[0].id);
+  await w.invite([...w.document.querySelectorAll('input[name=biA]:checked')].map(x => x.value), actId, w.document.getElementById('biG').value, false);
+  await until(() => /Omar Ny/.test(txt(w, '#roster') || ''), 4000);
+  ok('Samuel bjuder in båda till workshopen, i Grupp 1', /Lisa Ung/.test(txt(w, '#roster')) && /Omar Ny/.test(txt(w, '#roster')) && /Grupp 1\s*2/.test(txt(w, '#groups')), txt(w, '#groups'));
+  await w.setPart(actId, ap1.id, {invite_status:'yes'});
+
+  w = await open('amir@b.se', 'activity-' + actId);
+  await until(() => /Lisa Ung/.test(txt(w, '#roster') || ''), 4000);
+  ok('Amir ser deltagarnas namn och svar', /Lisa Ung/.test(txt(w, '#roster')) && /Kommer/.test(w.document.getElementById('roster').innerHTML));
+  ok('men inga telefonnummer eller e-post', !/070|lisa@x\.se|0709998877/.test(w.document.body.innerHTML));
+  await w.setPart(actId, ap1.id, {attendance:'present', observation:'Tog initiativ i gruppen'});
+  await w.setPart(actId, ap2.id, {attendance:'absent'});
+  await until(() => /Tog initiativ/.test(txt(w, '#roster') || ''), 3000);
+  ok('Amir tar närvaro och skriver en observation', /Tog initiativ i gruppen/.test(txt(w, '#roster')));
+  set(w, 'fuS', 'Bra energi'); set(w, 'fuG', 'Grupperna'); set(w, 'fuI', 'Mer tid till att spela in'); await w.saveFollow(actId); await sleep(200);
+  ok('och följer upp workshopen', w.eval('F').activities.find(a => a.id === actId).status === 'done');
+  ok('mobil: aktiviteten rullar inte i sidled', noScrollX(w));
+
+  w = await open('samuel@b.se', 'youth-' + ap1.id);
+  ok('Lisa: Har deltagit, med C:s observation', txt(w, '#yStatus') === 'Har deltagit' && /Tog initiativ i gruppen/.test(txt(w, '#yActs')), txt(w, '#yStatus'));
+  await w.makeConsent(ap1.id, 'guardian'); await sleep(300);
+  const ctext = w.document.getElementById('csT').value, ctoken = w.eval('F').consents[0].token;
+  ok('Samuel skapar en länk till målsman, med färdig sms-text', /samtycke\.html\?t=[0-9a-f]{36}/.test(ctext) && /Lisa/.test(ctext), ctext.slice(0, 80));
+  w = await open(null, null, 'samtycke.html?t=' + ctoken + '&x=1');
+  await until(() => fr.contentWindow.READY, 4000); w = fr.contentWindow;
+  ok('målsman ser bara förnamnet', /målsman till Lisa/.test(w.document.body.textContent) && !/Ung\b|070/.test(w.document.getElementById('app').textContent));
+  w.document.getElementById('cPhoto').checked = true; w.document.getElementById('cFilm').checked = true; w.document.getElementById('nm').value = 'Maria Ung';
+  w.document.getElementById('yes').click();
+  await until(() => w.SAVED, 4000);
+  ok('målsman godkänner foto och film', /godkänt för foto, film/.test(txt(w, '#state') || ''), txt(w, '#state'));
+  w = await open('samuel@b.se', 'youth-' + ap1.id);
+  ok('Samuel ser Godkänt och fick en notis', /Godkänt/.test(txt(w, '#yConsent')) && w.eval('F').notes.some(n => n.kind === 'consent'));
+
+  w = await open('az@b.se', 'youth');
+  await until(() => !!w.document.getElementById('ystats'), 4000);
+  ok('AZ (admin utan behörigheten) ser bara antal', /2\s*Ansökningar/.test(txt(w, '#ystats')) && !/Lisa|Omar/.test(w.document.body.textContent), txt(w, '#ystats'));
 
   log('\n── studion (index.html) ──');
   w = await open(null, null, 'index.html');

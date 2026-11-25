@@ -131,10 +131,13 @@ def fd(shots_dir=None):
             os.makedirs(shots_dir, exist_ok=True)
             views = [('mitt-hq', 'samuel@b.se', 'hq', ''), ('avdelning-B', 'samuel@b.se', 'dept-B', ''),
                      ('overlamning', 'joseph@b.se', 'handovers', "go('handover-'+F.handovers.find(h=>/Tensta/.test(h.subject)).id)"),
-                     ('admin', 'az@b.se', 'admin', ''), ('admin-lankar', 'az@b.se', 'admin', "aTab='people';LINKS=null;paint()")]
+                     ('admin', 'az@b.se', 'admin', ''), ('admin-lankar', 'az@b.se', 'admin', "aTab='people';LINKS=null;paint()"),
+                     ('ungdomar', 'samuel@b.se', 'youth', ''), ('ungdom', 'samuel@b.se', 'youth', "go('youth-'+F.applicants.find(a=>/Lisa/.test(a.name)).id)"),
+                     ('aktivitet', 'amir@b.se', 'activities', "go('activity-'+F.activities[0].id)"),
+                     ('samtycke', 'samuel@b.se', 'hq', '')]
             for name, who, h, js in views:
                 for w, hh in (('390', '844'), ('1440', '900')):
-                    q = urllib.parse.urlencode({'as': who, 'hash': h, 'js': js})
+                    q = urllib.parse.urlencode({'as': who, 'hash': h, 'js': js, **({'consent': '1'} if name == 'samtycke' else {})})
                     shot(q, os.path.join(shots_dir, f'fd-{name}-{w}.png'), w, hh, '1', page_='fdshot.html')
         return good
     finally:
@@ -169,7 +172,7 @@ if __name__ == '__main__':
         shot(sys.argv[2], sys.argv[3], *sys.argv[4:7]); sys.exit(0)
     ok = True
     if what in ('all', 'db'):
-        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs'); ok &= node('foundation.test.mjs')
+        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs'); ok &= node('foundation.test.mjs'); ok &= node('foundation2.test.mjs')
     if what in ('all', 'test'): ok &= page('test.html')
     if what in ('all', 'cloud'): ok &= cloud()
     if what in ('all', 'fd'): ok &= fd(sys.argv[2] if what == 'fd' and len(sys.argv) > 2 else None)
