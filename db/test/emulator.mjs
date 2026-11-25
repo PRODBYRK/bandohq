@@ -4,6 +4,7 @@
      /auth/v1/*  signup (med 6-siffrig kod), verify, resend, token (password/refresh), user, recover, logout
      /rest/v1/*  rpc, tabeller (GET med filter, POST upsert, PATCH)
      /functions/v1/auth-login  den riktiga edge-funktionen (supabase/functions/auth-login)
+     /storage/v1/object/*      ladda upp, hämta, signera och ta bort (RLS på storage.objects som i Supabase)
    Starta:  node emulator.mjs [port]     (standard 8738)
    Testkrokar: GET /__mail (inloggningsmejlen, med koden), GET /__outbox (utkorgen),
                POST /__sql {sql}, POST /__config {confirm:true}
@@ -21,7 +22,8 @@ const ANON = 'anon-test-key', SERVICE = 'service-test-key';
 Object.assign(process.env, { SUPABASE_URL: 'http://localhost:' + PORT, SUPABASE_SERVICE_ROLE_KEY: SERVICE, SUPABASE_ANON_KEY: ANON });
 const LOGIN = await import(join(dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/auth-login/index.ts'));
 const db = await boot();
-const q = async (s, p) => (await db.query(s, p)).rows;
+/* date-kolumner som text ("2026-11-25"), som PostgREST — inte som Date-objekt */
+const q = async (s, p) => (await db.query(s, p, {parsers:{1082: v => v}})).rows;
 
 /* ---------- konton i minnet (auth.users finns i databasen) ---------- */
 const users = new Map();          // email → {id, email, password, meta, confirmed, code}
@@ -60,17 +62,25 @@ await q(`insert into records(kind,id,data,up) values('setting','studios','{"A":"
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ARRAYS = new Set(['interests', 'perms', 'producers']);
 const TABLES = new Set(['members','invites','records','leads','outbox','push_subs', 'session_reports', 'record_history', 'circle_signups', 'circle_membership',
-  'access_requests']);
+  'access_requests', 'fd_departments', 'fd_memberships', 'fd_contacts', 'fd_tasks', 'fd_handovers', 'fd_threads',
+  'fd_thread_members', 'fd_messages', 'fd_mentions', 'fd_notifications', 'fd_documents', 'fd_dept_updates']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){
     if(['select','order','limit','on_conflict'].includes(k)) continue;
     if(!IDENT.test(k)) throw new Error('ogiltig kolumn ' + k);
+    if(v === 'is.null' || v === 'not.is.null'){ parts.push(`${k} is ${v === 'is.null' ? '' : 'not '}null`); continue; }
+    const inl = v.match(/^in\.\((.*)\)$/);
+    if(inl){ args.push(inl[1] ? inl[1].split(',').map(x=>x.replace(/^"|"$/g,'')) : []); parts.push(`${k}::text = any($${args.length}::text[])`); continue; }
+    const lk = v.match(/^like\.(.*)$/);
+    if(lk){ args.push(lk[1].replace(/\*/g, '%')); parts.push(`${k}::text like $${args.length}`); continue; }
     const m = v.match(/^(eq|gt|gte|lt|lte|neq)\.(.*)$/); if(!m) throw new Error('okänt filter ' + v);
     const op = {eq:'=', gt:'>', gte:'>=', lt:'<', lte:'<=', neq:'<>'}[m[1]];
     args.push(m[2]);
-    /* likhet jämförs som text (fungerar för uuid och text), storlek som tal (up, ts) */
-    parts.push(op === '=' || op === '<>' ? `${k}::text ${op} $${args.length}` : `${k} ${op} $${args.length}::bigint`);
+    /* likhet jämförs som text (fungerar för uuid och text); storlek som datum när värdet är ett
+       datum, annars som tal (up, ts) */
+    const cast = /^\d{4}-\d\d-\d\d/.test(m[2]) ? '::timestamptz' : '::bigint';
+    parts.push(op === '=' || op === '<>' ? `${k}::text ${op} $${args.length}` : `${k} ${op} $${args.length}${cast}`);
   }
   return parts.length ? ' where ' + parts.join(' and ') : '';
 }
@@ -94,7 +104,10 @@ async function rest(req, res, url, body, uid, service){
     const fn = path.slice(4); if(!IDENT.test(fn)) return send(res, 404, {message:'okänd funktion'});
     const keys = Object.keys(body||{}), vals = keys.map(k => body[k] !== null && typeof body[k] === 'object' ? JSON.stringify(body[k]) : body[k]);
     try{
-      const r = await run(() => q(`select ${fn}(${keys.map((k,i)=>`${k} => $${i+1}`).join(',')}) as v`, vals));
+      /* en funktion som returnerar en tabellrad blir ett JSON-objekt, som i PostgREST */
+      const comp = (await q(`select t.typtype from pg_proc p join pg_type t on t.oid = p.prorettype where p.proname = $1 limit 1`, [fn]))[0];
+      const call = `${fn}(${keys.map((k,i)=>`${k} => $${i+1}`).join(',')})`;
+      const r = await run(() => q(`select ${comp && comp.typtype === 'c' ? `to_jsonb(${call})` : call} as v`, vals));
       return send(res, 200, r[0].v);
     }catch(e){ return pgErr(res, e); }
   }
@@ -110,8 +123,9 @@ async function rest(req, res, url, body, uid, service){
       const lim = +url.searchParams.get('limit'); if(lim) sql += ` limit ${Math.min(lim, 10000)}`;
       return send(res, 200, await run(() => q(sql, args)));
     }
+    const repr = /return=representation/.test(String(req.headers.prefer||''));
     if(req.method === 'POST'){
-      const rows = Array.isArray(body) ? body : [body], conflict = url.searchParams.get('on_conflict');
+      const rows = Array.isArray(body) ? body : [body], conflict = url.searchParams.get('on_conflict'), out = [];
       for(const row of rows){
         const ks = Object.keys(row).filter(k=>IDENT.test(k));
         /* text[]-kolumner (inriktningar, behörigheter) tar en lista; jsonb tar JSON */
@@ -119,18 +133,79 @@ async function rest(req, res, url, body, uid, service){
         let sql = `insert into ${path} (${ks.join(',')}) values (${ks.map((_,i)=>'$'+(i+1)).join(',')})`;
         if(conflict && IDENT.test(conflict)) sql += ` on conflict (${conflict}) do update set ` +
           ks.filter(k=>k!==conflict).map(k=>`${k} = excluded.${k}`).join(',');
-        await run(() => q(sql, vals));
+        out.push(...await run(() => q(sql + (repr ? ' returning *' : ''), vals)));
       }
-      return send(res, 201);
+      return repr ? send(res, 201, out) : send(res, 201);
     }
     if(req.method === 'PATCH'){
       const ks = Object.keys(body||{}).filter(k=>IDENT.test(k));
       const args = ks.map(k => body[k]);
-      const sql = `update ${path} set ${ks.map((k,i)=>`${k} = $${i+1}`).join(',')}` + where(params, args);
-      await run(() => q(sql, args));
-      return send(res, 204);
+      const vals = args.map(v => v !== null && typeof v === 'object' && !Array.isArray(v) ? JSON.stringify(v) : v);
+      const sql = `update ${path} set ${ks.map((k,i)=>`${k} = $${i+1}`).join(',')}` + where(params, vals);
+      const r = await run(() => q(sql + (repr ? ' returning *' : ''), vals));
+      return repr ? send(res, 200, r) : send(res, 204);
+    }
+    if(req.method === 'DELETE'){
+      const args = [], w = where(params, args);
+      if(!w) return send(res, 400, {message:'DELETE kräver ett filter'});
+      const r = await run(() => q(`delete from ${path}` + w + (repr ? ' returning *' : ''), args));
+      return repr ? send(res, 200, r) : send(res, 204);
     }
   }catch(e){ return pgErr(res, e); }
+  send(res, 405, {message:'metod'});
+}
+
+/* ---------- Storage: filerna i minnet, raderna i storage.objects (med RLS, som i Supabase) ---------- */
+const files = new Map();           // bucket/name → {buf, type}
+const signed = new Map();          // token → {key, exp}
+async function storage(req, res, url, buf, uid, service){
+  const run = fn => service ? fn() : uid ? as(db, uid, fn) : asAnon(db, fn);
+  let p = decodeURIComponent(url.pathname.replace('/storage/v1/object/', ''));
+  const mode = (p.match(/^(authenticated|sign|public)\//) || [])[1] || '';
+  if(mode) p = p.slice(mode.length + 1);
+  const bucket = p.split('/')[0], name = p.slice(bucket.length + 1), key = bucket + '/' + name;
+  if(!bucket || !name || name.includes('..')) return send(res, 400, {statusCode:'400', error:'InvalidKey', message:'Ogiltig sökväg'});
+  try{
+    if(mode === 'sign' && req.method === 'GET'){
+      const t = signed.get(url.searchParams.get('token')||'');
+      if(!t || t.key !== key || t.exp < Date.now() || !files.has(key)) return send(res, 400, {statusCode:'400', error:'InvalidSignature', message:'Ogiltig länk'});
+      const f = files.get(key);
+      res.writeHead(200, {'Content-Type':f.type, 'Access-Control-Allow-Origin':'*'}); return res.end(f.buf);
+    }
+    if(mode === 'sign' && req.method === 'POST'){
+      const r = await run(() => q(`select 1 from storage.objects where bucket_id = $1 and name = $2`, [bucket, name]));
+      if(!r.length) return send(res, 400, {statusCode:'404', error:'not_found', message:'Object not found'});
+      const tok = 'st-' + Math.random().toString(36).slice(2);
+      let exp = 60; try{ exp = +(JSON.parse(buf.toString() || '{}').expiresIn) || 60; }catch(e){}
+      signed.set(tok, {key, exp: Date.now() + 1000 * exp});
+      return send(res, 200, {signedURL: `/object/sign/${bucket}/${name.split('/').map(encodeURIComponent).join('/')}?token=${tok}`});
+    }
+    if(req.method === 'GET'){
+      const r = await run(() => q(`select 1 from storage.objects where bucket_id = $1 and name = $2`, [bucket, name]));
+      if(!r.length || !files.has(key)) return send(res, 400, {statusCode:'404', error:'not_found', message:'Object not found'});
+      const f = files.get(key);
+      res.writeHead(200, {'Content-Type':f.type, 'Access-Control-Allow-Origin':'*'}); return res.end(f.buf);
+    }
+    if(req.method === 'POST'){
+      const b = (await q(`select file_size_limit, allowed_mime_types from storage.buckets where id = $1`, [bucket]))[0];
+      if(!b) return send(res, 400, {statusCode:'404', error:'Bucket not found', message:'Bucket not found'});
+      const type = String(req.headers['content-type']||'application/octet-stream').split(';')[0];
+      if(b.file_size_limit && buf.length > +b.file_size_limit) return send(res, 413, {statusCode:'413', error:'Payload too large', message:'The object exceeded the maximum allowed size'});
+      if(b.allowed_mime_types && !b.allowed_mime_types.includes(type)) return send(res, 415, {statusCode:'415', error:'invalid_mime_type', message:`mime type ${type} is not supported`});
+      if(files.has(key)) return send(res, 409, {statusCode:'409', error:'Duplicate', message:'The resource already exists'});
+      /* som Supabase: en uppladdning kräver bara INSERT-policyn (inte SELECT), så ingen RETURNING som användaren */
+      await run(() => q(`insert into storage.objects(bucket_id, name, owner, metadata) values($1, $2, $3, $4)`,
+        [bucket, name, uid, JSON.stringify({mimetype:type, size:buf.length})]));
+      const r = await q(`select id from storage.objects where bucket_id = $1 and name = $2`, [bucket, name]);
+      files.set(key, {buf, type});
+      return send(res, 200, {Key: key, Id: r[0].id});
+    }
+    if(req.method === 'DELETE'){
+      const r = await run(() => q(`delete from storage.objects where bucket_id = $1 and name = $2 returning id`, [bucket, name]));
+      if(!r.length) return send(res, 400, {statusCode:'404', error:'not_found', message:'Object not found'});
+      files.delete(key); return send(res, 200, {message:'Successfully deleted'});
+    }
+  }catch(e){ return send(res, 403, {statusCode:'403', error:'Unauthorized', message:'new row violates row-level security policy'}); }
   send(res, 405, {message:'metod'});
 }
 
@@ -209,9 +284,10 @@ http.createServer((req, res) => {
       'Access-Control-Allow-Headers':'apikey,authorization,content-type,prefer,x-client-info', 'Access-Control-Max-Age':'600'});
     return res.end();
   }
-  let raw = '';
-  req.on('data', c => raw += c);
+  const chunks = [];
+  req.on('data', c => chunks.push(c));
   req.on('end', async () => {
+    const buf = Buffer.concat(chunks), raw = buf.toString('utf8');
     /* edge-funktionen anropar emulatorn själv — därför utanför kön */
     if(req.url.startsWith('/functions/v1/auth-login')){
       let b = {}; try{ b = raw ? JSON.parse(raw) : {}; }catch(e){}
@@ -220,18 +296,21 @@ http.createServer((req, res) => {
     }
     serial(async () => {
     const url = new URL(req.url, 'http://x');
-    let body = null; try{ body = raw ? JSON.parse(raw) : null; }catch(e){}
+    let body = null; if(!url.pathname.startsWith('/storage/')){ try{ body = raw ? JSON.parse(raw) : null; }catch(e){} }
     if(url.pathname === '/__mail') return send(res, 200, mail);
     if(url.pathname === '/__outbox') return send(res, 200, await q(`select id, member_id, email, subject, body, link, kind, dedupe_key, n, send_after from outbox order by id`));
     /* bara för tester: kör SQL som databasens ägare (t.ex. simulera att en post försvunnit) */
     if(url.pathname === '/__sql'){ try{ return send(res, 200, await q(body.sql)); }catch(e){ return send(res, 400, {message:e.message}); } }
     if(url.pathname === '/__config'){ Object.assign(cfg, body||{}); return send(res, 200, cfg); }
+    /* en signerad fillänk öppnas utan nycklar (som i Supabase) */
+    if(url.pathname.startsWith('/storage/v1/object/sign/') && req.method === 'GET') return await storage(req, res, url, buf, null, false);
     if(req.headers.apikey !== ANON && req.headers.apikey !== SERVICE) return send(res, 401, {message:'Invalid API key'});
     const bearer = String(req.headers.authorization||'').replace(/^Bearer /, '');
     const uid = bearer && bearer !== ANON ? tokenSub(bearer) : null;
     try{
       if(url.pathname.startsWith('/auth/v1/')) return await auth(req, res, url, body||{}, bearer);
       if(url.pathname.startsWith('/rest/v1/')) return await rest(req, res, url, body, uid, req.headers.apikey === SERVICE);
+      if(url.pathname.startsWith('/storage/v1/object/')) return await storage(req, res, url, buf, uid, req.headers.apikey === SERVICE);
       send(res, 404, {message:'okänd väg'});
     }catch(e){ send(res, 500, {message:e.message}); }
     });

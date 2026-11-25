@@ -24,6 +24,10 @@
     {
       "source": "/access",
       "destination": "/access.html"
+    },
+    {
+      "source": "/foundation",
+      "destination": "/foundation.html"
     }
   ],
   "headers": [

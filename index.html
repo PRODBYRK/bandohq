@@ -5371,6 +5371,19 @@ function canView(v){ return roleView()==='full' && (tabs().includes(v) || moreVi
 /* Mobilen: fem flikar i botten. Datorn: allt i sidopanelen, utan MER. */
 const NAVNAME = {today:'Idag', week:'Schema', agenda:'Agenda', beats:'Beats', more:'Mer',
   team:'Crew', dash:'Statistik', circles:'Cirklar', artists:'Artister', goals:'Målsättning', gallery:'Galleri', rewards:'Rewards', education:'Education', studio:'Studio'};
+/* Bando Foundation (foundation.html) har egna tabeller men samma konton. Länken dit visas för den
+   som har åtkomst (fd_me); den som bara arbetar i Foundation (rollen foundation) skickas dit direkt. */
+let FD_ACCESS = false, fdChecked = null;
+const FD_ICON = '<path d="M12 3 20 7v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>';
+NAVNAME.foundation = 'Foundation';
+function checkFoundation(){
+  if(PREVIEW_LOGIN || !AUTH || fdChecked === AUTH.uid) return;
+  fdChecked = AUTH.uid;
+  sbRpc('fd_me').then(r=>{
+    const on = !!(r && r.member);
+    if(on !== FD_ACCESS){ FD_ACCESS = on; if(roleView()==='full'){ buildNav(); if(view==='more') render(); } }
+  }).catch(()=>{});
+}
 function buildNav(){
   const btn = (k, cls, id) => `<button id="${id}" data-v="${k}" class="${cls}" onclick="navTap('${k}')">
       <svg viewBox="0 0 24 24">${ICONS[k]}</svg><span class="nl-m">${LABELS[k]}</span></button>`;
@@ -5379,7 +5392,10 @@ function buildNav(){
     + tabs().map(k=>btn(k, k==='more'?'nav-m':'', 'nav-'+k)).join('')
     + `<div class="nav-sep nav-d">ARBETE</div>`
     + moreViews().map(k=>btn(k, 'nav-d', 'navd-'+k)).join('')
+    + (FD_ACCESS ? `<button id="navd-foundation" data-v="foundation" class="nav-d" onclick="location.href='foundation.html'">
+      <svg viewBox="0 0 24 24">${FD_ICON}</svg><span class="nl-m">FOUNDATION</span></button>` : '')
     + `<i class="nav-ind" aria-hidden="true"></i>`;
+  checkFoundation();
   /* sidopanelen läser bättre i gemener */
   if(matchMedia('(min-width:1024px)').matches)
     document.querySelectorAll('#navInner .nl-m').forEach(el=>{ const k = el.parentNode.dataset.v; el.textContent = NAVNAME[k]; });
@@ -5447,6 +5463,7 @@ function render(){
   slotProd = null;                    /* sätts bara av kundvyn (producenternas upptagna tid) */
   document.getElementById('meBtn').innerHTML = avatar(m, 26) + `<b>${esc(m.n)}</b>`;
   const rv = roleView();
+  if(rv === 'foundation' && !PREVIEW_LOGIN){ location.replace('foundation.html'); return; }
   if(rv !== 'full'){
     document.getElementById('nav').style.display = 'none';
     document.getElementById('fab').style.display = 'none';
@@ -5502,6 +5519,7 @@ function vMore(){
       ${canIntel() ? card('rewards','REWARDS', 'Poäng, belöningar, nivåer och Artist Intelligence') : ''}
       ${card('team','CREW', `${teamAcc().length} personer · profiler och konton`)}
       ${card('circles','CIRKLAR', `${lcircle().length} cirklar i programmet`)}
+      ${FD_ACCESS ? row(`location.href='foundation.html'`, 'BANDO FOUNDATION', 'Uppgifter, överlämningar och avdelningarna A till J') : ''}
     </div>`;
 }
 

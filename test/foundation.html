@@ -1,0 +1,217 @@
+<!doctype html>
+<meta charset="utf-8"><title>BANDO FOUNDATION · UI-test</title>
+<style>body{background:#111;color:#eee;font:13px ui-monospace,Menlo,monospace;margin:0;display:flex}
+pre{padding:16px;margin:0;white-space:pre-wrap;flex:1;max-height:100vh;overflow:auto}
+iframe{width:390px;height:844px;border:0;flex:none;background:#000}</style>
+<pre id="out">kör…</pre><iframe id="fr"></iframe>
+<script>
+/* Bando Foundation (foundation.html) i en 390 px bred ram mot Supabase-emulatorn
+   (db/test/emulator.mjs, port 8738): riktiga konton, RLS, Storage och utkorgen.
+   TEST 1 (Joseph → B → Samuel) och TEST 8 (adminöversikten) körs genom gränssnittet. */
+const EMU = 'http://localhost:8738', KEY = 'anon-test-key';
+const out = document.getElementById('out'), fr = document.getElementById('fr');
+let pass = 0, fail = 0, lines = [];
+const log = s => { lines.push(s); out.textContent = lines.join('\n'); };
+const ok = (n, c, x) => { c ? pass++ : fail++; log((c ? 'PASS  ' : 'FAIL  ') + n + (!c && x !== undefined ? '   → ' + JSON.stringify(x) : '')); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const D = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+/* emulatorns /__sql tar en sats i taget */
+const sql = async s => { let j; for(const st of s.split(/;\s*\n/).map(x=>x.trim().replace(/;$/,'')).filter(Boolean)){
+  const r = await fetch(EMU + '/__sql', {method:'POST', body:JSON.stringify({sql:st})}); j = await r.json(); if(!r.ok) throw new Error(j.message + ' · ' + st.slice(0,60)); } return j; };
+const outbox = async () => (await fetch(EMU + '/__outbox')).json();
+async function signup(email, name){
+  const r = await fetch(EMU + '/auth/v1/signup', {method:'POST', headers:{apikey:KEY, 'Content-Type':'application/json'}, body:JSON.stringify({email, password:'losen123', data:{name}})});
+  return (await r.json()).user || {};
+}
+async function session(email){
+  const r = await fetch(EMU + '/auth/v1/token?grant_type=password', {method:'POST', headers:{apikey:KEY, 'Content-Type':'application/json'}, body:JSON.stringify({email, password:'losen123'})});
+  const j = await r.json();
+  return {access_token:j.access_token, refresh_token:j.refresh_token, expires_at:Date.now() + 3600e3, uid:j.user.id, email, meta:{}};
+}
+/* en enhet som är inloggad som personen, med foundation.html öppen på hash */
+async function open(email, hash, page){
+  fr.onload = null; fr.src = 'about:blank'; await sleep(200);
+  localStorage.clear();
+  localStorage.setItem('bandosesh_cloud', JSON.stringify({url:EMU, key:KEY}));
+  if(email) localStorage.setItem('bandosesh_auth', JSON.stringify(await session(email)));
+  await new Promise(res => { fr.onload = res; fr.src = '../' + (page || 'foundation.html') + '?cb=' + Math.random() + (hash ? '#' + hash : ''); });
+  const w = fr.contentWindow;
+  if(!page) await until(() => w.FD_READY, 8000);
+  return w;
+}
+async function until(fn, ms){ const t0 = Date.now(); while(Date.now() - t0 < (ms || 5000)){ try{ if(fn()) return true; }catch(e){} await sleep(80); } return false; }
+const txt = (w, sel) => { const el = w.document.querySelector(sel); return el ? el.textContent.replace(/\s+/g, ' ').trim() : null; };
+const set = (w, id, v) => { const el = w.document.getElementById(id); el.value = v; el.dispatchEvent(new w.Event('input')); el.dispatchEvent(new w.Event('change')); };
+const noScrollX = w => w.document.documentElement.scrollWidth <= w.innerWidth + 1;
+const nav = async (w, h) => { w.location.hash = h; await sleep(150); };
+
+(async function run(){
+ try{
+  log('── förberedelser: personerna från masterplanen ──');
+  const ppl = [['joseph','Joseph'],['samuel','Samuel'],['amir','Amir'],['adrian','Adrian']];
+  for(const [id, n] of ppl){
+    const u = await signup(id + '@b.se', n);
+    await sql(`insert into members(id,user_id,role,name,email) values('${id}','${u.id}','foundation','${n}','${id}@b.se')`);
+  }
+  await sql(`update members set perms = perms || '{foundation_admin}'::text[] where id='az';
+    update members set perms = perms || '{protected_data}'::text[] where id='samuel';
+    insert into fd_memberships(member_id,dept,role) values('joseph','A','chief'),('joseph','E','chief'),('samuel','B','chief'),('amir','C','chief'),('amir','G','member'),('adrian','D','chief');`);
+  ok('fyra Foundation-personer och AZ som admin', (await sql(`select count(*)::int n from fd_memberships`))[0].n === 6);
+
+  log('\n── utan inloggning ──');
+  let w = await open(null, 'hq', 'foundation.html');
+  await until(() => /index\.html/.test(w.location.pathname), 3000);
+  ok('foundation.html utan session skickar till inloggningen (index.html)', /index\.html/.test(w.location.pathname), w.location.pathname);
+
+  log('\n── TEST 1 · Joseph registrerar en ungdomsverksamhet och lämnar över till B ──');
+  w = await open('joseph@b.se', 'handovers');
+  ok('Joseph ser Överlämningar och knappen Ny överlämning', /Överlämningar/i.test(txt(w, '.h1')) && !!w.document.getElementById('newHo'));
+  ok('mobil: ingen sidledsrullning', noScrollX(w));
+  w.openHandoverForm(); await sleep(450);
+  ok('formuläret föreslår Samuel (chef i B) som mottagare när B väljs', (set(w, 'hTo', 'B'), w.document.getElementById('hToM').value === 'samuel'), w.document.getElementById('hToM').value);
+  set(w, 'hFrom', 'A'); set(w, 'hSubj', 'Fritidsgården Tensta vill vara med');
+  set(w, 'hBg', 'Träffade personalen i tisdags. Sex ungdomar är intresserade av Behind the Release.');
+  set(w, 'hExp', 'Kontakta ungdomarna och bjud in till en workshop.'); set(w, 'hDue', D(3));
+  w.document.getElementById('hCont').open = true;
+  set(w, 'cName', 'Fritidsgården Tensta'); set(w, 'cPerson', 'Lina Berg'); set(w, 'cPhone', '070-123 45 67'); set(w, 'cArea', 'Tensta');
+  set(w, 'cStatus', 'Intresserad'); set(w, 'cNote', 'Vill ha en workshop för sina ungdomar'); set(w, 'cNext', 'B kontaktar ungdomarna');
+  set(w, 'hLink', 'https://drive.google.com/drive/folders/besok-tensta');
+  ok('mobil: arket rullar inte i sidled', w.document.getElementById('sheet').scrollWidth <= w.document.getElementById('sheet').clientWidth + 1);
+  await w.sendHandover();
+  await until(() => /^#handover-/.test(w.location.hash), 4000); await sleep(300);
+  const hid = w.location.hash.slice('#handover-'.length);
+  ok('överlämningen skickades och öppnades', !!hid && /Fritidsgården Tensta vill vara med/i.test(txt(w, '.h1')), w.location.hash);
+  ok('Joseph ser status Skickad', txt(w, '#hoStatus') === 'Skickad', txt(w, '#hoStatus'));
+  ok('och att den väntar på Samuel', /Väntar på att Samuel i avdelning B bekräftar/.test(txt(w, '#hoWait') || ''), txt(w, '#hoWait'));
+  ok('verksamheten följer med (kontaktperson och telefon)', /Lina Berg/.test(txt(w, '#hoContact') || '') && /070-123 45 67/.test(txt(w, '#hoContact') || ''));
+  ok('videolänken ligger som dokument', /Dokument/.test(w.document.body.textContent) && w.eval('F').docs.some(d => d.owner_id === hid && d.kind === 'link'));
+  ok('Joseph kan inte själv bekräfta', !w.document.getElementById('hoAct'));
+  const ob = (await outbox()).filter(o => o.member_id === 'samuel' && o.kind === 'foundation');
+  ok('Samuel får push/mejl via den befintliga utkorgen', ob.length === 1 && /Överlämning från A/.test(ob[0].subject) && ob[0].link.endsWith('#handover-' + hid), ob);
+
+  w = await open('samuel@b.se', 'hq');
+  ok('Samuel har en oläst notis', txt(w, '#bell .badge') === '1', txt(w, '#bell .badge'));
+  ok('Mitt HQ: agendan visar överlämningen att bekräfta', /Fritidsgården Tensta/.test(txt(w, '#agenda')) && /Bekräfta mottagandet/i.test(txt(w, '#agenda')), txt(w, '#agenda'));
+  ok('Mina överlämningar: inkommande', /Fritidsgården Tensta/.test(txt(w, '#myho')));
+  ok('mobil: Mitt HQ rullar inte i sidled', noScrollX(w));
+  w.openNotes(); await sleep(300);
+  ok('notisen: Överlämning från A', /Överlämning från A: Fritidsgården Tensta/.test(txt(w, '#notes')), txt(w, '#notes'));
+  await until(() => !w.eval('F').notes.some(n => !n.read_at), 3000);
+  ok('notisen markeras läst när listan öppnas', !w.eval('F').notes.some(n => !n.read_at) && !w.document.querySelector('#bell .badge'));
+  w.closeSheet(); await nav(w, 'handover-' + hid);
+  ok('Samuel ser knappen för att bekräfta', /Bekräfta att du tar emot den/.test(txt(w, '#hoAct') || ''), txt(w, '#hoAct'));
+  await w.receive(hid); await sleep(300);
+  ok('Samuel bekräftar → Mottagen', txt(w, '#hoStatus') === 'Mottagen', txt(w, '#hoStatus'));
+  ok('nästa steg för Samuel: Markera som pågående', /pågående/.test(txt(w, '#hoAct') || ''));
+
+  w = await open('joseph@b.se', 'handover-' + hid);
+  ok('Joseph ser Mottagen', txt(w, '#hoStatus') === 'Mottagen', txt(w, '#hoStatus'));
+  ok('och vem som tog emot', /Samuel tog emot den/.test(w.document.body.textContent));
+  ok('Joseph fick en notis om mottagandet', w.eval('F').notes.some(n => /^Mottagen: Fritidsgården Tensta/.test(n.title)));
+  ok('det finns en överlämning, ingen kopia', (await sql(`select count(*)::int n from fd_handovers`))[0].n === 1);
+
+  log('\n── kommentarer, omnämnanden och filer ──');
+  w = await open('samuel@b.se', 'handover-' + hid);
+  set(w, 'cmp', 'Tack @Joseph! Jag ringer Lina i morgon.');
+  await w.postComment('handover', hid); await sleep(300);
+  ok('kommentaren syns på ärendet', /Jag ringer Lina i morgon/.test(txt(w, '.msgs')));
+  ok('@Joseph markeras', !!w.document.querySelector('.msgs .mention'));
+  const f = new w.File(['%PDF-1.4 testfil'], 'Plan för workshop.pdf', {type:'application/pdf'});
+  await w.uploadFile('handover', hid, 'A', f); await w.refresh(); await sleep(200);
+  const doc = w.eval('F').docs.find(d => d.kind === 'file' && d.owner_id === hid);
+  ok('Samuel laddar upp en PDF till Storage, kopplad till överlämningen', !!doc && doc.storage_path.startsWith('handover/' + hid + '/'), doc);
+  const signedOk = await w.storage('POST', 'sign/foundation/' + doc.storage_path, JSON.stringify({expiresIn:60}), 'application/json').then(r => fetch(EMU + '/storage/v1' + r.signedURL)).then(r => r.text());
+  ok('filen öppnas med en tidsbegränsad länk', signedOk === '%PDF-1.4 testfil', signedOk);
+  const vid = await w.storage('POST', 'foundation/handover/' + hid + '/film.mp4', new w.Blob(['x']), 'video/mp4').then(() => 'ok', e => e.message);
+  ok('video laddas inte upp (den är en länk till Drive)', /not supported/.test(vid), vid);
+  w = await open('joseph@b.se', 'hq');
+  ok('Joseph fick en notis om att han nämndes', w.eval('F').notes.some(n => n.kind === 'mention' && /Samuel nämnde dig/.test(n.title)));
+
+  log('\n── uppgifter och agenda ──');
+  w = await open('samuel@b.se', 'handover-' + hid);
+  await w.hoStatus(hid, 'in_progress'); await sleep(200);
+  w.openTaskForm(hid); await sleep(400);
+  set(w, 'tT', 'Ring de sex ungdomarna från Tensta'); set(w, 'tDue', D(0));
+  await w.saveTask(hid);
+  await until(() => /^#task-/.test(w.location.hash), 3000); await sleep(200);
+  const tid = w.location.hash.slice(6);
+  ok('Samuel skapar en uppgift från överlämningen', /Ring de sex ungdomarna/.test(txt(w, '.h1')) && w.eval('F').tasks.find(t => t.id === tid).handover_id === hid);
+  await w.setTaskStatus(tid, 'doing'); await sleep(150);
+  ok('status Att göra → Pågår', w.eval('F').tasks.find(t => t.id === tid).status === 'doing' && /Pågår/.test(txt(w, '#tStatus .on')));
+  await nav(w, 'hq');
+  ok('uppgiften med deadline i dag står i agendan', /Ring de sex ungdomarna/.test(txt(w, '#agenda')));
+  ok('och under Mina ärenden', /Ring de sex ungdomarna/.test(txt(w, '#mytasks')));
+  w = await open('amir@b.se', 'tasks');
+  w.openTaskForm(); await sleep(350);
+  set(w, 'tT', 'Planera workshop i beatmaking'); set(w, 'tDept', 'C'); set(w, 'tA', ''); set(w, 'tDue', D(5));
+  await w.saveTask(null); await sleep(300);
+  ok('Amir skapar en uppgift i C utan ansvarig', w.eval('F').tasks.some(t => t.dept === 'C' && !t.assignee));
+  w = await open('samuel@b.se', 'tasks');
+  w.eval("tFilter='all';paint()");
+  ok('KRITERIUM: Samuel (B) ser inte C:s uppgift', !/beatmaking/.test(txt(w, '#tasklist')) && !w.eval('F').tasks.some(t => t.dept === 'C'), txt(w, '#tasklist'));
+  ok('och inte C som filter', ![...w.document.querySelectorAll('.chips .chip')].some(c => /Avdelning C/.test(c.textContent)));
+
+  log('\n── avdelningsuppdatering och meddelanden ──');
+  await nav(w, 'dept-B'); w.openUpdate('B'); await sleep(300);
+  set(w, 'uW', 'Ringer sökande från Tensta'); set(w, 'uD', 'Tog emot överlämningen från A'); set(w, 'uH', 'Fler som kan ringa'); set(w, 'uV', 'Datum för workshop från C');
+  await w.saveUpdate('B'); await sleep(200);
+  w.openDmForm(); await sleep(250); set(w, 'dmTo', 'amir'); await w.startDm(); await sleep(300);
+  set(w, 'cmp', 'Hej Amir, när kan vi köra workshopen?'); await w.post(w.location.hash.slice(8)); await sleep(200);
+  ok('privat meddelande skickat', /när kan vi köra workshopen/.test(txt(w, '#msgs')));
+  w = await open('amir@b.se', 'dept-B');
+  ok('C läser B:s avdelningsuppdatering', /Ringer sökande från Tensta/.test(txt(w, '#deptupd')) && /Datum för workshop från C/.test(txt(w, '#deptupd')));
+  ok('men får ingen uppdateringsknapp för B', !/Uppdatera/.test(w.document.getElementById('view').textContent));
+  await nav(w, 'messages');
+  ok('Amir ser samtalet med Samuel som oläst', /Samuel/.test(txt(w, '#threads')) && !!w.document.querySelector('#threads .unread'));
+  w = await open('samuel@b.se', 'hq');
+  /* skyddad uppgift för TEST 8 (Samuel har behörigheten) */
+  w.openTaskForm(); await sleep(350);
+  set(w, 'tT', 'Uppföljning: ungdom med särskilt stöd'); set(w, 'tDue', D(2)); w.document.getElementById('tP').checked = true;
+  await w.saveTask(null); await sleep(300);
+  ok('Samuel skapar en skyddad uppgift', w.eval('F').tasks.some(t => t.protected));
+
+  log('\n── TEST 8 · adminöversikten ──');
+  w = await open('az@b.se', 'admin');
+  await until(() => !!w.document.getElementById('ovdepts'), 4000);
+  ok('AZ (Foundation-admin) öppnar översikten', /Admin/.test(txt(w, '.h1')) && w.document.querySelectorAll('#ovdepts .item').length === 10);
+  const dC = txt(w, '#ovdepts [data-dept="C"]'), dB = txt(w, '#ovdepts [data-dept="B"]');
+  ok('status per avdelning: C har chef och en öppen uppgift', /Chef: Amir/.test(dC) && /1\s*Öppna/.test(dC), dC);
+  ok('B räknar inte den skyddade uppgiften (en öppen)', /1\s*Öppna/.test(dB) && /Nu: Ringer sökande/.test(dB), dB);
+  ok('ärenden utan ansvarig', /Planera workshop i beatmaking/.test(txt(w, '#ovunas')));
+  ok('viktiga datum som närmar sig', /Ring de sex ungdomarna/.test(txt(w, '#ovdates')) && /Planera workshop/.test(txt(w, '#ovdates')) && !/särskilt stöd/.test(txt(w, '#ovdates')));
+  ok('väntande överlämningar (inga, Tensta är mottagen)', /Alla överlämningar är mottagna/.test(txt(w, '#ovwait')));
+  ok('skyddade rader syns inte för admin, och det står att de är dolda', /1 skyddad rad räknas inte/.test(txt(w, '.infobox') || '') && !/särskilt stöd/.test(w.document.body.textContent));
+  await nav(w, 'tasks'); w.eval("tFilter='all';tStatus='open';paint()");
+  ok('admin läser uppgifterna i alla avdelningar', /beatmaking/.test(txt(w, '#tasklist')) && /Ring de sex/.test(txt(w, '#tasklist')) && !/särskilt stöd/.test(txt(w, '#tasklist')));
+  await nav(w, 'handovers'); w.eval("hTab='all';paint()");
+  ok('admin läser alla överlämningar', /Fritidsgården Tensta/.test(txt(w, '#holist')));
+  ok('admin läser inte privata meddelanden', !w.eval('F').messages.some(m => /workshopen\?/.test(m.body)));
+  await nav(w, 'admin'); w.eval("aTab='people';paint()");
+  ok('personer: alla med avdelningar och e-post', /Joseph/.test(txt(w, '#people')) && /A chef · E chef/.test(txt(w, '#people')) && /joseph@b.se/.test(txt(w, '#people')));
+  w.eval("aTab='log';LOG=null;paint()"); await until(() => !!w.document.getElementById('logtbl'), 3000);
+  const lg = txt(w, '#logtbl');
+  ok('loggen: överlämning, statusbyte, uppladdning', /Överlämning/.test(lg) && /mottagen/.test(lg) && /Att göra → Pågår/.test(lg) && /uppladdad/.test(lg), lg && lg.slice(0, 300));
+  ok('loggen visar inte den skyddade uppgiftens titel', !/särskilt stöd/.test(lg) && /skyddad/.test(lg));
+  ok('mobil: adminvyn rullar inte i sidled', noScrollX(w));
+  w = await open('samuel@b.se', 'admin');
+  ok('en vanlig medlem når inte admin', /Hittades inte/.test(txt(w, '.h1')));
+
+  log('\n── studion (index.html) ──');
+  w = await open(null, null, 'index.html');
+  await sleep(500);
+  await w.eval(`(async()=>{ document.getElementById('gE').value='az@b.se'; document.getElementById('gP').value='losen123'; await doLogin(); })()`);
+  await until(() => w.eval('FD_ACCESS') === true, 5000);
+  ok('AZ i studion: länken till Foundation finns', w.eval('FD_ACCESS') === true && !!w.document.getElementById('navd-foundation'));
+  w.eval(`go('more')`); await sleep(200);
+  ok('och under Mer', /BANDO FOUNDATION/.test(w.document.getElementById('view').textContent));
+  ok('studion är som förut för AZ (fullt skal)', w.roleView() === 'full');
+  w = await open(null, null, 'index.html');
+  await sleep(500);
+  w.eval(`(async()=>{ document.getElementById('gE').value='joseph@b.se'; document.getElementById('gP').value='losen123'; await doLogin(); })()`);
+  await until(() => { try{ return /foundation\.html/.test(fr.contentWindow.location.pathname) && fr.contentWindow.FD_READY; }catch(e){ return false; } }, 8000);
+  ok('Joseph (bara Foundation) loggar in i BANDO HQ och hamnar i Foundation', /foundation\.html/.test(fr.contentWindow.location.pathname), fr.contentWindow.location.pathname);
+ }catch(e){ log('KRASCH ' + e.message + '\n' + e.stack); fail++; }
+  log('\n' + pass + ' PASS · ' + fail + ' FAIL');
+  fetch('/__result', {method:'POST', body:lines.join('\n')}).catch(() => {});
+})();
+</script>

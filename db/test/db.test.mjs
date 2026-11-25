@@ -643,7 +643,7 @@ ok('inte till en krockande tid', /Krock/.test(await boom(()=>as(db,U.lea,()=>rpc
 ok('någon annan ledare kan inte flytta det', /Bara cirkelns ledare/.test(await boom(()=>as(db,U.lars,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-23',p_start:'09:00',p_studio:'B'})))||''));
 await q(`update records set data = data || '{"date":"2026-10-26"}' where id=$1`,[b1.id]);
 await as(db,U.lea,()=>rpc('complete_session',{p_booking:b1.id,p_hours:3,p_present:JSON.stringify(['pa','pb'])}));
-await q(`update records set data = data || '{"date":"2026-11-24"}' where id=$1`,[b1.id]);   // (för kontrollen nedan: ett pass som inte varit än)
+await q(`update records set data = data || '{"date":"2037-11-24"}' where id=$1`,[b1.id]);   // (för kontrollen nedan: ett pass som inte varit än — långt fram, så testet inte åldras)
 await q(`delete from record_history where rec_id=$1 and by_id is null`,[b1.id]);   // testets egna datumflyttar
 ok('ett genomfört pass går inte att flytta', /redan genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('update_circle_session',{p_booking:b1.id,p_date:'2026-11-24',p_start:'10:00',p_studio:'A'})))||''));
 ok('eller ställa in', /genomfört/.test(await boom(()=>as(db,U.lea,()=>rpc('cancel_circle_session',{p_booking:b1.id})))||''));

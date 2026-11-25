@@ -1,0 +1,1171 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bando Foundation · HQ</title>
+<meta name="theme-color" content="#0b090e">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-512.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/barlow-condensed-800.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* BANDO FOUNDATION — arbetsytan i BANDO HQ (fas 1). Samma konton och inloggning som studion,
+   samma designsystem (DESIGN.md): natten i studion, en rosa accent, skylten bara i vyns rubrik,
+   handlingar som meningar, etiketter och status som små lugna versaler. Telefon först. */
+@font-face { font-family: "Barlow Condensed"; src: url("fonts/barlow-condensed-800.woff2") format("woff2"); font-weight: 800; font-display: block; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("fonts/barlow-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+:root{
+  --bg:#0b090e; --surface:#141119; --surface2:#1a1620;
+  --line:rgba(255,255,255,.075); --line2:rgba(255,255,255,.13); --line3:rgba(255,255,255,.05);
+  --r:16px; --r-sm:12px; --r-pill:999px; --navW:236px;
+  --pink:#ff3ebf; --tube:#ff6ad8; --btn:#d01b8c; --btn-hover:#b9167f; --glow:rgba(255,62,191,.5);
+  --txt:#f3eff7; --mut:#a39bae; --mut2:#6f6779;
+  --ok2:#34d399; --warn:#fab219; --bad2:#fb7185;
+  --safeT:env(safe-area-inset-top,0px); --safeB:env(safe-area-inset-bottom,0px);
+  --ease:cubic-bezier(.23,1,.32,1); --ease-drawer:cubic-bezier(.32,.72,0,1);
+  --sans:"Barlow","Helvetica Neue",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --disp:"Barlow Condensed","Arial Narrow",sans-serif;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:clip;
+  padding-bottom:calc(86px + var(--safeB));-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:inherit}
+h1,h2,h3,p{margin:0}
+.nums{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- topp och meny ---------- */
+.top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:10px;padding:calc(10px + var(--safeT)) 16px 10px;
+  background:rgba(11,9,14,.88);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.brand{font:800 19px/1 var(--disp);letter-spacing:.05em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+.brand span{color:var(--tube)}
+.top .grow{flex:1}
+.iconbtn{position:relative;flex:none;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.06);display:grid;place-items:center;
+  transition:transform .15s var(--ease)}
+.iconbtn:active{transform:scale(.94)}
+.iconbtn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.badge{position:absolute;top:2px;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--btn);color:#fff;
+  font-size:11px;font-weight:600;line-height:18px;text-align:center}
+.av{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:rgba(255,106,216,.14);color:var(--txt);
+  font-weight:600;font-size:13px}
+.av.lg{width:44px;height:44px;font-size:16px}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:45;display:flex;justify-content:space-around;padding:8px 6px calc(8px + var(--safeB));
+  background:rgba(11,9,14,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 2px;text-decoration:none;color:var(--mut);
+  font-size:10.5px;font-weight:600;border-radius:var(--r-sm);transition:transform .15s var(--ease)}
+nav a:active{transform:scale(.95)}
+nav a svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav a.on{color:#fff}
+nav a.on svg{stroke:var(--tube)}
+nav .brand,nav .nsep,nav a.dsk{display:none}
+
+main{padding:4px 16px 40px;max-width:1120px;margin:0 auto}
+.h1{font:800 clamp(34px,10vw,46px)/1.02 var(--disp);text-transform:uppercase;letter-spacing:.02em;margin:14px 0 6px;overflow-wrap:anywhere}
+.h1 .tube{color:transparent;-webkit-text-stroke:1.5px var(--tube)}
+.sub{color:var(--mut);font-size:15px}
+.back{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:var(--mut);font-size:14px;text-decoration:none}
+.back:active{opacity:.55}
+.eyebrow{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:30px 2px 10px}
+.eyebrow .n{margin-left:auto;letter-spacing:.02em}
+.eyebrow a{margin-left:auto;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--tube);text-decoration:none}
+
+/* ---------- kort och rader ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:13px 14px;text-decoration:none;color:inherit;transition:transform .15s var(--ease),background-color .15s}
+.item:active{transform:scale(.985)}
+@media (hover:hover) and (pointer:fine){ .item:hover{background:var(--surface2)} }
+.item.attn{border-color:rgba(255,106,216,.32)}
+.item .grow{flex:1;min-width:0}
+.item b{display:block;font-weight:600;overflow-wrap:anywhere}
+.item em{display:block;font-style:normal;color:var(--mut);font-size:14px;margin-top:2px;overflow-wrap:anywhere}
+.item .side{flex:none;text-align:right;font-size:13px;color:var(--mut)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;box-shadow:inset 0 0 0 1px var(--line2);color:var(--txt);white-space:nowrap}
+.pill.warn{color:var(--warn);box-shadow:inset 0 0 0 1px rgba(250,178,25,.42)}
+.pill.ok{color:var(--ok2);box-shadow:inset 0 0 0 1px rgba(52,211,153,.42)}
+.pill.live{color:var(--tube);box-shadow:inset 0 0 0 1px rgba(255,106,216,.5)}
+.pill.bad{color:var(--bad2);box-shadow:inset 0 0 0 1px rgba(251,113,133,.45)}
+.pill.mute{color:var(--mut)}
+.dept{flex:none;display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.06);
+  font:800 16px/1 var(--disp);color:var(--txt)}
+.dept.sm{width:22px;height:22px;font-size:12.5px}
+.empty{color:var(--mut);font-size:15px;padding:18px 4px}
+.kv{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--line3);font-size:15px}
+.kv:first-child{border-top:0}
+.kv>span{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);padding-top:3px;flex:none}
+.kv>b{font-weight:500;text-align:right;overflow-wrap:anywhere}
+.prose{white-space:pre-wrap;overflow-wrap:anywhere}
+.okbox,.warnbox,.infobox{border-radius:var(--r-sm);padding:12px 14px;font-size:15px;margin-top:12px}
+.okbox{border:1px solid rgba(52,211,153,.2);background:rgba(52,211,153,.07)}
+.warnbox{border:1px solid rgba(250,178,25,.25);background:rgba(250,178,25,.07)}
+.infobox{border:1px solid rgba(255,106,216,.25);background:rgba(255,62,191,.07)}
+
+/* ---------- knappar, flikar, chips och fält ---------- */
+.btn{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:50px;padding:13px 18px;border:0;
+  border-radius:var(--r-pill);background:var(--btn);color:#fff;font:600 15.5px var(--sans);text-decoration:none;
+  transition:transform .15s var(--ease),background-color .15s}
+.btn:active{transform:scale(.97)}
+@media (hover:hover) and (pointer:fine){ .btn:not(:disabled):hover{background:var(--btn-hover)} .btn.ghost:not(:disabled):hover{background:rgba(255,255,255,.1)} }
+.btn.ghost{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.16);color:var(--txt)}
+.btn.danger{background:rgba(251,113,133,.05);border:1px solid rgba(251,113,133,.38);color:var(--bad2)}
+.btn.slim{min-height:40px;padding:8px 16px;font-size:14px;width:auto}
+.btn:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:10px;align-items:center}
+.row>.btn{flex:1}
+.row>.btn.slim{flex:none}
+.linkbtn{background:none;border:0;padding:0;color:var(--tube);font-size:14px;text-decoration:none}
+.linkbtn:active{opacity:.55}
+.seg{display:flex;background:rgba(255,255,255,.045);border-radius:var(--r-pill);padding:3px;margin:14px 0 4px;overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1;border:0;background:none;border-radius:var(--r-pill);padding:9px 12px;font-size:13.5px;font-weight:600;color:var(--mut);white-space:nowrap}
+.seg button.on{background:rgba(255,255,255,.1);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:12px -16px 0;padding:2px 16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:7px 14px;border-radius:var(--r-pill);
+  border:1px solid rgba(255,255,255,.14);background:none;font-size:13.5px;font-weight:600;color:var(--txt);transition:transform .15s var(--ease)}
+.chip:active{transform:scale(.96)}
+.chip.on{background:rgba(255,62,191,.16);border-color:rgba(255,106,216,.5);color:#fff}
+.chip .n{color:var(--mut);font-weight:500}
+label.lbl{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:18px 2px 8px}
+input,textarea,select{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:var(--r-sm);
+  padding:12px 14px;font:16px var(--sans);color:var(--txt);outline:none}
+textarea{min-height:92px;resize:vertical;line-height:1.45}
+input:focus,textarea:focus,select:focus{border-color:rgba(255,106,216,.65);box-shadow:0 0 0 3px rgba(255,62,191,.15)}
+select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--mut) 50%),linear-gradient(135deg,var(--mut) 50%,transparent 50%);
+  background-position:calc(100% - 20px) 52%,calc(100% - 14px) 52%;background-size:6px 6px;background-repeat:no-repeat;padding-right:36px}
+select option{background:#141119}
+input[type=checkbox]{width:20px;height:20px;flex:none;padding:0;accent-color:var(--tube)}
+.check{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:15px}
+.hint{color:var(--mut);font-size:13.5px;margin-top:6px}
+.err{color:var(--bad2);font-size:14px;margin-top:10px;min-height:1px}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+details.more{margin-top:18px;border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 14px 14px}
+details.more summary{cursor:pointer;padding:10px 0 4px;font-weight:600;font-size:15px;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::after{content:" +";color:var(--tube)}
+details.more[open] summary::after{content:" −"}
+
+/* ---------- överlämningens steg ---------- */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:16px 0 4px;list-style:none;padding:0}
+.steps li{position:relative;padding-top:12px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut2)}
+.steps li::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;border-radius:999px;background:rgba(255,255,255,.08)}
+.steps li.done{color:var(--mut)}
+.steps li.done::before{background:rgba(255,106,216,.45)}
+.steps li.now{color:#fff}
+.steps li.now::before{background:var(--tube);box-shadow:0 0 12px -2px var(--glow)}
+.steps small{display:block;font-weight:500;letter-spacing:0;text-transform:none;color:var(--mut);font-size:12px;margin-top:2px}
+
+/* ---------- meddelanden ---------- */
+.msgs{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.msg{max-width:min(560px,88%);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 13px}
+.msg.mine{align-self:flex-end;background:rgba(255,62,191,.1);border-color:rgba(255,106,216,.22)}
+.msg .who{display:flex;gap:8px;font-size:12.5px;color:var(--mut);margin-bottom:2px}
+.msg .who b{color:var(--txt);font-weight:600}
+.msg .body{white-space:pre-wrap;overflow-wrap:anywhere}
+.mention{color:var(--tube);font-weight:600}
+.composer{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.composer textarea{min-height:64px}
+.mentions{display:flex;flex-wrap:wrap;gap:6px}
+.unread{display:inline-block;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--btn);color:#fff;font-size:11.5px;font-weight:600;line-height:20px;text-align:center}
+
+/* ---------- ark, besked ---------- */
+.scrim{position:fixed;inset:0;z-index:60;background:rgba(5,4,8,.6);opacity:0;pointer-events:none;transition:opacity .28s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:70;max-height:92vh;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;
+  background:#141119;border-radius:22px 22px 0 0;border-top:1px solid rgba(255,255,255,.1);padding:22px 18px calc(24px + var(--safeB));
+  transform:translateY(105%);transition:transform .28s var(--ease-drawer);visibility:hidden}
+.sheet.on{transform:translateY(0);transition-duration:.42s;visibility:visible}
+.sheet h2{font:800 27px/1.08 var(--disp);text-transform:uppercase;letter-spacing:.02em;padding-right:44px;margin-bottom:4px}
+.sheet .x{position:absolute;right:12px;top:12px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.07);display:grid;place-items:center}
+.sheet .x svg{width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none}
+.sheet .btn{margin-top:22px}
+.toast{position:fixed;left:50%;bottom:calc(98px + var(--safeB));z-index:90;transform:translate(-50%,20px);opacity:0;pointer-events:none;
+  background:#1f1a27;border:1px solid var(--line2);border-radius:999px;padding:12px 20px;font-size:15px;max-width:calc(100vw - 32px);
+  transition:opacity .2s,transform .28s var(--ease)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.skel{height:64px;border-radius:var(--r);background:linear-gradient(90deg,rgba(255,255,255,.03),rgba(255,255,255,.06),rgba(255,255,255,.03));margin-bottom:8px}
+
+.grid2,.grid3{display:block}
+.gate{max-width:440px;margin:18vh auto 0;padding:0 20px;text-align:center}
+.gate .btn{margin-top:22px}
+.ai{position:relative;overflow:hidden}
+.ai input{margin-top:10px}
+.stat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+.stat div{background:rgba(255,255,255,.035);border-radius:var(--r-sm);padding:8px 10px}
+.stat b{display:block;font:600 20px/1.1 var(--sans);font-variant-numeric:tabular-nums}
+.stat span{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;line-height:1.25;text-transform:uppercase;color:var(--mut);overflow-wrap:anywhere;hyphens:auto}
+.upd{display:grid;gap:10px;margin-top:4px}
+.upd div{border-top:1px solid var(--line3);padding-top:10px}
+.upd div:first-child{border-top:0;padding-top:0}
+.upd span{display:block;font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.upd p{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+.upd p.none{color:var(--mut2)}
+.doc{display:flex;gap:12px;align-items:center}
+.doc .ic{flex:none;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);display:grid;place-items:center;font-size:10.5px;font-weight:600;letter-spacing:.04em;color:var(--mut)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);padding:0 8px 8px}
+.tbl td{padding:9px 8px;border-top:1px solid var(--line3);vertical-align:top}
+.scrollx{overflow-x:auto}
+
+@media (min-width:1024px){
+  body{padding:0 0 0 var(--navW)}
+  .top{padding:14px 32px;background:rgba(11,9,14,.9)}
+  .top .brand{display:none}
+  nav{top:0;right:auto;bottom:0;width:var(--navW);flex-direction:column;justify-content:flex-start;gap:2px;padding:22px 14px;
+    border-top:0;border-right:1px solid var(--line)}
+  nav .brand{display:block;padding:4px 10px 22px;font-size:21px}
+  nav .nsep{display:block;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut2);padding:20px 12px 8px}
+  nav a{flex:none;flex-direction:row;gap:12px;padding:10px 12px;font-size:14.5px;font-weight:500}
+  nav a.dsk{display:flex}
+  nav a.mob{display:none}
+  nav a.on{background:rgba(255,255,255,.06)}
+  main{padding:0 32px 60px}
+  .h1{font-size:52px;margin-top:6px}
+  .grid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:28px;align-items:start}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .grid3 .item{height:100%}
+  .sheet{left:auto;top:8px;bottom:8px;right:0;width:480px;max-height:none;border-radius:22px 0 0 22px;border-top:0;
+    border-left:1px solid rgba(255,255,255,.08);transform:translateX(105%);padding:30px 28px}
+  .sheet.on{transform:translateX(0)}
+  .toast{bottom:28px}
+}
+@media (prefers-reduced-motion:reduce){ *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important} }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#hq">Bando <span>Foundation</span></a>
+  <div class="grow"></div>
+  <button class="iconbtn" id="bell" aria-label="Notiser" onclick="openNotes()"><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></button>
+  <button class="iconbtn" id="meBtn" aria-label="Du" onclick="openMe()"></button>
+</header>
+<nav id="nav" style="display:none"></nav>
+<main id="view"><div class="skel" style="margin-top:24px"></div><div class="skel"></div><div class="skel"></div></main>
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+/* ===================== SERVERN (samma som studion) =====================
+   Samma Supabase, samma konto: sessionen som index.html sparat i bandosesh_auth. Tester pekar
+   om servern via bandosesh_cloud (bara samma webbplats kan sätta den). */
+const CLOUD_CONFIG = { url: 'https://gwvtqrbrkkfgyesamcfy.supabase.co', key: 'sb_publishable_jdhJX4ns98mvM2qSuUFCQg_rRUvmxpf' };
+const ls = k => { try{ return JSON.parse(localStorage.getItem(k) || 'null'); }catch(e){ return null; } };
+const CLOUD = Object.assign({}, CLOUD_CONFIG, ls('bandosesh_cloud') || {});
+CLOUD.url = String(CLOUD.url || '').replace(/\/$/, '');
+let AUTH = ls('bandosesh_auth');
+function saveAuth(a){ AUTH = a; try{ a ? localStorage.setItem('bandosesh_auth', JSON.stringify(a)) : localStorage.removeItem('bandosesh_auth'); }catch(e){} }
+function toLogin(){
+  /* länken från en notis följer med genom inloggningen */
+  try{ if(location.hash.length > 1) sessionStorage.setItem('fd_next', location.hash); }catch(e){}
+  location.replace('index.html');
+}
+if(!AUTH || !CLOUD.url) toLogin();
+
+async function sbErr(r){
+  let m = 'Servern svarade ' + r.status;
+  try{ const j = await r.json(); m = j.message || j.msg || j.error_description || j.error || m; }catch(e){}
+  if(/row-level security|violates/i.test(m)) m = 'Du har inte behörighet till det här';
+  return m;
+}
+const jwtSub = t => { try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).sub; }catch(e){ return null; } };
+async function token(){
+  if(AUTH.expires_at - Date.now() > 60000) return AUTH.access_token;
+  const r = await fetch(CLOUD.url + '/auth/v1/token?grant_type=refresh_token', {method:'POST',
+    headers:{apikey:CLOUD.key, 'Content-Type':'application/json'}, body:JSON.stringify({refresh_token:AUTH.refresh_token})});
+  if(!r.ok){ saveAuth(null); toLogin(); throw new Error('Inloggningen har gått ut'); }
+  const j = await r.json();
+  saveAuth(Object.assign({}, AUTH, {access_token:j.access_token, refresh_token:j.refresh_token, expires_at:Date.now() + (j.expires_in||3600)*1000, uid:jwtSub(j.access_token)}));
+  return AUTH.access_token;
+}
+async function sb(path, opts){
+  const o = Object.assign({}, opts || {});
+  o.headers = Object.assign({apikey:CLOUD.key, Authorization:'Bearer ' + await token(), 'Content-Type':'application/json'}, o.headers || {});
+  const r = await fetch(CLOUD.url + '/rest/v1' + path, o);
+  if(!r.ok) throw new Error(await sbErr(r));
+  const t = r.status === 204 ? '' : await r.text();
+  return t ? JSON.parse(t) : null;
+}
+const get = p => sb(p);
+const rpc = (fn, args) => sb('/rpc/' + fn, {method:'POST', body:JSON.stringify(args || {})});
+const insert = (table, row) => sb('/' + table, {method:'POST', headers:{Prefer:'return=representation'}, body:JSON.stringify(row)}).then(r => r && r[0]);
+const patch = (table, id, row) => sb('/' + table + '?id=eq.' + encodeURIComponent(id), {method:'PATCH', headers:{Prefer:'return=representation'}, body:JSON.stringify(row)}).then(r => r && r[0]);
+const del = (table, id) => sb('/' + table + '?id=eq.' + encodeURIComponent(id), {method:'DELETE'});
+async function storage(method, path, body, type){
+  const r = await fetch(CLOUD.url + '/storage/v1/object/' + path, {method, body,
+    headers:Object.assign({apikey:CLOUD.key, Authorization:'Bearer ' + await token()}, type ? {'Content-Type':type} : {})});
+  if(!r.ok) throw new Error(await sbErr(r));
+  return r.json();
+}
+
+/* ===================== HJÄLP ===================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const attr = esc;
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+const TODAY = () => ymd(new Date());
+const addDays = (s, n) => { const d = new Date(s + 'T12:00'); d.setDate(d.getDate() + n); return ymd(d); };
+const DAYS = ['sön','mån','tis','ons','tor','fre','lör'], MON = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+const dlabel = s => { if(!s) return ''; const d = new Date(String(s).slice(0,10) + 'T12:00'); return DAYS[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; };
+function dueText(s){
+  if(!s) return '';
+  const t = TODAY();
+  if(s < t){ const n = Math.round((new Date(t + 'T12:00') - new Date(s + 'T12:00')) / 864e5); return 'Försenad ' + n + ' d'; }
+  if(s === t) return 'I dag';
+  if(s === addDays(t, 1)) return 'I morgon';
+  return dlabel(s);
+}
+function when(ts){
+  if(!ts) return '';
+  const d = new Date(ts), t = new Date();
+  if(ymd(d) === ymd(t)) return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return d.getDate() + ' ' + MON[d.getMonth()] + (d.getFullYear() !== t.getFullYear() ? ' ' + d.getFullYear() : '');
+}
+/* "I dag", "I morgon" eller "Försenad 2 d" bredvid datumet — inte datumet två gånger */
+const dueWhen = s => { const r = dueText(s); return dlabel(s) + (r && r !== dlabel(s) ? ' · ' + r : ''); };
+const nt = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0,2).map(x => x[0]).join('').toUpperCase();
+function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2600); }
+const ICON = {
+  hq:'<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/>',
+  tasks:'<path d="M10 6h10M10 12h10M10 18h10"/><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17"/>',
+  handovers:'<path d="M4 8h14l-4-4M20 16H6l4 4"/>',
+  messages:'<path d="M4 5h16v11H9.5L5 20z"/>',
+  docs:'<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  depts:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',
+  admin:'<path d="M12 3 20 6v6c0 4.6-3.4 8-8 9-4.6-1-8-4.4-8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'
+};
+const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
+
+/* ===================== DATA ===================== */
+const F = {me:null, people:[], depts:[], updates:[], tasks:[], handovers:[], threads:[], tmembers:[], messages:[], docs:[], contacts:[], notes:[]};
+const TS = {todo:'Att göra', doing:'Pågår', waiting:'Väntar', done:'Klar'};
+const HS = {sent:'Skickad', received:'Mottagen', in_progress:'Pågår', done:'Slutförd'};
+const TSC = {todo:'', doing:'live', waiting:'warn', done:'ok'};
+const HSC = {sent:'warn', received:'live', in_progress:'live', done:'ok'};
+const KIND = {dm:'Privat', dept:'Avdelning', project:'Projekt', comments:'Kommentarer'};
+const myId = () => F.me && F.me.id;
+const myDepts = () => (F.me ? F.me.depts : []).map(d => d.dept);
+const isAdmin = () => !!(F.me && F.me.admin);
+const inDept = d => myDepts().includes(d);
+const canDept = d => isAdmin() || inDept(d);
+const person = id => F.people.find(p => p.id === id);
+const pname = id => id ? ((person(id) || {}).name || 'Okänd') : '';
+const dept = c => F.depts.find(d => d.code === c) || {code:c, name:''};
+const deptPeople = c => F.people.filter(p => (p.depts||[]).some(d => d.dept === c));
+const chiefOf = c => F.people.find(p => (p.depts||[]).some(d => d.dept === c && d.role === 'chief'));
+const task = id => F.tasks.find(t => t.id === id);
+const handover = id => F.handovers.find(h => h.id === id);
+const thread = id => F.threads.find(t => t.id === id);
+const contact = id => F.contacts.find(c => c.id === id);
+const upd = c => F.updates.find(u => u.dept === c) || {};
+const STUDIO_ROLES = ['manager','admin','producer','camera','staff','leader','participant','customer'];
+
+async function loadAll(){
+  const [me, people, depts, ups, tasks, hos, threads, tms, msgs, docs, contacts, notes] = await Promise.all([
+    rpc('fd_me'), rpc('fd_people'), get('/fd_departments?select=*&order=sort.asc'), get('/fd_dept_updates?select=*'),
+    get('/fd_tasks?select=*&order=created_at.desc'), get('/fd_handovers?select=*&order=created_at.desc'),
+    get('/fd_threads?select=*'), get('/fd_thread_members?select=*'), get('/fd_messages?select=*&order=created_at.desc&limit=600'),
+    get('/fd_documents?select=*&order=created_at.desc'), get('/fd_contacts?select=*'),
+    get('/fd_notifications?select=*&order=created_at.desc&limit=60')]);
+  Object.assign(F, {me, people:people||[], depts:depts||[], updates:ups||[], tasks:tasks||[], handovers:hos||[], threads:threads||[],
+    tmembers:tms||[], messages:msgs||[], docs:docs||[], contacts:contacts||[], notes:notes||[]});
+}
+async function refresh(){ await loadAll(); paint(); }
+
+/* ---------- vad som väntar på mig ---------- */
+const myTasks = () => F.tasks.filter(t => t.assignee === myId() && t.status !== 'done');
+/* Mitt HQ: till mig eller till min avdelning utan namngiven mottagare, och det jag skickat.
+   Överlämningar-vyn: allt till och från mina avdelningar. */
+const isIncoming = h => h.to_member === myId() || (!h.to_member && inDept(h.to_dept));
+const isOutgoing = h => h.from_member === myId();
+const deptIn = h => isIncoming(h) || inDept(h.to_dept);
+const deptOut = h => isOutgoing(h) || inDept(h.from_dept);
+const awaitingMe = () => F.handovers.filter(h => h.status === 'sent' && (h.to_member === myId() || inDept(h.to_dept)));
+const canReceive = h => h.status === 'sent' && (h.to_member === myId() || inDept(h.to_dept));
+const canAdvance = h => h.status !== 'sent' && h.status !== 'done' && (inDept(h.to_dept) || h.to_member === myId() || isAdmin());
+function lastRead(tid){ const m = F.tmembers.find(x => x.thread_id === tid && x.member_id === myId()); return m && m.last_read_at; }
+function unreadIn(tid){
+  const lr = lastRead(tid);
+  return F.messages.filter(m => m.thread_id === tid && m.author !== myId() && (!lr || m.created_at > lr)).length;
+}
+const unreadNotes = () => F.notes.filter(n => !n.read_at).length;
+
+/* ===================== NAVIGERING ===================== */
+let route = 'hq', arg = '';
+const MAIN = [['hq','Mitt HQ'],['tasks','Uppgifter'],['handovers','Överlämningar'],['messages','Meddelanden']];
+function buildNav(){
+  const a = (k, l, cls) => `<a href="#${k}" data-r="${k}" class="${cls||''}">${svg(k)}<span>${l}</span></a>`;
+  $('nav').innerHTML = `<a class="brand" href="#hq">Bando <span>Foundation</span></a>`
+    + MAIN.map(([k, l]) => a(k, l)).join('')
+    + a('more', 'Mer', 'mob')
+    + `<div class="nsep">Arbetsytan</div>` + a('docs', 'Dokument', 'dsk') + a('depts', 'Avdelningar', 'dsk')
+    + (isAdmin() ? a('admin', 'Admin', 'dsk') : '');
+  $('nav').style.display = '';
+}
+function markNav(){
+  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs'}[route] || route;
+  const mobileMore = ['docs','depts','admin'].includes(top) && innerWidth < 1024;
+  document.querySelectorAll('#nav a[data-r]').forEach(el => el.classList.toggle('on', el.dataset.r === top || (mobileMore && el.dataset.r === 'more')));
+}
+function parseHash(){
+  const h = decodeURIComponent(location.hash.slice(1) || 'hq');
+  const m = h.match(/^(task|handover|thread|dept)-(.+)$/);
+  if(m){ route = m[1]; arg = m[2]; } else { route = h.split('/')[0] || 'hq'; arg = h.split('/')[1] || ''; }
+}
+function go(h){ if(location.hash === '#' + h) { parseHash(); paint(); } else location.hash = h; }
+addEventListener('hashchange', () => { parseHash(); closeSheet(true); paint(); scrollTo(0, 0); });
+
+function paint(){
+  if(!F.me) return;
+  $('meBtn').innerHTML = `<span class="av">${esc(initials(F.me.name))}</span>`;
+  const n = unreadNotes();
+  $('bell').innerHTML = svg('bell') + (n ? `<span class="badge nums">${n}</span>` : '');
+  $('bell').setAttribute('aria-label', n ? nt(n, 'oläst notis', 'olästa notiser') : 'Notiser');
+  markNav();
+  const V = {hq:vHQ, tasks:vTasks, task:vTask, handovers:vHandovers, handover:vHandover, messages:vMessages, thread:vThread,
+             docs:vDocs, depts:vDepts, dept:vDept, admin:vAdmin, more:vMore}[route] || vHQ;
+  let html;
+  try{ html = V(); }catch(e){ html = `<div class="h1">Fel</div><p class="sub">${esc(e.message)}</p>`; console.error(e); }
+  $('view').innerHTML = html;
+  if(route === 'thread') afterThread();
+}
+
+/* ===================== MITT HQ ===================== */
+let agendaMode = 'day';
+function agendaItems(){
+  const t = TODAY(), end = agendaMode === 'day' ? t : addDays(t, 6);
+  const out = [];
+  myTasks().forEach(x => { if(x.due && x.due <= end) out.push({due:x.due, html:taskRow(x)}); });
+  F.handovers.forEach(h => {
+    if(h.status === 'done' || !h.due || h.due > end) return;
+    if(isIncoming(h) || isOutgoing(h)) out.push({due:h.due, html:handoverRow(h)});
+  });
+  /* att bekräfta är dagens sak, oavsett deadline */
+  awaitingMe().forEach(h => { if(!h.due || h.due > end) out.push({due:'0', html:handoverRow(h)}); });
+  return out.sort((a, b) => a.due < b.due ? -1 : 1);
+}
+function vHQ(){
+  const me = F.me, items = agendaItems(), tasks = myTasks();
+  const inc = F.handovers.filter(h => isIncoming(h) && h.status !== 'done'), out = F.handovers.filter(h => isOutgoing(h) && h.status !== 'done');
+  const threads = visibleThreads().slice(0, 4);
+  const docs = F.docs.filter(d => d.uploaded_by === myId() || ownerMine(d)).slice(0, 4);
+  const now = new Date();
+  return `
+    <div class="h1">Mitt HQ</div>
+    <p class="sub">Hej ${esc(String(me.name).split(' ')[0])}. ${DAYS[now.getDay()]} ${now.getDate()} ${MON[now.getMonth()]}${awaitingMe().length ? ` · ${nt(awaitingMe().length, 'överlämning väntar', 'överlämningar väntar')} på dig` : ''}.</p>
+    <div class="grid2"><div>
+      <div class="eyebrow">Agenda</div>
+      <div class="seg" role="tablist"><button class="${agendaMode==='day'?'on':''}" onclick="agendaMode='day';paint()">I dag</button><button class="${agendaMode==='week'?'on':''}" onclick="agendaMode='week';paint()">Veckan</button></div>
+      <div class="list" style="margin-top:10px" id="agenda">${items.length ? items.map(i => i.html).join('') : `<div class="empty">${agendaMode==='day' ? 'Inget med deadline i dag.' : 'Inget med deadline de närmaste sju dagarna.'}</div>`}</div>
+
+      <div class="eyebrow">Mina ärenden <span class="n nums">${tasks.length}</span></div>
+      <div class="list" id="mytasks">${tasks.length ? tasks.slice(0, 6).map(taskRow).join('') : '<div class="empty">Inga öppna uppgifter på dig.</div>'}</div>
+      ${tasks.length > 6 ? `<p style="margin-top:10px"><a class="linkbtn" href="#tasks">Visa alla ${tasks.length}</a></p>` : ''}
+
+      <div class="eyebrow">Mina överlämningar</div>
+      <div class="seg"><button class="${hqHo==='in'?'on':''}" onclick="hqHo='in';paint()">Inkommande ${inc.length ? '· ' + inc.length : ''}</button><button class="${hqHo==='out'?'on':''}" onclick="hqHo='out';paint()">Skickade ${out.length ? '· ' + out.length : ''}</button></div>
+      <div class="list" style="margin-top:10px" id="myho">${(hqHo==='in' ? inc : out).length ? (hqHo==='in' ? inc : out).map(handoverRow).join('') : `<div class="empty">${hqHo==='in' ? 'Inga inkommande överlämningar.' : 'Inga skickade överlämningar som pågår.'}</div>`}</div>
+    </div><div>
+      <div class="eyebrow">Mina meddelanden <a href="#messages">Alla</a></div>
+      <div class="list">${threads.length ? threads.map(threadRow).join('') : '<div class="empty">Inga meddelanden än.</div>'}</div>
+
+      <div class="eyebrow">Mina dokument <a href="#docs">Alla</a></div>
+      <div class="list">${docs.length ? docs.map(docRow).join('') : '<div class="empty">Dokument du lägger på uppgifter och överlämningar hamnar här.</div>'}</div>
+
+      <div class="eyebrow">Min avdelning</div>
+      <div class="list">${myDepts().length ? myDepts().map(deptRow).join('') : `<div class="empty">Du är inte med i någon avdelning än.${isAdmin() ? ' Som admin ser du alla under <a class="linkbtn" href="#depts">Avdelningar</a>.' : ''}</div>`}</div>
+
+      <div class="eyebrow">AI-assistent</div>
+      <div class="card ai"><b>Kommer i en senare fas</b>
+        <p class="sub" style="margin-top:4px">Här ska en assistent sammanfatta din dag, svara på frågor om arbetet och föreslå nästa steg. Den är inte byggd än.</p>
+        <input disabled placeholder="Fråga om ditt arbete" aria-label="AI-assistent, inte tillgänglig än"></div>
+    </div></div>`;
+}
+let hqHo = 'in';
+function ownerMine(d){
+  if(d.owner_type === 'task'){ const t = task(d.owner_id); return t && t.assignee === myId(); }
+  if(d.owner_type === 'handover'){ const h = handover(d.owner_id); return h && (h.from_member === myId() || h.to_member === myId()); }
+  return false;
+}
+
+/* ---------- rader ---------- */
+function taskRow(t){
+  const late = t.due && t.due < TODAY() && t.status !== 'done';
+  return `<a class="item" href="#task-${attr(t.id)}" data-task="${attr(t.id)}">
+    <span class="dept sm" title="${attr(dept(t.dept).name)}">${esc(t.dept)}</span>
+    <span class="grow"><b>${esc(t.title)}</b><em>${t.assignee ? esc(pname(t.assignee)) : 'Ingen ansvarig'}${t.handover_id ? ' · från en överlämning' : ''}</em>
+      <span class="meta"><span class="pill ${TSC[t.status]}">${TS[t.status]}</span>${t.due ? `<span class="pill ${late?'bad':'mute'}">${esc(dueText(t.due))}</span>` : ''}${t.protected ? '<span class="pill mute">Skyddad</span>' : ''}</span></span></a>`;
+}
+function handoverRow(h){
+  const mine = canReceive(h), waitingOther = h.status === 'sent' && isOutgoing(h);
+  return `<a class="item${mine ? ' attn' : ''}" href="#handover-${attr(h.id)}" data-ho="${attr(h.id)}">
+    <span class="dept sm">${esc(h.from_dept)}</span>
+    <span class="grow"><b>${esc(h.subject)}</b><em>${esc(h.from_dept)} → ${esc(h.to_dept)}${h.to_member ? ' · ' + esc(pname(h.to_member)) : ''}</em>
+      <span class="meta"><span class="pill ${HSC[h.status]}">${HS[h.status]}</span>${mine ? '<span class="pill live">Bekräfta mottagandet</span>' : ''}${waitingOther ? '<span class="pill mute">Väntar på mottagaren</span>' : ''}${h.due && h.status !== 'done' ? `<span class="pill ${h.due < TODAY() ? 'bad' : 'mute'}">${esc(dueText(h.due))}</span>` : ''}${h.protected ? '<span class="pill mute">Skyddad</span>' : ''}</span></span></a>`;
+}
+function deptRow(c){
+  const d = dept(c), ch = chiefOf(c), u = upd(c);
+  return `<a class="item" href="#dept-${attr(c)}"><span class="dept">${esc(c)}</span>
+    <span class="grow"><b>${esc(d.name)}</b><em>${ch ? 'Chef: ' + esc(ch.name) : d.has_chief === false ? 'Gemensam redaktion' : 'Ingen chef utsedd'} · ${nt(deptPeople(c).length, 'person', 'personer')}</em>
+    ${u.working_on ? `<em style="margin-top:6px;color:var(--txt)">Nu: ${esc(u.working_on.slice(0, 110))}${u.working_on.length > 110 ? '…' : ''}</em>` : ''}</span></a>`;
+}
+function docRow(d){
+  const ext = d.kind === 'link' ? 'Länk' : (String(d.name).split('.').pop() || 'Fil').slice(0, 4).toUpperCase();
+  return `<div class="item doc"><span class="ic">${esc(ext)}</span>
+    <span class="grow"><b>${esc(d.name)}</b><em>${esc(ownerLabel(d))} · ${esc(pname(d.uploaded_by))} · ${when(d.created_at)}</em></span>
+    <button class="btn ghost slim" onclick="openDoc('${attr(d.id)}')">Öppna</button></div>`;
+}
+function ownerLabel(d){
+  if(d.owner_type === 'task'){ const t = task(d.owner_id); return t ? 'Uppgift: ' + t.title : 'Uppgift'; }
+  if(d.owner_type === 'handover'){ const h = handover(d.owner_id); return h ? 'Överlämning: ' + h.subject : 'Överlämning'; }
+  if(d.owner_type === 'project'){ const t = thread(d.owner_id); return t ? 'Projekt: ' + t.title : 'Projekt'; }
+  const c = contact(d.owner_id); return c ? 'Kontakt: ' + c.name : 'Kontakt';
+}
+
+/* ===================== UPPGIFTER ===================== */
+let tFilter = 'mine', tStatus = 'open';
+function vTasks(){
+  const chips = [['mine','Mina'], ['all','Alla jag ser']].concat((isAdmin() ? F.depts.map(d => d.code) : myDepts()).map(c => [c, 'Avdelning ' + c]));
+  let list = F.tasks.filter(t => tFilter === 'mine' ? t.assignee === myId() || t.created_by === myId() : tFilter === 'all' ? true : t.dept === tFilter);
+  list = list.filter(t => tStatus === 'open' ? t.status !== 'done' : t.status === tStatus);
+  list.sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1);
+  return `
+    <div class="h1">Uppgifter</div>
+    <p class="sub">Det som ska göras, vem som gör det och när.</p>
+    <div class="chips">${chips.map(([k, l]) => `<button class="chip ${tFilter===k?'on':''}" onclick="tFilter='${k}';paint()">${esc(l)}</button>`).join('')}</div>
+    <div class="seg">${[['open','Öppna'],['todo','Att göra'],['doing','Pågår'],['waiting','Väntar'],['done','Klar']].map(([k, l]) => `<button class="${tStatus===k?'on':''}" onclick="tStatus='${k}';paint()">${l}</button>`).join('')}</div>
+    ${(isAdmin() || myDepts().length) ? `<div style="margin:14px 0"><button class="btn" id="newTask" onclick="openTaskForm()">Ny uppgift</button></div>` : ''}
+    <div class="list grid3" id="tasklist">${list.length ? list.map(taskRow).join('') : '<div class="empty">Inga uppgifter här.</div>'}</div>`;
+}
+function peopleOptions(sel, filterDept){
+  const ppl = F.people.filter(p => (p.depts||[]).length || p.admin).filter(p => !filterDept || (p.depts||[]).some(d => d.dept === filterDept));
+  return `<option value="">Ingen ansvarig än</option>` + ppl.map(p => `<option value="${attr(p.id)}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${(p.depts||[]).length ? ' · ' + p.depts.map(d => d.dept).join('') : ''}</option>`).join('');
+}
+function deptOptions(sel, onlyMine){
+  const list = onlyMine && !isAdmin() ? F.depts.filter(d => inDept(d.code)) : F.depts;
+  return list.map(d => `<option value="${d.code}" ${d.code === sel ? 'selected' : ''}>${d.code} · ${esc(d.name)}</option>`).join('');
+}
+function openTaskForm(from){
+  const h = from ? handover(from) : null;
+  const d0 = h ? h.to_dept : (myDepts()[0] || 'A');
+  openSheet(`<h2>Ny uppgift</h2>${h ? `<p class="sub">Från överlämningen "${esc(h.subject)}".</p>` : ''}
+    <label class="lbl" for="tT">Vad ska göras?</label><input id="tT" maxlength="160" autocomplete="off">
+    <label class="lbl" for="tD">Beskrivning</label><textarea id="tD"></textarea>
+    <label class="lbl" for="tDept">Avdelning</label><select id="tDept" onchange="$('tA').innerHTML=peopleOptions($('tA').value)">${deptOptions(d0, true)}</select>
+    <label class="lbl" for="tA">Ansvarig</label><select id="tA">${peopleOptions(h ? h.to_member || myId() : myId())}</select>
+    <label class="lbl" for="tDue">Deadline</label><input id="tDue" type="date">
+    ${F.me.protected ? `<label class="check"><input type="checkbox" id="tP"><span>Skyddad uppgift. Bara de med behörighet för skyddade uppgifter ser den, inte heller admin.</span></label>` : ''}
+    <div class="err" id="tErr"></div>
+    <button class="btn" id="tSave" onclick="saveTask(${h ? `'${attr(h.id)}'` : 'null'})">Skapa uppgiften</button>`);
+  setTimeout(() => $('tT').focus(), 60);
+}
+async function saveTask(hid){
+  const title = $('tT').value.trim();
+  if(title.length < 2){ $('tErr').textContent = 'Skriv vad som ska göras.'; return; }
+  const h = hid ? handover(hid) : null;
+  $('tSave').disabled = true;
+  try{
+    const t = await insert('fd_tasks', {dept:$('tDept').value, title, description:$('tD').value.trim(), assignee:$('tA').value || null,
+      due:$('tDue').value || null, created_by:myId(), handover_id:hid || null, contact_id:h ? h.contact_id : null, protected:!!($('tP') && $('tP').checked)});
+    closeSheet(); toast('Uppgiften är skapad'); await loadAll(); go('task-' + t.id);
+  }catch(e){ $('tErr').textContent = e.message; $('tSave').disabled = false; }
+}
+function vTask(){
+  const t = task(arg);
+  if(!t) return notFound('Uppgiften');
+  const canEdit = canDept(t.dept) || t.assignee === myId() || t.created_by === myId();
+  const h = t.handover_id && handover(t.handover_id), c = t.contact_id && contact(t.contact_id);
+  return `<a class="back" href="#tasks">‹ Uppgifter</a>
+    <div class="h1">${esc(t.title)}</div>
+    <div class="meta"><span class="pill ${TSC[t.status]}">${TS[t.status]}</span><span class="pill mute">Avdelning ${esc(t.dept)}</span>${t.protected ? '<span class="pill mute">Skyddad</span>' : ''}</div>
+    <div class="grid2"><div>
+      ${canEdit ? `<div class="seg" id="tStatus">${Object.keys(TS).map(k => `<button class="${t.status===k?'on':''}" onclick="setTaskStatus('${attr(t.id)}','${k}')">${TS[k]}</button>`).join('')}</div>` : ''}
+      <div class="card" style="margin-top:12px">
+        <div class="kv"><span>Ansvarig</span><b>${t.assignee ? esc(pname(t.assignee)) : 'Ingen än'}</b></div>
+        <div class="kv"><span>Deadline</span><b>${t.due ? esc(dueWhen(t.due)) : 'Ingen'}</b></div>
+        <div class="kv"><span>Avdelning</span><b>${esc(t.dept)} · ${esc(dept(t.dept).name)}</b></div>
+        <div class="kv"><span>Skapad av</span><b>${esc(pname(t.created_by))} · ${when(t.created_at)}</b></div>
+        ${h ? `<div class="kv"><span>Överlämning</span><b><a class="linkbtn" href="#handover-${attr(h.id)}">${esc(h.subject)}</a></b></div>` : ''}
+        ${c ? `<div class="kv"><span>Kontakt</span><b>${esc(c.name)}</b></div>` : ''}
+      </div>
+      ${t.description ? `<div class="eyebrow">Beskrivning</div><div class="card prose">${esc(t.description)}</div>` : ''}
+      ${canEdit ? `<div class="row" style="margin-top:12px"><button class="btn ghost slim" onclick="openAssign('${attr(t.id)}')">Byt ansvarig</button></div>` : ''}
+      ${docsBlock('task', t.id, t.dept, canEdit)}
+    </div><div>
+      ${commentsBlock('task', t.id)}
+    </div></div>`;
+}
+async function setTaskStatus(id, s){
+  try{ await patch('fd_tasks', id, {status:s}); await loadAll(); paint(); toast('Status: ' + TS[s]); }catch(e){ toast(e.message); }
+}
+function openAssign(id){
+  const t = task(id);
+  openSheet(`<h2>Byt ansvarig</h2><p class="sub">${esc(t.title)}</p>
+    <label class="lbl" for="aA">Ansvarig</label><select id="aA">${peopleOptions(t.assignee)}</select>
+    <label class="lbl" for="aDue">Deadline</label><input id="aDue" type="date" value="${attr(t.due || '')}">
+    <div class="err" id="aErr"></div><button class="btn" onclick="saveAssign('${attr(id)}')">Spara</button>`);
+}
+async function saveAssign(id){
+  try{ await patch('fd_tasks', id, {assignee:$('aA').value || null, due:$('aDue').value || null}); closeSheet(); await loadAll(); paint(); toast('Sparat'); }
+  catch(e){ $('aErr').textContent = e.message; }
+}
+
+/* ===================== ÖVERLÄMNINGAR ===================== */
+let hTab = 'in';
+function vHandovers(){
+  const inc = F.handovers.filter(deptIn), out = F.handovers.filter(deptOut);
+  const list = hTab === 'in' ? inc : hTab === 'out' ? out : F.handovers;
+  const sorted = list.slice().sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.created_at < b.created_at ? 1 : -1));
+  return `
+    <div class="h1">Överlämningar</div>
+    <p class="sub">Ett ärende som båda avdelningarna följer. Mottagaren bekräftar att den tagit över.</p>
+    <div class="seg"><button class="${hTab==='in'?'on':''}" onclick="hTab='in';paint()">Inkommande</button><button class="${hTab==='out'?'on':''}" onclick="hTab='out';paint()">Skickade</button><button class="${hTab==='all'?'on':''}" onclick="hTab='all';paint()">${isAdmin() ? 'Alla' : 'Alla jag ser'}</button></div>
+    ${(isAdmin() || myDepts().length) ? `<div style="margin:14px 0"><button class="btn" id="newHo" onclick="openHandoverForm()">Ny överlämning</button></div>` : ''}
+    <div class="list grid3" id="holist">${sorted.length ? sorted.map(handoverRow).join('') : '<div class="empty">Inga överlämningar här.</div>'}</div>`;
+}
+function openHandoverForm(){
+  const from = myDepts()[0] || 'A';
+  const to = F.depts.find(d => d.code !== from).code;
+  openSheet(`<h2>Ny överlämning</h2><p class="sub">Lämna över ett ärende till en annan avdelning. Den får en notis och bekräftar att den tar över.</p>
+    <fieldset id="hoForm">
+    <label class="lbl" for="hFrom">Från avdelning</label><select id="hFrom">${deptOptions(from, true)}</select>
+    <label class="lbl" for="hTo">Till avdelning</label><select id="hTo" onchange="hoPeople()">${deptOptions(to, false)}</select>
+    <label class="lbl" for="hToM">Mottagare</label><select id="hToM"></select>
+    <p class="hint">Utan namngiven mottagare får hela avdelningen notisen, och den som tar emot blir ansvarig.</p>
+    <label class="lbl" for="hSubj">Vad gäller det?</label><input id="hSubj" maxlength="160" autocomplete="off">
+    <label class="lbl" for="hBg">Bakgrund</label><textarea id="hBg" placeholder="Vad har hänt, vem har ni pratat med?"></textarea>
+    <label class="lbl" for="hExp">Förväntad åtgärd</label><textarea id="hExp" placeholder="Vad behöver mottagaren göra?"></textarea>
+    <label class="lbl" for="hDue">Deadline</label><input id="hDue" type="date">
+    <details class="more" id="hCont"><summary>Gäller en verksamhet eller person</summary>
+      <p class="hint">Registreras hos din avdelning och följer med överlämningen.</p>
+      <label class="lbl" for="cName">Organisation eller namn</label><input id="cName" autocomplete="off">
+      <label class="lbl" for="cPerson">Kontaktperson</label><input id="cPerson" autocomplete="off">
+      <label class="lbl" for="cPhone">Telefon</label><input id="cPhone" type="tel" autocomplete="off">
+      <label class="lbl" for="cArea">Område</label><input id="cArea" autocomplete="off">
+      <label class="lbl" for="cStatus">Status</label><input id="cStatus" placeholder="Till exempel Intresserad" autocomplete="off">
+      <label class="lbl" for="cNote">Kommentar</label><textarea id="cNote"></textarea>
+      <label class="lbl" for="cNext">Nästa steg</label><input id="cNext" autocomplete="off">
+    </details>
+    <label class="lbl" for="hLink">Länk (Drive, video, presentation)</label><input id="hLink" type="url" placeholder="https://" autocomplete="off">
+    <label class="lbl" for="hFiles">Bilagor</label><input id="hFiles" type="file" multiple accept=".pdf,.ppt,.pptx,.key,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*">
+    <p class="hint">PDF, presentationer, dokument och bilder, högst 50 MB per fil. Video läggs som länk.</p>
+    ${F.me.protected ? `<label class="check"><input type="checkbox" id="hP"><span>Skyddad överlämning. Bara de med behörighet för skyddade uppgifter ser den.</span></label>` : ''}
+    </fieldset>
+    <div class="err" id="hErr"></div>
+    <button class="btn" id="hSend" onclick="sendHandover()">Skicka överlämningen</button>`);
+  hoPeople();
+}
+function hoPeople(){
+  const c = $('hTo').value, ppl = deptPeople(c), ch = chiefOf(c);
+  $('hToM').innerHTML = `<option value="">Hela avdelning ${esc(c)}</option>` + ppl.map(p => `<option value="${attr(p.id)}" ${ch && ch.id === p.id ? 'selected' : ''}>${esc(p.name)}${(p.depts.find(d => d.dept === c) || {}).role === 'chief' ? ' · chef' : ''}</option>`).join('');
+}
+async function sendHandover(){
+  const subj = $('hSubj').value.trim(), from = $('hFrom').value, to = $('hTo').value, link = $('hLink').value.trim();
+  if(subj.length < 2){ $('hErr').textContent = 'Skriv vad överlämningen gäller.'; return; }
+  if(from === to){ $('hErr').textContent = 'Välj en annan avdelning att lämna över till.'; return; }
+  if(link && !/^https?:\/\//i.test(link)){ $('hErr').textContent = 'Länken ska börja med https://'; return; }
+  const files = [...($('hFiles').files || [])];
+  const big = files.find(f => f.size > 50 * 1024 * 1024);
+  if(big){ $('hErr').textContent = big.name + ' är större än 50 MB. Lägg den som länk i stället.'; return; }
+  $('hSend').disabled = true; $('hErr').textContent = '';
+  try{
+    let cid = null;
+    const cname = $('cName').value.trim();
+    if(cname){
+      const c = await insert('fd_contacts', {dept:from, kind:'org', name:cname, contact_person:$('cPerson').value.trim(), phone:$('cPhone').value.trim(),
+        area:$('cArea').value.trim(), status:$('cStatus').value.trim(), note:$('cNote').value.trim(), next_step:$('cNext').value.trim(),
+        created_by:myId(), protected:!!($('hP') && $('hP').checked)});
+      cid = c.id;
+    }
+    const h = await rpc('fd_handover_send', {p_from_dept:from, p_to_dept:to, p_to_member:$('hToM').value || null, p_subject:subj,
+      p_background:$('hBg').value.trim(), p_expected:$('hExp').value.trim(), p_due:$('hDue').value || null, p_contact:cid,
+      p_protected:!!($('hP') && $('hP').checked)});
+    const failed = [];
+    if(link) await addLink('handover', h.id, from, link.replace(/^https?:\/\//, '').slice(0, 60), link).catch(() => failed.push('länken'));
+    for(const f of files) await uploadFile('handover', h.id, from, f).catch(e => failed.push(f.name + ' (' + e.message + ')'));
+    closeSheet(); await loadAll(); go('handover-' + h.id);
+    toast(failed.length ? 'Skickad, men det gick inte att lägga till ' + failed.join(', ') : 'Överlämningen är skickad');
+  }catch(e){ $('hErr').textContent = e.message; $('hSend').disabled = false; }
+}
+function vHandover(){
+  const h = handover(arg);
+  if(!h) return notFound('Överlämningen');
+  const order = ['sent','received','in_progress','done'], at = order.indexOf(h.status);
+  const stamp = {sent:h.created_at, received:h.received_at, in_progress:null, done:h.done_at};
+  const c = h.contact_id && contact(h.contact_id);
+  const tasks = F.tasks.filter(t => t.handover_id === h.id);
+  let action = '';
+  if(canReceive(h)) action = `<button class="btn" id="hoAct" onclick="receive('${attr(h.id)}')">Bekräfta att ${h.to_member === myId() ? 'du' : 'ni'} tar emot den</button>`;
+  else if(canAdvance(h) && h.status === 'received') action = `<button class="btn" id="hoAct" onclick="hoStatus('${attr(h.id)}','in_progress')">Markera som pågående</button>`;
+  else if(canAdvance(h) && h.status === 'in_progress') action = `<button class="btn" id="hoAct" onclick="hoStatus('${attr(h.id)}','done')">Markera som slutförd</button>`;
+  const waiting = h.status === 'sent' && !canReceive(h)
+    ? `<div class="warnbox" id="hoWait">Väntar på att ${h.to_member ? esc(pname(h.to_member)) + ' i ' : ''}avdelning ${esc(h.to_dept)} bekräftar mottagandet.</div>` : '';
+  const doneBox = h.status !== 'sent' && h.received_by ? `<div class="okbox">${esc(pname(h.received_by))} tog emot den ${when(h.received_at)}.</div>` : '';
+  return `<a class="back" href="#handovers">‹ Överlämningar</a>
+    <div class="h1">${esc(h.subject)}</div>
+    <div class="meta"><span class="pill ${HSC[h.status]}" id="hoStatus">${HS[h.status]}</span><span class="pill mute">${esc(h.from_dept)} → ${esc(h.to_dept)}</span>${h.protected ? '<span class="pill mute">Skyddad</span>' : ''}</div>
+    <ol class="steps" aria-label="Status">${order.map((s, i) => `<li class="${i < at ? 'done' : i === at ? 'now' : ''}">${HS[s]}${stamp[s] && i <= at ? `<small>${when(stamp[s])}</small>` : ''}</li>`).join('')}</ol>
+    <div class="grid2"><div>
+      ${waiting}${doneBox}
+      ${action ? `<div style="margin-top:14px">${action}</div>` : ''}
+      <div class="card" style="margin-top:14px">
+        <div class="kv"><span>Från</span><b>${esc(pname(h.from_member))} · ${esc(h.from_dept)} ${esc(dept(h.from_dept).name)}</b></div>
+        <div class="kv"><span>Till</span><b>${h.to_member ? esc(pname(h.to_member)) + ' · ' : ''}${esc(h.to_dept)} ${esc(dept(h.to_dept).name)}</b></div>
+        <div class="kv"><span>Deadline</span><b>${h.due ? esc(h.status !== 'done' ? dueWhen(h.due) : dlabel(h.due)) : 'Ingen'}</b></div>
+        <div class="kv"><span>Skickad</span><b>${when(h.created_at)}</b></div>
+      </div>
+      ${h.background ? `<div class="eyebrow">Bakgrund</div><div class="card prose">${esc(h.background)}</div>` : ''}
+      ${h.expected_action ? `<div class="eyebrow">Förväntad åtgärd</div><div class="card prose">${esc(h.expected_action)}</div>` : ''}
+      ${c ? `<div class="eyebrow">Verksamhet</div><div class="card" id="hoContact">
+        <div class="kv"><span>Namn</span><b>${esc(c.name)}</b></div>
+        ${c.contact_person ? `<div class="kv"><span>Kontaktperson</span><b>${esc(c.contact_person)}</b></div>` : ''}
+        ${c.phone ? `<div class="kv"><span>Telefon</span><b><a class="linkbtn" href="tel:${attr(c.phone.replace(/[^\d+]/g, ''))}">${esc(c.phone)}</a></b></div>` : ''}
+        ${c.area ? `<div class="kv"><span>Område</span><b>${esc(c.area)}</b></div>` : ''}
+        ${c.status ? `<div class="kv"><span>Status</span><b>${esc(c.status)}</b></div>` : ''}
+        ${c.note ? `<div class="kv"><span>Kommentar</span><b>${esc(c.note)}</b></div>` : ''}
+        ${c.next_step ? `<div class="kv"><span>Nästa steg</span><b>${esc(c.next_step)}</b></div>` : ''}</div>` : ''}
+      <div class="eyebrow">Uppgifter <span class="n">${tasks.length || ''}</span></div>
+      <div class="list">${tasks.map(taskRow).join('') || '<div class="empty" style="padding-top:4px">Inga uppgifter kopplade än.</div>'}</div>
+      ${canDept(h.to_dept) && h.status !== 'sent' ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openTaskForm('${attr(h.id)}')">Skapa en uppgift från överlämningen</button>` : ''}
+      ${docsBlock('handover', h.id, h.from_dept, true)}
+    </div><div>
+      ${commentsBlock('handover', h.id)}
+    </div></div>`;
+}
+async function receive(id){
+  const b = $('hoAct'); if(b) b.disabled = true;
+  try{ await rpc('fd_handover_receive', {p_id:id}); await loadAll(); paint(); toast('Du har tagit emot överlämningen'); }
+  catch(e){ toast(e.message); if(b) b.disabled = false; }
+}
+async function hoStatus(id, s){
+  const b = $('hoAct'); if(b) b.disabled = true;
+  try{ await rpc('fd_handover_status', {p_id:id, p_status:s}); await loadAll(); paint(); toast(HS[s]); }
+  catch(e){ toast(e.message); if(b) b.disabled = false; }
+}
+
+/* ===================== DOKUMENT ===================== */
+function docsBlock(type, id, deptCode, canAdd){
+  const docs = F.docs.filter(d => d.owner_type === type && d.owner_id === id);
+  return `<div class="eyebrow">Dokument <span class="n">${docs.length || ''}</span></div>
+    <div class="list">${docs.map(d => `<div class="item doc"><span class="ic">${d.kind === 'link' ? 'Länk' : esc((String(d.name).split('.').pop() || '').slice(0, 4).toUpperCase())}</span>
+      <span class="grow"><b>${esc(d.name)}</b><em>${esc(pname(d.uploaded_by))} · ${when(d.created_at)}${d.size ? ' · ' + Math.max(1, Math.round(d.size / 1024)) + ' kB' : ''}</em></span>
+      <button class="btn ghost slim" onclick="openDoc('${attr(d.id)}')">Öppna</button>
+      ${(d.uploaded_by === myId() || isAdmin()) ? `<button class="iconbtn" aria-label="Ta bort ${attr(d.name)}" onclick="removeDoc('${attr(d.id)}')">${svg('x')}</button>` : ''}</div>`).join('')
+      || '<div class="empty" style="padding-top:4px">Inga dokument än.</div>'}</div>
+    ${canAdd ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openDocForm('${type}','${attr(id)}','${attr(deptCode || '')}')">Lägg till dokument eller länk</button>` : ''}`;
+}
+function openDocForm(type, id, deptCode){
+  openSheet(`<h2>Lägg till</h2><p class="sub">Filen får samma behörighet som det den hör till.</p>
+    <label class="lbl" for="dFile">Fil</label><input id="dFile" type="file" multiple accept=".pdf,.ppt,.pptx,.key,.doc,.docx,.xls,.xlsx,.txt,.csv,image/*">
+    <p class="hint">PDF, presentationer, dokument och bilder, högst 50 MB. Video läggs som länk till Drive.</p>
+    <label class="lbl" for="dUrl">Eller en länk</label><input id="dUrl" type="url" placeholder="https://drive.google.com/…" autocomplete="off">
+    <label class="lbl" for="dName">Namn på länken</label><input id="dName" placeholder="Till exempel Film från besöket" autocomplete="off">
+    <div class="err" id="dErr"></div><button class="btn" id="dSave" onclick="saveDocs('${type}','${attr(id)}','${attr(deptCode)}')">Lägg till</button>`);
+}
+async function saveDocs(type, id, deptCode){
+  const files = [...($('dFile').files || [])], url = $('dUrl').value.trim();
+  if(!files.length && !url){ $('dErr').textContent = 'Välj en fil eller klistra in en länk.'; return; }
+  if(url && !/^https?:\/\//i.test(url)){ $('dErr').textContent = 'Länken ska börja med https://'; return; }
+  $('dSave').disabled = true;
+  try{
+    for(const f of files){
+      if(f.size > 50 * 1024 * 1024) throw new Error(f.name + ' är större än 50 MB');
+      await uploadFile(type, id, deptCode, f);
+    }
+    if(url) await addLink(type, id, deptCode, $('dName').value.trim() || url.replace(/^https?:\/\//, '').slice(0, 60), url);
+    closeSheet(); await loadAll(); paint(); toast('Tillagt');
+  }catch(e){ $('dErr').textContent = e.message; $('dSave').disabled = false; }
+}
+const ownerProtected = (type, id) => !!((type === 'task' ? task(id) : type === 'handover' ? handover(id) : null) || {}).protected;
+function addLink(type, id, deptCode, name, url){
+  return insert('fd_documents', {owner_type:type, owner_id:id, dept:deptCode || null, kind:'link', name, url, uploaded_by:myId(), protected:ownerProtected(type, id)});
+}
+async function uploadFile(type, id, deptCode, f){
+  const safe = f.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80);
+  const path = `${type}/${id}/${Date.now().toString(36)}-${safe}`;
+  await storage('POST', 'foundation/' + path, f, f.type || 'application/octet-stream');
+  try{
+    return await insert('fd_documents', {owner_type:type, owner_id:id, dept:deptCode || null, kind:'file', name:f.name, storage_path:path,
+      mime:f.type || null, size:f.size, uploaded_by:myId(), protected:ownerProtected(type, id)});
+  }catch(e){ await storage('DELETE', 'foundation/' + path).catch(() => {}); throw e; }
+}
+async function openDoc(id){
+  const d = F.docs.find(x => x.id === id); if(!d) return;
+  if(d.kind === 'link'){ window.open(d.url, '_blank', 'noopener'); return; }
+  const w = window.open('', '_blank');
+  try{
+    const r = await storage('POST', 'sign/foundation/' + d.storage_path, JSON.stringify({expiresIn:300}), 'application/json');
+    const u = CLOUD.url + '/storage/v1' + r.signedURL;
+    if(w) w.location = u; else location.href = u;
+  }catch(e){ if(w) w.close(); toast(e.message); }
+}
+async function removeDoc(id){
+  const d = F.docs.find(x => x.id === id); if(!d || !confirm('Ta bort ' + d.name + '?')) return;
+  try{
+    if(d.kind === 'file') await storage('DELETE', 'foundation/' + d.storage_path);
+    await del('fd_documents', id); await loadAll(); paint(); toast('Borttaget');
+  }catch(e){ toast(e.message); }
+}
+let docKind = 'all';
+function vDocs(){
+  const list = F.docs.filter(d => docKind === 'all' || (docKind === 'link' ? d.kind === 'link' : d.kind === 'file'));
+  return `<div class="h1">Dokument</div>
+    <p class="sub">Allt som ligger på uppgifter, överlämningar och projekt du kan se.</p>
+    <div class="seg"><button class="${docKind==='all'?'on':''}" onclick="docKind='all';paint()">Alla</button><button class="${docKind==='file'?'on':''}" onclick="docKind='file';paint()">Filer</button><button class="${docKind==='link'?'on':''}" onclick="docKind='link';paint()">Länkar och video</button></div>
+    <div class="list" style="margin-top:12px">${list.length ? list.map(docRow).join('') : '<div class="empty">Inga dokument än. Lägg till dem på en uppgift, en överlämning eller ett projekt.</div>'}</div>`;
+}
+
+/* ===================== KOMMENTARER OCH MEDDELANDEN ===================== */
+const commentThread = (type, id) => F.threads.find(t => t.kind === 'comments' && t.owner_type === type && t.owner_id === id);
+function commentsBlock(type, id){
+  const t = commentThread(type, id);
+  const msgs = t ? F.messages.filter(m => m.thread_id === t.id).sort((a, b) => a.created_at < b.created_at ? -1 : 1) : [];
+  return `<div class="eyebrow">Kommentarer <span class="n">${msgs.length || ''}</span></div>
+    <div class="msgs">${msgs.map(msgHtml).join('') || '<div class="empty" style="padding-top:4px">Inga kommentarer än. Skriv @ och ett namn för att nämna någon.</div>'}</div>
+    ${composer(`postComment('${type}','${attr(id)}')`)}`;
+}
+function composer(onsend){
+  return `<div class="composer"><label class="sr" for="cmp">Skriv</label><textarea id="cmp" placeholder="Skriv något. @ nämner en person." oninput="mentionHint()"></textarea>
+    <div class="mentions" id="mhint"></div>
+    <div class="row"><span class="grow"></span><button class="btn slim" id="cmpSend" onclick="${onsend}">Skicka</button></div></div>`;
+}
+function mentionHint(){
+  const v = $('cmp').value, m = v.match(/@([\wåäöÅÄÖé-]*)$/);
+  if(!m){ $('mhint').innerHTML = ''; return; }
+  const q = m[1].toLowerCase();
+  $('mhint').innerHTML = F.people.filter(p => p.id !== myId() && ((p.depts||[]).length || p.admin) && p.name.toLowerCase().startsWith(q)).slice(0, 6)
+    .map(p => `<button class="chip" onclick="pickMention('${attr(p.id)}')">@${esc(p.name)}</button>`).join('');
+}
+function pickMention(id){
+  const p = person(id), el = $('cmp');
+  el.value = el.value.replace(/@([\wåäöÅÄÖé-]*)$/, '@' + p.name + ' '); $('mhint').innerHTML = ''; el.focus();
+}
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function mentionsIn(body){
+  return F.people.filter(p => p.id !== myId() && new RegExp('@' + reEsc(p.name) + '(?![\\wåäö])', 'i').test(body)).map(p => p.id);
+}
+function msgHtml(m){
+  let body = esc(m.body);
+  F.people.forEach(p => { body = body.replace(new RegExp('@' + reEsc(esc(p.name)) + '(?![\\wåäö])', 'gi'), s => `<span class="mention">${s}</span>`); });
+  return `<div class="msg${m.author === myId() ? ' mine' : ''}"><div class="who"><b>${esc(pname(m.author))}</b><span>${when(m.created_at)}</span></div><div class="body">${body}</div></div>`;
+}
+async function post(tid){
+  const body = $('cmp').value.trim(); if(!body) return;
+  $('cmpSend').disabled = true;
+  try{ await rpc('fd_post', {p_thread:tid, p_body:body, p_mentions:mentionsIn(body)}); await loadAll(); paint(); }
+  catch(e){ toast(e.message); $('cmpSend').disabled = false; }
+}
+async function postComment(type, id){
+  try{ const tid = await rpc('fd_comments_thread', {p_owner_type:type, p_owner_id:id}); await post(tid); }catch(e){ toast(e.message); }
+}
+function threadTitle(t){
+  if(t.kind === 'dm'){ const o = F.tmembers.filter(x => x.thread_id === t.id && x.member_id !== myId()).map(x => pname(x.member_id)); return o.join(', ') || 'Privat'; }
+  if(t.kind === 'dept') return 'Avdelning ' + t.dept + ' · ' + dept(t.dept).name;
+  if(t.kind === 'project') return t.title;
+  const o = t.owner_type === 'task' ? task(t.owner_id) : handover(t.owner_id);
+  return o ? (o.title || o.subject) : 'Ärende';
+}
+function visibleThreads(){
+  const last = tid => (F.messages.find(m => m.thread_id === tid) || {}).created_at || '';
+  return F.threads.filter(t => t.kind !== 'comments' && (t.kind !== 'dept' || inDept(t.dept)) && (t.kind !== 'project' || F.tmembers.some(x => x.thread_id === t.id && x.member_id === myId()) || isAdmin()))
+    .concat(F.threads.filter(t => t.kind === 'comments' && F.messages.some(m => m.thread_id === t.id)))
+    .sort((a, b) => last(a.id) < last(b.id) ? 1 : -1);
+}
+function threadRow(t){
+  const last = F.messages.find(m => m.thread_id === t.id), u = unreadIn(t.id);
+  const href = t.kind === 'comments' ? `#${t.owner_type}-${t.owner_id}` : `#thread-${t.id}`;
+  return `<a class="item${u ? ' attn' : ''}" href="${attr(href)}">${t.kind === 'dept' ? `<span class="dept sm">${esc(t.dept)}</span>` : `<span class="av">${esc(initials(threadTitle(t)))}</span>`}
+    <span class="grow"><b>${esc(threadTitle(t))}</b><em>${last ? esc(pname(last.author)) + ': ' + esc(last.body.slice(0, 90)) : 'Inga meddelanden än'}</em>
+    <span class="meta"><span class="pill mute">${KIND[t.kind]}</span></span></span>
+    <span class="side">${last ? when(last.created_at) : ''}${u ? `<br><span class="unread nums">${u}</span>` : ''}</span></a>`;
+}
+function vMessages(){
+  const ts = visibleThreads();
+  const missing = myDepts().filter(c => !F.threads.some(t => t.kind === 'dept' && t.dept === c));
+  return `<div class="h1">Meddelanden</div>
+    <p class="sub">Privata meddelanden, avdelningsgrupper och projekt. Kommentarer på ärenden syns här när någon skrivit.</p>
+    <div class="row" style="margin:14px 0"><button class="btn" onclick="openDmForm()">Nytt meddelande</button><button class="btn ghost" onclick="openProjectForm()">Nytt projekt</button></div>
+    <div class="list" id="threads">${missing.map(c => `<button class="item" onclick="openDept('${c}')"><span class="dept sm">${c}</span><span class="grow"><b>Avdelning ${c} · ${esc(dept(c).name)}</b><em>Gruppen för hela avdelningen</em></span></button>`).join('')}
+      ${ts.map(threadRow).join('') || (missing.length ? '' : '<div class="empty">Inga meddelanden än.</div>')}</div>`;
+}
+async function openDept(c){ try{ go('thread-' + await rpc('fd_dept_thread', {p_dept:c})); await loadAll(); paint(); }catch(e){ toast(e.message); } }
+function personPicker(id, multi){
+  const ppl = F.people.filter(p => p.id !== myId() && ((p.depts||[]).length || p.admin));
+  return multi ? ppl.map(p => `<label class="check"><input type="checkbox" name="${id}" value="${attr(p.id)}"><span>${esc(p.name)} <span class="sub">${(p.depts||[]).map(d => d.dept).join(' ')}</span></span></label>`).join('')
+    : `<select id="${id}">${ppl.map(p => `<option value="${attr(p.id)}">${esc(p.name)}${(p.depts||[]).length ? ' · ' + p.depts.map(d => d.dept).join('') : ''}</option>`).join('')}</select>`;
+}
+function openDmForm(){
+  openSheet(`<h2>Nytt meddelande</h2><label class="lbl" for="dmTo">Till</label>${personPicker('dmTo')}
+    <div class="err" id="dmErr"></div><button class="btn" onclick="startDm()">Öppna samtalet</button>`);
+}
+async function startDm(){
+  try{ const tid = await rpc('fd_open_thread', {p_kind:'dm', p_members:[$('dmTo').value], p_title:''}); closeSheet(); await loadAll(); go('thread-' + tid); }
+  catch(e){ $('dmErr').textContent = e.message; }
+}
+function openProjectForm(){
+  openSheet(`<h2>Nytt projekt</h2><p class="sub">En gemensam tråd med dokument för ett arbete som går över avdelningar.</p>
+    <label class="lbl" for="prT">Projektets namn</label><input id="prT" maxlength="120" autocomplete="off">
+    <div class="lbl">Deltagare</div><div id="prP">${personPicker('prP', true)}</div>
+    <div class="err" id="prErr"></div><button class="btn" onclick="startProject()">Skapa projektet</button>`);
+}
+async function startProject(){
+  const ids = [...document.querySelectorAll('input[name=prP]:checked')].map(x => x.value);
+  try{ const tid = await rpc('fd_open_thread', {p_kind:'project', p_members:ids, p_title:$('prT').value.trim()}); closeSheet(); await loadAll(); go('thread-' + tid); }
+  catch(e){ $('prErr').textContent = e.message; }
+}
+function vThread(){
+  const t = thread(arg);
+  if(!t) return notFound('Tråden');
+  if(t.kind === 'comments'){ setTimeout(() => go(t.owner_type + '-' + t.owner_id)); return ''; }
+  const msgs = F.messages.filter(m => m.thread_id === t.id).sort((a, b) => a.created_at < b.created_at ? -1 : 1);
+  const members = F.tmembers.filter(x => x.thread_id === t.id).map(x => x.member_id);
+  return `<a class="back" href="#messages">‹ Meddelanden</a>
+    <div class="h1">${esc(threadTitle(t))}</div>
+    <div class="meta"><span class="pill mute">${KIND[t.kind]}</span>${t.kind === 'project' ? `<span class="sub">${members.map(pname).map(esc).join(', ')}</span>` : ''}</div>
+    <div class="grid2"><div>
+      <div class="msgs" id="msgs">${msgs.map(msgHtml).join('') || '<div class="empty">Inga meddelanden än.</div>'}</div>
+      ${composer(`post('${attr(t.id)}')`)}
+    </div><div>
+      ${t.kind === 'project' ? docsBlock('project', t.id, null, true) + `<button class="btn ghost slim" style="margin-top:10px" onclick="openAddMember('${attr(t.id)}')">Lägg till deltagare</button>` : ''}
+    </div></div>`;
+}
+function afterThread(){
+  const t = thread(arg); if(!t || unreadIn(t.id) === 0) return;
+  rpc('fd_thread_seen', {p_thread:t.id}).then(() => { const m = F.tmembers.find(x => x.thread_id === t.id && x.member_id === myId());
+    if(m) m.last_read_at = new Date().toISOString(); else F.tmembers.push({thread_id:t.id, member_id:myId(), last_read_at:new Date().toISOString()}); }).catch(() => {});
+}
+function openAddMember(tid){
+  openSheet(`<h2>Lägg till deltagare</h2><label class="lbl" for="amP">Person</label>${personPicker('amP')}
+    <div class="err" id="amErr"></div><button class="btn" onclick="addMember('${attr(tid)}')">Lägg till</button>`);
+}
+async function addMember(tid){
+  try{ await rpc('fd_thread_add', {p_thread:tid, p_member:$('amP').value}); closeSheet(); await loadAll(); paint(); toast('Tillagd'); }
+  catch(e){ $('amErr').textContent = e.message; }
+}
+
+/* ===================== AVDELNINGAR ===================== */
+function vDepts(){
+  return `<div class="h1">Avdelningar</div><p class="sub">A till J. Varje avdelning skriver vad den arbetar med, så att de andra kan läsa.</p>
+    <div class="list grid3" style="margin-top:16px" id="deptlist">${F.depts.map(d => deptRow(d.code)).join('')}</div>`;
+}
+function vDept(){
+  const d = F.depts.find(x => x.code === arg); if(!d) return notFound('Avdelningen');
+  const u = upd(d.code), ppl = deptPeople(d.code), can = canDept(d.code);
+  const tasks = F.tasks.filter(t => t.dept === d.code && t.status !== 'done');
+  const hos = F.handovers.filter(h => (h.to_dept === d.code || h.from_dept === d.code) && h.status !== 'done');
+  const f = (k, l) => `<div><span>${l}</span><p class="${u[k] ? '' : 'none'}">${u[k] ? esc(u[k]) : 'Inget skrivet än.'}</p></div>`;
+  return `<a class="back" href="#depts">‹ Avdelningar</a>
+    <div class="h1"><span class="tube">${esc(d.code)}</span> ${esc(d.name)}</div>
+    <p class="sub">${esc(d.mission)}</p>
+    <div class="grid2"><div>
+      <div class="eyebrow">Avdelningsuppdatering ${u.updated_at && u.updated_by ? `<span class="n">${esc(pname(u.updated_by))} · ${when(u.updated_at)}</span>` : ''}</div>
+      <div class="card upd" id="deptupd">${f('working_on', 'Arbetar med nu')}${f('recently_done', 'Har nyligen slutfört')}${f('need_help', 'Behöver hjälp med')}${f('waiting_for', 'Väntar på')}</div>
+      ${can ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openUpdate('${d.code}')">Uppdatera</button>` : ''}
+      <div class="eyebrow">Öppna uppgifter <span class="n">${tasks.length}</span></div>
+      <div class="list">${tasks.length ? tasks.map(taskRow).join('') : `<div class="empty">${can ? 'Inga öppna uppgifter.' : 'Avdelningens uppgifter syns för dess medlemmar.'}</div>`}</div>
+      <div class="eyebrow">Överlämningar <span class="n">${hos.length}</span></div>
+      <div class="list">${hos.length ? hos.map(handoverRow).join('') : '<div class="empty">Inga pågående överlämningar som du ser.</div>'}</div>
+    </div><div>
+      <div class="eyebrow">Personer <span class="n">${ppl.length}</span></div>
+      <div class="card">${ppl.length ? ppl.map(p => `<div class="kv"><span>${(p.depts.find(x => x.dept === d.code) || {}).role === 'chief' ? 'Chef' : 'Medlem'}</span><b>${esc(p.name)}</b></div>`).join('') : '<div class="empty" style="padding:4px 0">Ingen tillsatt än.</div>'}</div>
+      ${can ? `<button class="btn ghost slim" style="margin-top:12px" onclick="openDept('${d.code}')">Avdelningens grupp</button>` : ''}
+    </div></div>`;
+}
+function openUpdate(c){
+  const u = upd(c);
+  const fld = (id, k, l) => `<label class="lbl" for="${id}">${l}</label><textarea id="${id}">${esc(u[k] || '')}</textarea>`;
+  openSheet(`<h2>Avdelning ${c}</h2><p class="sub">Andra avdelningar läser det här.</p>
+    ${fld('uW', 'working_on', 'Arbetar med nu')}${fld('uD', 'recently_done', 'Har nyligen slutfört')}${fld('uH', 'need_help', 'Behöver hjälp med')}${fld('uV', 'waiting_for', 'Väntar på')}
+    <div class="err" id="uErr"></div><button class="btn" id="uSave" onclick="saveUpdate('${c}')">Spara uppdateringen</button>`);
+}
+async function saveUpdate(c){
+  try{ await rpc('fd_save_update', {p_dept:c, p_working:$('uW').value, p_done:$('uD').value, p_help:$('uH').value, p_waiting:$('uV').value});
+       closeSheet(); await loadAll(); paint(); toast('Uppdateringen är sparad'); }
+  catch(e){ $('uErr').textContent = e.message; }
+}
+
+/* ===================== MER (telefon) ===================== */
+function vMore(){
+  const row = (h, t, s) => `<a class="item" href="#${h}"><span class="grow"><b>${t}</b><em>${s}</em></span></a>`;
+  return `<div class="h1">Mer</div><div class="list" style="margin-top:16px">
+    ${row('docs', 'Dokument', nt(F.docs.length, 'dokument', 'dokument') + ' du kan se')}
+    ${row('depts', 'Avdelningar', 'A till J, uppdateringar och personer')}
+    ${isAdmin() ? row('admin', 'Admin', 'Översikt, personer och logg') : ''}
+    ${STUDIO_ROLES.includes(F.me.role) && F.me.role !== 'customer' ? `<a class="item" href="index.html"><span class="grow"><b>Till studion</b><em>BANDO HQ</em></span></a>` : ''}</div>`;
+}
+
+/* ===================== ADMIN ===================== */
+let aTab = 'overview', OV = null, LOG = null;
+function vAdmin(){
+  if(!isAdmin()) return notFound('Sidan');
+  if(aTab === 'overview' && !OV){ rpc('fd_overview', {p_days:14}).then(r => { OV = r; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
+  if(aTab === 'log' && !LOG){ get('/record_history?select=*&kind=like.fd.*&order=id.desc&limit=150').then(r => { LOG = r || []; if(route === 'admin') paint(); }).catch(e => toast(e.message)); }
+  const tab = (k, l) => `<button class="${aTab===k?'on':''}" onclick="aTab='${k}';OV=null;LOG=null;paint()">${l}</button>`;
+  return `<div class="h1">Admin</div><p class="sub">Alla avdelningar. Skyddade uppgifter syns bara med behörigheten för dem.</p>
+    <div class="seg">${tab('overview', 'Översikt')}${tab('people', 'Personer')}${tab('log', 'Logg')}</div>
+    <div id="admin">${aTab === 'overview' ? adminOverview() : aTab === 'people' ? adminPeople() : adminLog()}</div>`;
+}
+function adminOverview(){
+  if(!OV) return '<div class="skel" style="margin-top:14px"></div><div class="skel"></div>';
+  const ho = h => handoverRow(Object.assign({}, h));
+  return `${OV.protected_hidden ? `<div class="infobox">${nt(+OV.protected_hidden, 'skyddad rad', 'skyddade rader')} räknas inte här. De syns bara för den som har behörighet för skyddade uppgifter.</div>` : ''}
+    <div class="eyebrow">Status per avdelning</div>
+    <div class="list grid3" id="ovdepts">${OV.departments.map(d => `<a class="item" href="#dept-${d.code}" data-dept="${d.code}"><span class="dept">${d.code}</span>
+      <span class="grow"><b>${esc(d.name)}</b><em>${d.chief ? 'Chef: ' + esc(d.chief) : dept(d.code).has_chief === false ? 'Gemensam redaktion' : 'Ingen chef utsedd'} · ${nt(+d.members, 'person', 'personer')}</em>
+      <span class="stat"><div><b>${d.open}</b><span>Öppna</span></div><div><b>${d.waiting}</b><span>Väntar</span></div><div><b>${d.done30}</b><span>Klara 30 d</span></div><div><b>${+d.in_waiting + +d.out_waiting}</b><span>Ej mottagna</span></div></span>
+      ${d.update && d.update.working_on ? `<em style="margin-top:8px;color:var(--txt)">Nu: ${esc(d.update.working_on.slice(0, 90))}</em>` : ''}</span></a>`).join('')}</div>
+    <div class="grid2"><div>
+      <div class="eyebrow">Väntande överlämningar <span class="n">${OV.waiting_handovers.length}</span></div>
+      <div class="list" id="ovwait">${OV.waiting_handovers.map(ho).join('') || '<div class="empty">Alla överlämningar är mottagna.</div>'}</div>
+      <div class="eyebrow">Ärenden utan ansvarig <span class="n">${OV.unassigned.length}</span></div>
+      <div class="list" id="ovunas">${OV.unassigned.map(taskRow).join('') || '<div class="empty">Alla öppna uppgifter har en ansvarig.</div>'}</div>
+    </div><div>
+      <div class="eyebrow">Viktiga datum, 14 dagar <span class="n">${OV.upcoming.length}</span></div>
+      <div class="list" id="ovdates">${OV.upcoming.map(u => `<a class="item" href="#${u.type}-${attr(u.id)}"><span class="dept sm">${esc(u.dept)}</span>
+        <span class="grow"><b>${esc(u.title)}</b><em>${u.type === 'task' ? 'Uppgift · ' + TS[u.status] : 'Överlämning · ' + HS[u.status]}</em></span>
+        <span class="side"><span class="pill ${u.due < TODAY() ? 'bad' : 'mute'}">${esc(dueText(u.due))}</span></span></a>`).join('') || '<div class="empty">Inga deadlines de närmaste två veckorna.</div>'}</div>
+      <div class="eyebrow">Projekt <span class="n">${F.threads.filter(t => t.kind === 'project').length}</span></div>
+      <div class="list" id="ovproj">${F.threads.filter(t => t.kind === 'project').map(threadRow).join('') || '<div class="empty">Inga projekt än.</div>'}</div>
+    </div></div>`;
+}
+function adminPeople(){
+  const ppl = F.people.slice().sort((a, b) => ((b.depts||[]).length > 0) - ((a.depts||[]).length > 0) || a.name.localeCompare(b.name, 'sv'));
+  return `<div style="margin:14px 0"><button class="btn" onclick="openAddPerson()">Lägg till en person</button></div>
+    <div class="list" id="people">${ppl.map(p => `<button class="item" onclick="openPerson('${attr(p.id)}')"><span class="av">${esc(initials(p.name))}</span>
+      <span class="grow"><b>${esc(p.name)}</b><em>${(p.depts||[]).length ? p.depts.map(d => d.dept + (d.role === 'chief' ? ' chef' : '')).join(' · ') : 'Ingen avdelning'}${p.email ? ' · ' + esc(p.email) : ''}</em>
+      <span class="meta">${p.admin ? '<span class="pill live">Admin</span>' : ''}${p.protected ? '<span class="pill">Skyddade uppgifter</span>' : ''}${p.role === 'foundation' ? '<span class="pill mute">Bara Foundation</span>' : '<span class="pill mute">Studion också</span>'}${!p.login ? '<span class="pill warn">Inte inloggad än</span>' : ''}</span></span></button>`).join('')}</div>`;
+}
+function openPerson(id){
+  const p = person(id), has = c => ((p.depts||[]).find(d => d.dept === c) || {}).role || '';
+  openSheet(`<h2>${esc(p.name)}</h2><p class="sub">${p.email ? esc(p.email) : ''}</p>
+    <div class="lbl">Avdelningar och roll</div>
+    ${F.depts.map(d => `<div class="kv" style="align-items:center"><span>${d.code} · ${esc(d.name)}</span>
+      <select id="pm-${d.code}" style="width:auto;min-width:130px;padding:8px 34px 8px 12px">
+        <option value="" ${!has(d.code) ? 'selected' : ''}>Inte med</option><option value="member" ${has(d.code) === 'member' ? 'selected' : ''}>Medlem</option>
+        ${d.has_chief ? `<option value="chief" ${has(d.code) === 'chief' ? 'selected' : ''}>Chef</option>` : ''}</select></div>`).join('')}
+    <label class="check"><input type="checkbox" id="pmAdmin" ${p.admin ? 'checked' : ''} ${p.id === myId() ? 'disabled' : ''}><span>Foundation-admin. Ser alla avdelningar, översikten och loggen.</span></label>
+    ${F.me.protected ? `<label class="check"><input type="checkbox" id="pmProt" ${p.protected ? 'checked' : ''}><span>Behörighet för skyddade uppgifter (känsliga ungdoms- och personuppgifter).</span></label>` : ''}
+    <div class="err" id="pmErr"></div><button class="btn" id="pmSave" onclick="savePerson('${attr(id)}')">Spara</button>`);
+}
+async function savePerson(id){
+  const p = person(id), has = c => ((p.depts||[]).find(d => d.dept === c) || {}).role || '';
+  $('pmSave').disabled = true;
+  try{
+    for(const d of F.depts){ const v = $('pm-' + d.code).value; if(v !== has(d.code)) await rpc('fd_set_membership', {p_member:id, p_dept:d.code, p_role:v || null}); }
+    if($('pmAdmin').checked !== !!p.admin) await rpc('fd_set_perm', {p_member:id, p_perm:'foundation_admin', p_on:$('pmAdmin').checked});
+    if($('pmProt') && $('pmProt').checked !== !!p.protected) await rpc('fd_set_perm', {p_member:id, p_perm:'protected_data', p_on:$('pmProt').checked});
+    closeSheet(); await loadAll(); paint(); toast('Sparat');
+  }catch(e){ $('pmErr').textContent = e.message; $('pmSave').disabled = false; await loadAll(); }
+}
+function openAddPerson(){
+  openSheet(`<h2>Lägg till</h2><p class="sub">Personen får en inbjudan med e-post och skapar sitt konto. Finns e-posten redan (till exempel någon i studion) läggs avdelningen bara till.</p>
+    <label class="lbl" for="npN">Namn</label><input id="npN" autocomplete="off">
+    <label class="lbl" for="npE">E-post</label><input id="npE" type="email" autocomplete="off">
+    <label class="lbl" for="npD">Avdelning</label><select id="npD">${deptOptions('A', false)}</select>
+    <label class="lbl" for="npR">Roll</label><select id="npR"><option value="member">Medlem</option><option value="chief">Chef</option></select>
+    <div class="err" id="npErr"></div><button class="btn" id="npSave" onclick="addPerson()">Lägg till och bjud in</button>`);
+}
+async function addPerson(){
+  const name = $('npN').value.trim(), email = $('npE').value.trim();
+  $('npSave').disabled = true; $('npErr').textContent = '';
+  try{
+    const id = await rpc('fd_add_person', {p_name:name, p_email:email, p_depts:[{dept:$('npD').value, role:$('npR').value}]});
+    await loadAll();
+    const p = person(id);
+    if(p && !p.login){
+      /* samma inbjudan som studion: mejl med länk, personen väljer lösenord */
+      await rpc('create_invite', {p_role:'foundation', p_circle:null, p_days:14, p_max:1, p_member:id, p_url:location.origin + '/'});
+      toast('Inbjudan skickad till ' + email);
+    } else toast((p ? p.name : 'Personen') + ' är tillagd');
+    closeSheet(); paint();
+  }catch(e){ $('npErr').textContent = e.message; $('npSave').disabled = false; }
+}
+const LOGOP = {'fd.task':'Uppgift', 'fd.handover':'Överlämning', 'fd.document':'Dokument', 'fd.membership':'Medlemskap', 'fd.perm':'Behörighet', 'fd.person':'Person', 'fd.update':'Avdelningsuppdatering'};
+function adminLog(){
+  if(!LOG) return '<div class="skel" style="margin-top:14px"></div><div class="skel"></div>';
+  const what = r => {
+    const a = r.after || {}, b = r.before || {};
+    if(r.kind === 'fd.task' && r.op === 'status') return TS[b.status] + ' → ' + TS[a.status];
+    if(r.kind === 'fd.handover' && r.op === 'status') return HS[b.status] + ' → ' + HS[a.status];
+    if(r.kind === 'fd.task' && r.op === 'ansvarig') return pname(b.assignee) + ' → ' + pname(a.assignee);
+    if(r.kind === 'fd.membership') return r.rec_id.split(':')[1] + ': ' + ({chief:'chef', member:'medlem'}[b.role] || 'inte med') + ' → ' + ({chief:'chef', member:'medlem'}[a.role] || 'inte med');
+    if(r.kind === 'fd.perm') return a.perm + (a.on ? ' given' : ' borttagen');
+    return a.protected ? 'skyddad' : (a.title || a.subject || a.name || '');
+  };
+  return `<div class="card scrollx" style="margin-top:14px"><table class="tbl" id="logtbl"><thead><tr><th>När</th><th>Vad</th><th>Händelse</th><th>Vem</th></tr></thead><tbody>
+    ${LOG.map(r => `<tr><td class="nums">${when(r.at)}</td><td>${LOGOP[r.kind] || r.kind}${r.kind === 'fd.perm' || r.kind === 'fd.person' ? ' · ' + esc(pname(r.rec_id)) : ''}</td><td>${esc(r.op)}<br><span class="sub">${esc(what(r))}</span></td><td>${esc(pname(r.by_id))}</td></tr>`).join('')
+      || '<tr><td colspan="4" class="empty">Inget loggat än.</td></tr>'}</tbody></table></div>`;
+}
+
+/* ===================== NOTISER, PROFIL, ARK ===================== */
+function openNotes(){
+  const ids = F.notes.filter(n => !n.read_at).map(n => n.id);
+  openSheet(`<h2>Notiser</h2><div class="list" style="margin-top:14px" id="notes">${F.notes.length ? F.notes.map(n => `<a class="item${n.read_at ? '' : ' attn'}" href="#${attr(n.ref_type)}-${attr(n.ref_id)}" onclick="closeSheet()">
+      <span class="grow"><b>${esc(n.title)}</b><em>${esc(n.body)}</em></span><span class="side">${when(n.created_at)}</span></a>`).join('') : '<div class="empty">Inga notiser.</div>'}</div>`);
+  if(ids.length) rpc('fd_mark_read', {p_ids:ids}).then(() => { F.notes.forEach(n => { if(ids.includes(n.id)) n.read_at = new Date().toISOString(); }); paintBell(); }).catch(() => {});
+}
+function paintBell(){ const n = unreadNotes(); const b = $('bell').querySelector('.badge'); if(b && !n) b.remove(); else if(b) b.textContent = n; }
+function openMe(){
+  const me = F.me;
+  openSheet(`<div class="row" style="gap:14px"><span class="av lg">${esc(initials(me.name))}</span><div><h2 style="margin:0">${esc(me.name)}</h2>
+    <p class="sub">${me.admin ? 'Foundation-admin' : 'Bando Foundation'}${me.depts.length ? ' · ' + me.depts.map(d => d.dept + (d.role === 'chief' ? ' chef' : '')).join(', ') : ''}</p></div></div>
+    ${me.role !== 'foundation' && me.role !== 'customer' ? `<a class="btn ghost" href="index.html">Till studion</a>` : ''}
+    <button class="btn ghost" onclick="signOut()">Logga ut</button>`);
+}
+async function signOut(){
+  try{ await fetch(CLOUD.url + '/auth/v1/logout', {method:'POST', headers:{apikey:CLOUD.key, Authorization:'Bearer ' + AUTH.access_token}}); }catch(e){}
+  saveAuth(null); location.replace('index.html');
+}
+let lastFocus = null;
+function openSheet(html){
+  lastFocus = document.activeElement;
+  const s = $('sheet');
+  s.innerHTML = `<button class="x" aria-label="Stäng" onclick="closeSheet()"><svg viewBox="0 0 24 24">${ICON.x}</svg></button>` + html;
+  s.scrollTop = 0; s.classList.add('on'); $('scrim').classList.add('on'); s.focus({preventScroll:true});
+}
+function closeSheet(quiet){
+  const s = $('sheet'); if(!s.classList.contains('on')) return;
+  s.classList.remove('on'); $('scrim').classList.remove('on');
+  if(!quiet && lastFocus && lastFocus.focus) lastFocus.focus({preventScroll:true});
+}
+addEventListener('keydown', e => { if(e.key === 'Escape') closeSheet(); });
+function notFound(what){ return `<a class="back" href="#hq">‹ Mitt HQ</a><div class="h1">Hittades inte</div><p class="sub">${what} finns inte, eller så har du inte behörighet att se den.</p>`; }
+function gate(msg){
+  $('nav').style.display = 'none';
+  $('view').innerHTML = `<div class="gate"><div class="h1">Bando <span class="tube">Foundation</span></div><p class="sub" style="margin-top:10px">${msg}</p>
+    <a class="btn ghost" href="index.html">Till BANDO HQ</a><button class="btn ghost" style="margin-top:10px" onclick="signOut()">Logga ut</button></div>`;
+}
+
+/* ===================== START ===================== */
+async function start(){
+  if(!AUTH) return;
+  try{ await loadAll(); }
+  catch(e){ return gate(esc(e.message)); }
+  if(!F.me || !F.me.member) return gate('Du har inte tillgång till Bando Foundations arbetsyta än. En admin lägger till dig i en avdelning.');
+  try{ const nx = sessionStorage.getItem('fd_next'); if(nx && location.hash.length < 2){ sessionStorage.removeItem('fd_next'); history.replaceState(null, '', nx); } }catch(e){}
+  buildNav(); parseHash(); paint();
+  /* nya notiser och ändringar: hämta när fliken visas igen och varje minut */
+  setInterval(() => { if(!document.hidden && !$('sheet').classList.contains('on')) refresh().catch(() => {}); }, 60000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) refresh().catch(() => {}); });
+  addEventListener('resize', markNav);
+  window.FD_READY = true;
+}
+start();
+</script>
+</body>
+</html>

@@ -158,12 +158,13 @@ const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfråg
   cancel: 'Avbokat', level: 'Ny nivå', reward: 'Inlösen', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ',
   welcome: 'Välkommen till Bando HQ', access: 'Ny registrering', 'access-req': 'Förfrågan om Bando HQ Access',
   'invite-access': 'Bando HQ Access', points: 'Bando Rewards', edu: 'Bando Education',
-  confirmed: 'Session bekräftad', check: 'Studiokontroll', meeting: 'Möte' };
+  confirmed: 'Session bekräftad', check: 'Studiokontroll', meeting: 'Möte', foundation: 'Bando Foundation' };
 const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked', 'cancel'];
 /* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
 export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no', 'welcome', 'access',
   'access-req', 'invite-access', 'confirmed'];
-const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto', welcome: 'Öppna Bando HQ', 'invite-access': 'Skapa ditt konto' };
+const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto', welcome: 'Öppna Bando HQ', 'invite-access': 'Skapa ditt konto',
+  foundation: 'Öppna ärendet' };
 
 /* Servernyckeln: den gamla service_role-JWT:n om den finns, annars en ny
    sb_secret_… ur SUPABASE_SECRET_KEYS. Nya nycklar får bara skickas som apikey. */
@@ -232,7 +233,9 @@ export async function handle() {
     /* 1. push till alla personens enheter (för mejl-notiser bara första försöket,
           så att ett nytt mejlförsök inte ger en push till) */
     if (r.member_id && (vapid || apns) && (!always || r.attempts <= 1)) {
-      const payload = { title: TITLE[r.kind] || 'BANDOHQ', body: r.body, kind: r.kind, url: './' };
+      /* Foundation-notisen öppnar ärendet (foundation.html#handover-…); allt annat appen som förut */
+      const payload = { title: TITLE[r.kind] || 'BANDOHQ', body: r.body, kind: r.kind,
+        url: r.kind === 'foundation' && /^https:\/\/www\.bandohq\.se\//.test(r.link || '') ? r.link : './' };
       const urgent = URGENT.includes(r.kind);
       for (const t of (await rpc('push_targets', { p_member: r.member_id })) || []) {
         const iphone = String(t.kind || 'web').startsWith('apns');

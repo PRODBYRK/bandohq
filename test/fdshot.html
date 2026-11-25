@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8"><title>fdshot</title>
+<style>html,body{margin:0;background:#07050c}iframe{border:0;display:block;margin:0 auto}</style>
+<iframe id="fr"></iframe>
+<script>
+/* Skärmdump av Bando Foundation mot emulatorn (data från test/foundation.html):
+   ?as=e-post&hash=hq&js=kod&w=390&h=844 — loggar in, öppnar foundation.html#hash i en ram. */
+const P = new URLSearchParams(location.search), fr = document.getElementById('fr'), EMU = 'http://localhost:8738', KEY = 'anon-test-key';
+fr.style.width = (P.get('w') || 390) + 'px'; fr.style.height = (P.get('h') || 844) + 'px';
+(async () => {
+  const r = await fetch(EMU + '/auth/v1/token?grant_type=password', {method:'POST', headers:{apikey:KEY, 'Content-Type':'application/json'},
+    body:JSON.stringify({email:P.get('as'), password:'losen123'})});
+  const j = await r.json();
+  localStorage.clear();
+  localStorage.setItem('bandosesh_cloud', JSON.stringify({url:EMU, key:KEY}));
+  localStorage.setItem('bandosesh_auth', JSON.stringify({access_token:j.access_token, refresh_token:j.refresh_token, expires_at:Date.now() + 3600e3, uid:j.user.id, email:P.get('as'), meta:{}}));
+  fr.onload = () => {
+    const w = fr.contentWindow, t0 = Date.now();
+    const tick = () => {
+      if(!w.FD_READY && Date.now() - t0 < 5000) return setTimeout(tick, 50);
+      try{ if(P.get('js')) w.eval(P.get('js')); }catch(e){ document.title = 'ERR ' + e.message; }
+      setTimeout(() => { document.title = 'READY'; }, 600);
+    };
+    tick();
+  };
+  fr.src = '../foundation.html?cb=' + Math.random() + '#' + (P.get('hash') || 'hq');
+})();
+</script>

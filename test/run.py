@@ -5,6 +5,7 @@
     python3 test/run.py test       # bara test/test.html (förhandsläget)
     python3 test/run.py cloud      # bara test/cloud.html (startar emulatorn själv)
     python3 test/run.py db         # bara node-sviterna i db/test
+    python3 test/run.py fd [mapp]   # Bando Foundation: UI-testet mot emulatorn (+ skärmdumpar i mappen)
     python3 test/run.py perf       # bildrutorna under rörelserna (test/perf.html) — relativa siffror
     python3 test/run.py shot 'as=AZ&tab=team' bild.png [390] [1000] [3]   # skärmdump via test/shot.html (bredd, höjd, skala)
     # App Store 6,9": shot '…' bild.png 440 956 3 → 1320×2868
@@ -13,7 +14,7 @@ Webbläsartesterna körs i en egen headless Chrome (egen profil, hård tidsgrän
 skickar sitt resultat till /__result när den är klar, så ingen virtuell tid behövs —
 den fryser klockan och appen räknar med riktiga timers.
 """
-import http.server, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time, urllib.request
+import http.server, os, shutil, signal, socket, subprocess, sys, tempfile, threading, time, urllib.parse, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHROME = os.environ.get('CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
@@ -119,11 +120,32 @@ def cloud():
         os.killpg(em.pid, signal.SIGKILL); em.wait()
 
 
-def shot(params, out, width='390', height='1000', scale='1'):
+def fd(shots_dir=None):
+    """Bando Foundation: UI-testet mot en färsk emulator, och sedan (valfritt) skärmdumparna av
+    Mitt HQ, en avdelning, en överlämning och adminöversikten i 390 och 1440 px."""
+    em = emulator()
+    if not em: return False
+    try:
+        good = page('foundation.html')
+        if good and shots_dir:
+            os.makedirs(shots_dir, exist_ok=True)
+            views = [('mitt-hq', 'samuel@b.se', 'hq', ''), ('avdelning-B', 'samuel@b.se', 'dept-B', ''),
+                     ('overlamning', 'joseph@b.se', 'handovers', "go('handover-'+F.handovers.find(h=>/Tensta/.test(h.subject)).id)"),
+                     ('admin', 'az@b.se', 'admin', '')]
+            for name, who, h, js in views:
+                for w, hh in (('390', '844'), ('1440', '900')):
+                    q = urllib.parse.urlencode({'as': who, 'hash': h, 'js': js})
+                    shot(q, os.path.join(shots_dir, f'fd-{name}-{w}.png'), w, hh, '1', page_='fdshot.html')
+        return good
+    finally:
+        os.killpg(em.pid, signal.SIGKILL); em.wait()
+
+
+def shot(params, out, width='390', height='1000', scale='1', page_='shot.html'):
     srv, port = serve()
     target = os.path.abspath(out)
     before = os.path.getmtime(target) if os.path.exists(target) else 0
-    url = f'http://127.0.0.1:{port}/test/shot.html?{params}&w={width}&h={height}'
+    url = f'http://127.0.0.1:{port}/test/{page_}?{params}&w={width}&h={height}'
     p, prof = chrome(['--hide-scrollbars', '--force-prefers-reduced-motion', f'--window-size={max(int(width), 500)},{height}',
                       f'--force-device-scale-factor={scale}',
                       '--virtual-time-budget=6000', '--screenshot=' + target, url], 60)
@@ -147,9 +169,10 @@ if __name__ == '__main__':
         shot(sys.argv[2], sys.argv[3], *sys.argv[4:7]); sys.exit(0)
     ok = True
     if what in ('all', 'db'):
-        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs')
+        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs'); ok &= node('foundation.test.mjs')
     if what in ('all', 'test'): ok &= page('test.html')
     if what in ('all', 'cloud'): ok &= cloud()
+    if what in ('all', 'fd'): ok &= fd(sys.argv[2] if what == 'fd' and len(sys.argv) > 2 else None)
     if what == 'perf': ok &= page('perf.html', timeout=120)
     print('✓ ALLT GRÖNT' if ok else '✗ NÅGOT ÄR RÖTT')
     sys.exit(0 if ok else 1)

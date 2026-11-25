@@ -220,6 +220,15 @@ ok('samma token återanvänds inom halvtimmen', j1 === j2 && j1 === toBo.headers
 ok('utvecklingsbyggen går till Apples sandlåda', apple.some(x => x.token === T_DI && x.sandbox));
 ok('avinstallerad app (BadDeviceToken) städas bort', !(await q(`select 1 from push_subs where endpoint=$1`, ['apns:' + gone])).length
    && (await q(`select 1 from push_subs where endpoint=$1`, ['apns:' + T_BO])).length === 1);
+/* Bando Foundation: notisen heter Bando Foundation och öppnar ärendet */
+apple.length = 0; got.mail = [];
+await Q('bo', 'Överlämning från A: Tensta', 'Joseph lämnar över "Tensta" till dig.', 'foundation', 'fd1', null, 'https://www.bandohq.se/foundation.html#handover-fh_1');
+await Q('bo', 'Överlämning från A: X', 'X', 'foundation', 'fd2', null, 'https://evil.example/');
+await W.handle();
+const fdP = apple.filter(x => x.token === T_BO && x.body.kind === 'foundation');
+ok('Foundation: push med rubriken Bando Foundation som öppnar ärendet', fdP.length === 2 && fdP[0].body.aps.alert.title === 'Bando Foundation'
+   && fdP.some(x => x.body.url === 'https://www.bandohq.se/foundation.html#handover-fh_1') && fdP.some(x => x.body.url === './'), fdP.map(x => x.body));
+ok('Foundation: mejlknappen heter Öppna ärendet', /Öppna ärendet: https:\/\/www\.bandohq\.se\/foundation\.html#handover-fh_1/.test(W.mailText({ kind: 'foundation', body: 'x', link: 'https://www.bandohq.se/foundation.html#handover-fh_1' }, 'https://www.bandohq.se/foundation.html#handover-fh_1')));
 delete process.env.APNS_KEY; apple.length = 0; got.mail = []; got.push = {};
 await Q('bo', 'Påminnelse: fre 10-13', 'Påminnelse: fre 10-13', 'reminder', 'a3');
 await Q('ada', 'Påminnelse: fre 13-16', 'Påminnelse: fre 13-16', 'reminder', 'a4');

@@ -10,7 +10,8 @@ await db.exec(`create schema if not exists auth;
   create role anon nologin; create role authenticated nologin; create role service_role nologin;
   grant usage on schema public, auth to anon, authenticated;
   alter default privileges in schema public grant all on functions to anon, authenticated;`);
-const files = ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql','06-education-katalog.sql'];
+await db.exec(readFileSync(new URL('./storage-stub.sql', import.meta.url), 'utf8'));
+const files = ['01-schema.sql','02-rls.sql','03-funktioner.sql','04-notiser.sql','06-education-katalog.sql','07-foundation.sql'];
 for (const f of files) if (existsSync(oldDir + '/' + f)) await db.exec(readFileSync(oldDir + '/' + f, 'utf8'));   /* en ny fil finns inte i driften än */
 await db.exec(`insert into members(id,role,name,email) values('az','manager','AZ','az@b.se'),('rkay','producer','RKAY','r@b.se'),('k1','customer','Kund','k@b.se');
   insert into records(kind,id,data,up) values('booking','old1','{"id":"old1","studio":"A","date":"2030-01-01","start":"10:00","end":"14:00","who":"RKAY","status":""}',1);
@@ -52,5 +53,11 @@ const rwt = (await db.query(`select count(*)::int n from pg_tables where tablena
 console.log(JSON.stringify({pts, lv, rwt}));
 const okPts = pts.length===1 && pts[0].kind==='earn' && pts[0].points===100
   && lv==='Bando Access,Bando Rising,Bando Verified,Bando Pro,Bando Elite,Bando Legacy' && rwt===2;
-const ok = okPts && JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===1 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
+/* Foundation (07): tabellerna, de tio avdelningarna och admin för AZ och RKAY — studions roller orörda */
+const fd = (await db.query(`select (select count(*)::int from fd_departments) d,
+  (select string_agg(id, ',' order by id) from members where 'foundation_admin' = any(perms)) a,
+  (select string_agg(id || ':' || role, ',' order by id) from members) r`)).rows[0];
+console.log(JSON.stringify({fd}));
+const okFd = fd.d===10 && fd.a==='az,rkay' && fd.r==='az:manager,k1:customer,lea:leader,pa:participant,rkay:producer';
+const ok = okFd && okPts && JSON.stringify(prods)==='["rkay"]' && acc && acc.participant===true && acc.n===1 && key && key.n===64 && back==='lea' && hist===1 && circ===4 && tabs===3 && web && web.kind==='web' && fns.length===3 && r.length===1 && /p_studio text DEFAULT/.test(r[0].a) && pol.includes('members_crew_clients') && kept===1 && !anonExec.a && !anonExec.b;
 console.log(ok ? '✓ uppgraderingen går igenom' : '✗ något saknas'); process.exit(ok?0:1);

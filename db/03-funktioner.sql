@@ -72,7 +72,8 @@ create or replace function bs_role_sv(r text) returns text
 language sql immutable as $$
   select case r when 'manager' then 'manager' when 'admin' then 'admin' when 'producer' then 'producent'
     when 'leader' then 'cirkelledare' when 'participant' then 'deltagare' when 'customer' then 'kund'
-    when 'camera' then 'kamerateam' when 'staff' then 'medarbetare' else coalesce(r,'') end
+    when 'camera' then 'kamerateam' when 'staff' then 'medarbetare'
+    when 'foundation' then 'medarbetare i Bando Foundation' else coalesce(r,'') end
 $$;
 
 /* "tor 9 okt" — samma form som appen. */
