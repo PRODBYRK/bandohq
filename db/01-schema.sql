@@ -496,6 +496,11 @@ alter table access_requests add column if not exists ref_member text;
    Tilldelningen matchar mot gruppens fasta tid. */
 alter table members add column if not exists avail text[] not null default '{}';
 alter table members add column if not exists referred_by text;
+/* Kundtyp (2026-11): admin väljer i efterhand om en Access-kund är betalande kund eller
+   samarbetsartist. En samarbetsartist kopplas till en artist i rostern (records, kind 'artist'):
+   hens pass blir obetalda och räknas som Artist Session (%) när artisten är procentartist. */
+alter table members add column if not exists customer_type text check (customer_type in ('paying','collab'));
+alter table members add column if not exists artist_id text;
 alter table invites add column if not exists referrer text;
 create index if not exists invites_referrer_idx on invites (referrer) where referrer is not null;
 

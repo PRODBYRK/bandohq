@@ -180,7 +180,39 @@ ok('deltagaren kan inte markera genomförd', /Bara cirkelns ledare/.test(await b
 ok('kunden kan inte boka direkt längre', /förfrågan/.test(await boom(()=>as(db,U.kund,()=>rpc('book_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'13:00',p_studio:'A'})))||''));
 const cb = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'13:00',p_studio:'A',p_note:'Mix'}));
 ok('kunden skickar en förfrågan, markerad betald — utan studio, crewet väljer', cb.paid===true && cb.who==='Studio Nord AB' && cb.status==='request' && cb.studio==='', cb);
-ok('kundens förfrågan är alltid tre timmar', /tre timmar/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'14:00',p_studio:''})))||''));
+/* fri start och slut (2026-11): mellan en och tolv timmar */
+const reqK = async (st, en) => { const r = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:st,p_end:en,p_studio:''}));
+  await as(db,U.kund,()=>rpc('cancel_my_booking',{p_booking:r.id})); return r; };
+const k65 = await reqK('10:00','16:30');
+ok('kunden väljer fritt: 6,5 timmar', k65.status==='request' && k65.start==='10:00' && k65.end==='16:30', k65);
+ok('och en timme', (await reqK('12:00','13:00')).end==='13:00');
+ok('och ett nattpass över midnatt', (await reqK('21:00','02:00')).end==='02:00');
+ok('men inte under en timme', /mellan en och tolv/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'10:30',p_studio:''})))||''));
+ok('och inte över tolv timmar', /mellan en och tolv/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'23:00',p_studio:''})))||''));
+ok('start och slut samma tid nekas', /start- och sluttid/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'10:00',p_studio:''})))||''));
+ok('ett felaktigt klockslag nekas', /start- och sluttid/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10',p_end:'13:00',p_studio:''})))||''));
+ok('cirkelpass är fortfarande tre timmar', /tre timmar/.test(await boom(()=>as(db,U.will,()=>rpc('request_session',{p_circle:'c1',p_date:'2026-12-02',p_start:'18:00',p_end:'20:00'})))||''));
+
+/* kundtyp: admin väljer i efterhand betalande kund eller samarbetsartist */
+await R('artist','ar_nord',{id:'ar_nord', n:'Studio Nord', pct:true});
+await as(db,U.kund,()=>q(`update members set customer_type='collab', artist_id='ar_nord' where id='kund'`));
+ok('kunden kan inte välja sin egen kundtyp', (await one(`select customer_type, artist_id from members where id='kund'`)).customer_type===null);
+ok('producenten kan inte heller (bara admin ändrar kunder)', (await as(db,U.rkay,()=>q(`update members set customer_type='collab' where id='kund' returning id`))).length===0);
+ok('en okänd kundtyp nekas', !!(await boom(()=>q(`update members set customer_type='vip' where id='kund'`))));
+await as(db,U.az,()=>q(`update members set customer_type='collab', artist_id='ar_nord' where id='kund'`));
+ok('admin gör kunden till samarbetsartist, kopplad till rostern', (await one(`select customer_type, artist_id from members where id='kund'`)).artist_id==='ar_nord');
+const kc = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'15:00',p_studio:''}));
+ok('samarbetsartistens förfrågan: obetald, Samarbete, kopplad till artisten', kc.paid===false && kc.artistId==='ar_nord' && kc.title==='Samarbete', kc);
+await as(db,U.kund,()=>rpc('cancel_my_booking',{p_booking:kc.id}));
+await as(db,U.az,()=>q(`update members set artist_id='finns_inte' where id='kund'`));
+const kc2 = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'13:00',p_studio:''}));
+ok('en koppling till en artist som inte finns blir tom', kc2.paid===false && kc2.artistId==='', kc2);
+await as(db,U.kund,()=>rpc('cancel_my_booking',{p_booking:kc2.id}));
+await as(db,U.az,()=>q(`update members set customer_type='paying', artist_id=null where id='kund'`));
+const kp = await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-02',p_start:'10:00',p_end:'13:00',p_studio:''}));
+ok('betalande kund: betald förfrågan som förut', kp.paid===true && kp.artistId==='' && kp.title==='Studiotid', kp);
+await as(db,U.kund,()=>rpc('cancel_my_booking',{p_booking:kp.id}));
+await q(`update members set customer_type=null where id='kund'`);
 ok('en tid där en studio är ledig går bra', (await as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-01',p_start:'14:00',p_end:'17:00'}))).status==='request');
 ok('men inte när båda studiorna är upptagna', /fullbokad/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2026-12-01',p_start:'18:00',p_end:'21:00',p_studio:''})))||''));
 ok('och inte bakåt i tiden', /framåt i tiden/.test(await boom(()=>as(db,U.kund,()=>rpc('request_customer_slot',{p_date:'2020-01-01',p_start:'10:00',p_end:'13:00',p_studio:''})))||''));

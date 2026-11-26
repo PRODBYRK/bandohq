@@ -243,7 +243,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
     bookDay='${D(3)}'; render(); const html = document.getElementById('view').innerHTML;
     openSlot('${D(3)}','18:00'); const uiFull = paintSlot('${D(3)}', booked(), 'sl'); closeSheet();
     let clash = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(3)}',p_start:'18:00',p_end:'21:00',p_studio:'',p_note:''}); }catch(e){ clash = e.message; }
-    let short = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(4)}',p_start:'12:00',p_end:'14:00',p_studio:'',p_note:''}); }catch(e){ short = e.message; }
+    let short = ''; try{ await sbRpc('request_customer_slot',{p_date:'${D(4)}',p_start:'12:00',p_end:'12:30',p_studio:'',p_note:''}); }catch(e){ short = e.message; }
     openSlot('${D(4)}','12:00'); await sendSlot('${D(4)}');
     openSlot('${D(5)}','12:00'); document.getElementById('slN').value='Mix av EP'; await sendSlot('${D(5)}');
     const mine = S.bookings.filter(b=>!b.busy && b.status==='request');
@@ -258,7 +258,7 @@ const mails = async () => (await fetch(EMU+'/__mail')).json();
   ok('kundvyn har priser och förmåner och sin studiocirkel', r.prices && r.group, r);
   ok('kunden landar i kundvyn: bokat syns, men inte vem eller vad', r.view==='customer' && r.free===true, r);
   ok('kan inte fråga om en fullbokad tid — varken i appen eller på servern', r.uiFull==='taken' && /fullbokad/.test(r.clash), r);
-  ok('servern tar bara emot pass på tre timmar', /tre timmar/.test(r.short), r.short);
+  ok('servern tar emot fri längd, men inte under en timme', /mellan en och tolv/.test(r.short), r.short);
   ok('skickar förfrågningar utan studio, markerade betalda', r.n===2 && r.paid===true && r.noStudio===true && r.note==='Mix av EP', r);
   ok('och kan ta tillbaka en', r.after===1, r.after);
 

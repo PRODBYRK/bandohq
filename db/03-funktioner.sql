@@ -107,6 +107,9 @@ $$;
 /* Kunder, deltagare och nya kunder bokar alltid tre timmar (valfri start). */
 create or replace function bs_three_hours(d jsonb) returns boolean
 language sql immutable as $$ select upper(bs_span(d)) - lower(bs_span(d)) = interval '3 hours' $$;
+/* Kunder väljer start och slut fritt (2026-11): mellan en och tolv timmar. */
+create or replace function bs_free_len(d jsonb) returns boolean
+language sql immutable as $$ select upper(bs_span(d)) - lower(bs_span(d)) between interval '1 hour' and interval '12 hours' $$;
 /* Minst en studio är ledig hela tiden — kunder och deltagare väljer ingen studio själva. */
 create or replace function bs_any_free(p_span tsrange, p_ignore text) returns boolean
 language sql stable security definer set search_path = public as $$
@@ -1142,7 +1145,15 @@ begin
     'end', p_end, 'who', me.name, 'title','Studiotid', 'note', left(coalesce(p_note,''),200), 'circleId','',
     'status','request', 'reqBy', me.id, 'hours', null, 'present','[]'::jsonb, 'paid', true,
     'with', coalesce((select jsonb_agg(name order by name) from members where id = any(chosen)), '[]'::jsonb), 'artistId','');
-  if not coalesce(bs_three_hours(d), false) then raise exception 'Ett pass är tre timmar'; end if;
+  if coalesce(p_start,'') !~ '^\d\d:\d\d$' or coalesce(p_end,'') !~ '^\d\d:\d\d$' or p_start = p_end then
+    raise exception 'Välj start- och sluttid';
+  end if;
+  if not coalesce(bs_free_len(d), false) then raise exception 'Ett pass är mellan en och tolv timmar'; end if;
+  /* samarbetsartist: obetalt pass, kopplat till artisten i rostern (Artist Session %) */
+  if me.customer_type = 'collab' then
+    d := d || jsonb_build_object('paid', false, 'title', 'Samarbete',
+      'artistId', coalesce((select id from records where kind = 'artist' and id = me.artist_id and not del), ''));
+  end if;
   if bs_starts(d) is null or bs_starts(d) < now() then raise exception 'Välj en tid framåt i tiden'; end if;
   if not coalesce(bs_any_free(bs_span(d), null), false) then raise exception 'Den tiden är fullbokad'; end if;
   for nm in select name from members where id = any(chosen) order by name loop

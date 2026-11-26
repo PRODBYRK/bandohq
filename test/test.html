@@ -1072,11 +1072,11 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const fullDay = dayState('${day(4)}', booked()), fullChip = [...document.querySelectorAll('#view .dchip')].find(b=>/fullbokat/.test(b.textContent));
     const openArgs = [...html.matchAll(/openSlot\\(([^)]*)\\)/g)].map(m=>m[1].split(',').length);
     openSlot('${day(3)}','17:00');
-    const end = document.getElementById('slE').textContent;
-    document.getElementById('slS').value='11:00'; const taken = paintSlot('${day(3)}', booked(), 'sl'),
+    const end = document.getElementById('slE').textContent, endT = document.getElementById('slT').value;
+    document.getElementById('slS').value='11:00'; moveEnd(); const taken = paintSlot('${day(3)}', booked(), 'sl'),
       takenMsg = document.getElementById('slW').textContent, takenBtn = document.getElementById('slBtn').disabled;
-    document.getElementById('slS').value='21:00'; const late = paintSlot('${day(3)}', booked(), 'sl'), lateMsg = document.getElementById('slW').textContent;
-    document.getElementById('slS').value='17:00'; paintSlot('${day(3)}', booked(), 'sl');
+    document.getElementById('slS').value='21:00'; moveEnd(); const late = paintSlot('${day(3)}', booked(), 'sl'), lateMsg = document.getElementById('slW').textContent;
+    document.getElementById('slS').value='17:00'; moveEnd(); paintSlot('${day(3)}', booked(), 'sl');
     await sendSlot('${day(3)}');
     const rq = S.bookings.find(b=>b.status==='request' && b.who==='Nora Lind');
     const rqv = rq && {who:rq.who, by:rq.reqBy, paid:rq.paid, start:rq.start, end:rq.end, studio:rq.studio};
@@ -1088,14 +1088,14 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     S.session.member='AZ';
     return {ss:ss.map(s=>s.hm+':'+s.st).join(' '), chips, noNames:!/ADREY|Hemlig/i.test(html), bokat:/>Bokat</.test(html),
       noStudioPick:!/spick/.test(html) && openArgs.length>0 && openArgs.every(n=>n===2), fullDay, fullChip:!!fullChip,
-      end, taken, takenMsg, takenBtn, late, lateMsg, rqv, blocks,
+      end, endT, taken, takenMsg, takenBtn, late, lateMsg, rqv, blocks,
       rkay:/VÄNTAR PÅ SVAR/i.test(rkay) && /Nora Lind/.test(rkay) && !/önskar/.test(rkay), adrey:/Nora Lind/.test(adrey), after};`);
   ok('en starttid går när minst en studio är ledig i tre timmar', r.ss==='10:00:ok 11:00:taken 12:00:taken 13:00:taken 14:00:taken 15:00:ok 16:00:ok 17:00:ok 18:00:ok 19:00:ok 20:00:ok', r.ss);
   ok('kunden ser starttiderna som 3-timmarspass, de bokade överstrukna', /^10:00–13:00 11:00–14:00× 12:00–15:00× .*20:00–23:00$/.test(r.chips), r.chips);
   ok('och vad som är bokat — men inte vem eller vad', r.bokat===true && r.noNames===true, r);
   ok('fullbokade dagar syns i dagremsan', r.fullDay==='full' && r.fullChip===true, r);
   ok('kunden väljer aldrig studio', r.noStudioPick===true);
-  ok('förfrågan visar sluttiden: tre timmar', /20:00/.test(r.end) && /3 timmar/.test(r.end), r.end);
+  ok('förfrågan föreslår sluttiden: tre timmar som förval', r.endT==='20:00' && /3 timmar/.test(r.end), r);
   ok('en bokad starttid går inte att skicka', r.taken==='taken' && /Båda studiorna är bokade/.test(r.takenMsg) && r.takenBtn===true, r);
   ok('inte heller en som slutar efter stängning', r.late==='closed' && /sista starttid är 20:00/.test(r.lateMsg), r.lateMsg);
   ok('kunden skickar en förfrågan på 17–20 utan studio', r.rqv && r.rqv.who==='Nora Lind' && r.rqv.by==='p2' && r.rqv.paid===true
@@ -1104,6 +1104,56 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   ok('kundens producent ser den på IDAG (utan önskad studio)', r.rkay===true);
   ok('en annan producent gör det inte', r.adrey===false);
   ok('producenten godkänner och väljer studio', r.after==='', r.after);
+
+  log('\n── fri längd och kundtyp (betalande kund eller samarbetsartist) ──');
+  r = await ev(w,`
+    window.confirm = () => true;
+    S.session.member='Nora Lind'; bookDay='${day(3)}'; bookLen=300; render();
+    const lens = [...document.querySelectorAll('#bookLen .chip')].map(b=>b.textContent.trim()).join(' ');
+    const lenOn = (document.querySelector('#bookLen .chip.on')||{}).textContent;
+    const chips5 = [...document.querySelectorAll('#view .chip.slot')].map(b=>b.textContent+(b.disabled?'×':'')).join(' ');
+    const sub = document.querySelector('#view .sub').textContent;
+    openSlot('${day(3)}','16:00');
+    const t5 = document.getElementById('slT').value;
+    document.getElementById('slT').value='20:30'; const s45 = paintSlot('${day(3)}', booked(), 'sl'), e45 = document.getElementById('slE').textContent;
+    document.getElementById('slT').value='16:30'; const sShort = paintSlot('${day(3)}', booked(), 'sl'), wShort = document.getElementById('slW').textContent, bShort = document.getElementById('slBtn').disabled;
+    document.getElementById('slT').value='20:30'; paintSlot('${day(3)}', booked(), 'sl');
+    await sendSlot('${day(3)}');
+    const rq = S.bookings.filter(b=>b.status==='request' && b.who==='Nora Lind').sort((a,b)=>b.up-a.up)[0];
+    /* admin väljer kundtyp i efterhand */
+    S.session.member='AZ'; go('team');
+    const todo = (document.getElementById('ctypeTodo')||{}).textContent || '', listTxt = document.getElementById('view').textContent;
+    await openArtistProfile('p2'); const prof = (document.getElementById('ctype')||{}).textContent || '';
+    const before = lartists().length;
+    setCtype('p2','collab');
+    const nora = byId('p2'), ar = artistById(nora.artistId);
+    const prof2 = (document.getElementById('ctype')||{}).textContent || '';
+    setCtype('p2','paying'); setCtype('p2','collab');
+    const once = lartists().filter(a=>a.n==='Nora Lind').length;
+    closeSheet();
+    S.session.member='Nora Lind'; render();
+    const sub2 = document.querySelector('#view .sub').textContent;
+    openSlot('${day(5)}','12:00'); await sendSlot('${day(5)}');
+    const cq = S.bookings.filter(b=>b.status==='request' && b.who==='Nora Lind' && b.date==='${day(5)}')[0];
+    S.session.member='AZ';
+    return {lens, lenOn, chips5, sub, t5, s45, e45, sShort, wShort, bShort, rq:rq && {start:rq.start, end:rq.end, paid:rq.paid}, bookLen,
+      todo, listUntyped:/Kundtyp ej vald/.test(listTxt), prof, added:lartists().length - before, ctype:nora.ctype, ar:ar && {n:ar.n, pct:ar.pct}, prof2, once,
+      row:memberRow(nora), sub2, cq:cq && {paid:cq.paid, title:cq.title, artistId:cq.artistId, start:cq.start, end:cq.end}, arId:nora.artistId};`);
+  ok('kunden väljer längd: 1–12 timmar, 5 h vald', r.lens==='1 h 2 h 3 h 4 h 5 h 6 h 8 h 10 h 12 h' && r.lenOn==='5 h', r);
+  ok('starttiderna följer längden (5 h), krockar överstrukna', /^10:00–15:00× /.test(r.chips5) && / 16:00–21:00 17:00–22:00 18:00–23:00$/.test(r.chips5), r.chips5);
+  ok('texten säger att kunden väljer start och slut', /Du väljer start och slut själv/.test(r.sub), r.sub);
+  ok('sluttiden föreslås av längden och går att ändra fritt', r.t5==='21:00' && r.s45==='ok' && /4,5 timmar/.test(r.e45), r);
+  ok('under en timme går inte att skicka', r.sShort==='len' && /mellan en och tolv/.test(r.wShort) && r.bShort===true, r);
+  ok('förfrågan 16:00–20:30 skickas, betald', r.rq && r.rq.start==='16:00' && r.rq.end==='20:30' && r.rq.paid===true, r.rq);
+  ok('admin ser kunder utan kundtyp i Crew', /utan kundtyp/.test(r.todo) && r.listUntyped===true, r.todo);
+  ok('kundprofilen: välj kundtyp', /KUNDTYP/.test(r.prof) && /Betalande kund/.test(r.prof) && /Samarbetsartist/.test(r.prof), r.prof);
+  ok('samarbetsartist: läggs till i rostern som procentartist', r.ctype==='collab' && r.added===1 && r.ar && r.ar.n==='Nora Lind' && r.ar.pct===true, r);
+  ok('profilen förklarar: obetalt, Artist Session (%)', /obetalda/.test(r.prof2) && /Artist Session/.test(r.prof2), r.prof2);
+  ok('byter man fram och tillbaka skapas ingen ny artist', r.once===1);
+  ok('kundtypen sparas på kontot i databasen', r.row.customer_type==='collab' && r.row.artist_id===r.arId, r.row);
+  ok('samarbetsartisten ser inget timpris', /samarbetsartist/.test(r.sub2) && !/kr per timme/.test(r.sub2), r.sub2);
+  ok('samarbetsartistens förfrågan: obetald, Samarbete, kopplad till artisten (och 5 h är ihågkommet)', r.cq && r.cq.paid===false && r.cq.title==='Samarbete' && r.cq.artistId===r.arId
+     && r.cq.end==='17:00', r.cq);
 
   r = await ev(w,`
     window.confirm = () => true;
@@ -2054,7 +2104,7 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
     const gone = !byName('RKAY') && !S.session;
     signIn(byName('AZ')); openDeleteMe(); document.getElementById('dmW').value='AZ'; await deleteMe(); const az = !!byName('AZ');
     closeSheet(); openSupport(); const sup = document.getElementById('sheetBody').textContent; closeSheet();
-    return {link, kept, gone, az, sup:/bandocollect@gmail.com/.test(sup) && /Radera mitt konto/.test(sup) && /tre timmar/.test(sup)};`);
+    return {link, kept, gone, az, sup:/bandocollect@gmail.com/.test(sup) && /Radera mitt konto/.test(sup) && /start och slut/.test(sup)};`);
   ok('Radera mitt konto finns i profilen', r.link===true);
   ok('fel bekräftelse raderar inget', r.kept===true);
   ok('rätt namn: kontot är borta och man är utloggad', r.gone===true, r);

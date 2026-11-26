@@ -562,7 +562,7 @@ revoke all on function bs_put_booking(jsonb) from public, anon, authenticated;
 revoke all on function bs_clash(text, tsrange, text) from public, anon, authenticated;
 revoke all on function bs_any_free(tsrange, text) from public, anon, authenticated;
 revoke all on function bs_starts(jsonb) from public, anon, authenticated;
-revoke all on function bs_three_hours(jsonb) from public, anon, authenticated;
+revoke all on function bs_three_hours(jsonb), bs_free_len(jsonb) from public, anon, authenticated;
 revoke all on function bs_notify(text,text,text,text,text,text,interval,text) from public, anon, authenticated;
 revoke all on function bs_notify_digest(text,text,text,text,text,interval) from public, anon, authenticated;
 revoke all on function bs_notify_append(text,text,text,text,text,text,text,text,interval) from public, anon, authenticated;

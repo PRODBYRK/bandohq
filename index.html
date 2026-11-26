@@ -2913,6 +2913,33 @@ function artistTabs(){
   return canIntel() ? [['profile','Profil'],['bookings','Bokningar'],['rewards','Rewards'],['level','Nivå'],['notes','Anteckningar'],['intel','Intelligence']]
                     : [['profile','Profil'],['bookings','Bokningar'],['notes','Anteckningar']];
 }
+/* Kundtyp: admin väljer i efterhand om en Access-kund är betalande kund eller samarbetsartist.
+   En samarbetsartist kopplas till en artist i rostern (samma namn, annars läggs hen till som
+   procentartist) — hens pass blir obetalda och räknas som Artist Session (%). */
+const CTYPE = {paying:'Betalande kund', collab:'Samarbetsartist'};
+function ctypeRow(a){
+  const t = a.ctype || '', edit = can('manageCrew'), ar = a.artistId ? artistById(a.artistId) : null;
+  const why = t==='collab' ? `Passen är obetalda och räknas som ${ar && ar.pct!==false ? 'Artist Session (%)' : 'övriga'}${ar ? ' · kopplad till ' + esc(ar.n) + ' i rostern' : ''}.`
+    : t==='paying' ? 'Passen är betalda och ger poäng i Bando Rewards.' : 'Välj om personen är betalande kund eller samarbetsartist.';
+  return `<div id="ctype"><div class="lbl" style="margin-top:12px">KUNDTYP</div>
+    ${edit ? `<div class="chips wrap">${[['','Ej vald'],['paying','Betalande kund'],['collab','Samarbetsartist']].map(([k,l])=>
+        `<button class="chip ${t===k?'on':''}" aria-pressed="${t===k}" onclick="setCtype('${a.id}','${k}')">${l}</button>`).join('')}</div>`
+      : `<div class="kv"><span>KUNDTYP</span><b>${t ? CTYPE[t] : 'Ej vald'}</b></div>`}
+    <div class="tiny muted" style="margin-top:6px;line-height:1.5">${why}</div></div>`;
+}
+function setCtype(id, t){
+  const a = byId(id); if(!a || !can('manageCrew')) return;
+  let aid = '';
+  if(t==='collab'){
+    let ar = a.artistId ? artistById(a.artistId) : null;
+    if(!ar || ar.del) ar = lartists().find(x=>x.n.toLowerCase()===a.n.toLowerCase());
+    if(!ar){ ar = bump({id:uid(), n:a.n, active:true, del:false, rank:1e9, priority:2, pct:true, genre:'', note:'Samarbetsartist via Bando HQ Access'}); S.artists.push(ar); }
+    aid = ar.id;
+  }
+  bump(Object.assign(a, {ctype:t, artistId:aid}));
+  save(); sync(true); paintArtist(); render();
+  toast(t ? (CTYPE[t] + (t==='collab' ? ' · kopplad till ' + artistById(aid).n + ' i rostern' : '')) : 'Kundtypen är borttagen');
+}
 async function openArtistProfile(id, tab){
   apId = id; apTab = tab || 'profile'; apData = {};
   paintArtist();
@@ -2956,6 +2983,7 @@ function paintArtist(){
           : '<div class="empty">Inga omdömen än.</div>') : '<div class="skel" style="height:120px"></div>'}`
     : (d.intel ? intelPanel(d.intel) : d.intel===null ? '<div class="empty">Ingen data.</div>' : '<div class="skel" style="height:120px"></div>');
   openSheet(`${X}<h2>${esc(a.n)}</h2><div class="sub">Kund${isPart(a)?' och cirkeldeltagare':''}${a.producer && byId(a.producer) ? ' · producent ' + esc(byId(a.producer).n) : ''}</div>
+    ${a.r==='customer' ? ctypeRow(a) : ''}
     <div class="seg ${tabs.length>4?'many':''}" role="tablist" style="margin:14px 0">${tabs.map(([k,n])=>`<button role="tab" aria-selected="${t===k}" class="${t===k?'on':''}" onclick="apTab='${k}';paintArtist()">${n}</button>`).join('')}</div>
     ${d.err ? `<div class="warn">${esc(d.err)}</div>` : ''}${body}`);
 }
@@ -3265,12 +3293,15 @@ function customersSection(){
     && (canIntel() || a.producer===m.id || (a.producers||[]).includes(m.id))).sort((a,b)=>a.n.localeCompare(b.n,'sv'));
   const inv = can('answerAccess') ? `<button class="btn ghost" style="margin-bottom:10px" onclick="openAccessInvite()">+ Bjud in till Bando HQ Access</button>` : '';
   if(!list.length) return inv ? `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span></div>${inv}` : '';
+  const untyped = list.filter(a=>!a.ctype).length;
   return `<div class="eyebrow">${canIntel()?'KUNDER':'DINA KUNDER'}<span class="ln"></span><span style="color:var(--mut2)">${list.length}</span></div>
     ${inv}
+    ${untyped && can('manageCrew') ? `<div class="note" id="ctypeTodo" style="margin:0 0 10px"><b>${nt(untyped,'kund','kunder')} utan kundtyp.</b>
+      Öppna kunden och välj betalande kund eller samarbetsartist.</div>` : ''}
     ${list.slice(0, 30).map(a=>{ const bs = live().filter(b=>!b.circleId && b.who===a.n && !['request','declined'].includes(b.status));
       const open = bs.filter(b=>!b.closed && startAt(b) < new Date() && mayClose(b)).length;
       return `<button class="member" onclick="openArtistProfile('${a.id}')">${avatar(a)}
-        <div class="grow"><div class="mname">${esc(a.n)}</div><div class="mrole">${nt(bs.length,'pass','pass')}${open?` · <span style="color:var(--warn)">${open} att avsluta</span>`:''}</div></div>
+        <div class="grow"><div class="mname">${esc(a.n)}</div><div class="mrole">${a.ctype ? CTYPE[a.ctype] : '<span style="color:var(--warn)">Kundtyp ej vald</span>'} · ${nt(bs.length,'pass','pass')}${open?` · <span style="color:var(--warn)">${open} att avsluta</span>`:''}</div></div>
         <span style="color:var(--mut2);font-size:18px">›</span></button>`; }).join('')}`;
 }
 
@@ -4781,6 +4812,7 @@ function memberToAcc(m){
     producers: Array.isArray(m.producers) && m.producers.length ? m.producers : (m.producer ? [m.producer] : []),
     reg: m.registered_at||'', consent: !!m.consent_at, source: m.source||'',
     referredBy: m.referred_by||'',                          /* värva en vän: kunden som bjöd in */
+    ctype: m.customer_type||'', artistId: m.artist_id||'',  /* kundtyp (admin väljer) och samarbetsartistens artist i rostern */
     c: m.color || (def&&def.c) || (crewish ? pal[0] : '#6633b8'),
     g: m.glow  || (def&&def.g) || (crewish ? pal[1] : '#9d5cf5'),
     active: m.active!==false, del:false, up:+m.up||0};
@@ -4860,7 +4892,8 @@ async function cloudPush(){
 /* Kontot i appen → raden i databasen. user_id och användarnamnet skickas aldrig härifrån. */
 const memberRow = a => ({id:a.id, role:a.r, name:a.n, email:a.email||null, phone:a.phone||null, color:a.c||null,
   glow:a.g||null, team:a.team||null, ig:a.ig||null, producer:a.producer||null, active:a.active!==false && !a.del, up:a.up||0,
-  participant:a.part!==false, interests:a.interests||[], producers:a.producers||[]});
+  participant:a.part!==false, interests:a.interests||[], producers:a.producers||[],
+  customer_type:a.ctype||null, artist_id:a.artistId||null});
 /* En person sparas direkt — en inbjudan kopplas till raden och den måste finnas först. */
 async function pushMember(a){
   await sb('/members?on_conflict=id', {method:'POST', headers:{Prefer:'resolution=merge-duplicates,return=minimal'},
@@ -9068,6 +9101,7 @@ function staffMeetCard(b, m){
 /* ---------- DELTAGARE ----------
    Bara bokning: välj en tid, skicka förslaget till cirkelledaren, se och avboka sina pass. */
 function vParticipant(){
+  slotLen = SLOT;
   const m = me();
   const cs = myCirclesAsMember();
   if(!cs.length) return `${profileBanner()}
@@ -9225,7 +9259,7 @@ function vLeader(){
 }
 
 /* ---------- BOKA: KUND, DELTAGARE OCH BOKNINGSSIDAN ----------
-   Ett pass är tre timmar och får börja när som helst inom öppettiden. Den som bokar
+   Kunden väljer passets längd (1–12 h), cirkelpass är tre timmar. Passet får börja när som helst inom öppettiden. Den som bokar
    ser vilka tider som är upptagna — aldrig vem eller vad (my_view och free_slots
    skickar bara studio och tid) — och skickar en förfrågan. Crewet väljer studio när
    den godkänns, så kunden väljer aldrig studio själv. */
@@ -9234,8 +9268,13 @@ const openFrom = () => /^\d\d:\d\d$/.test(S.studios.openFrom||'') ? S.studios.op
 const openTo   = () => /^\d\d:\d\d$/.test(S.studios.openTo||'') ? S.studios.openTo : '23:00';
 const toMin = t => { const [h,m] = String(t).split(':').map(Number); return h*60 + (m||0); };
 const toHm  = n => String(Math.floor(n/60)).padStart(2,'0') + ':' + String(n%60).padStart(2,'0');
-const SLOT = 180;                                        /* ett pass, i minuter */
-const plusSlot = t => toHm((toMin(t) + SLOT) % 1440);
+const SLOT = 180;                                        /* cirkelpass och crewets snabbval, i minuter */
+/* Kunder väljer längden själva (1–12 h); bokningsvyn sätter slotLen innan tiderna ritas. */
+let slotLen = SLOT, bookLen = SLOT;
+const LEN_MIN = 60, LEN_MAX = 720, BOOK_LENS = [60,120,180,240,300,360,480,600,720];
+const plusSlot = t => toHm((toMin(t) + slotLen) % 1440);
+const lenH = n => String(Math.round(n/30)/2).replace('.', ',');
+const lenTxt = n => lenH(n) + (n===60 ? ' timme' : ' timmar');
 const dayEnd = () => toMin(openTo()) || 1440;            /* 00:00 = midnatt */
 /* Upptaget i en studio en dag, i minuter från midnatt: [start, slut, passet].
    Ett nattpass från dagen innan räknas från 00:00. */
@@ -9266,20 +9305,20 @@ function prodSpans(date){
 /* En starttid är 'ok' när minst en studio är ledig hela passet, annars 'taken'.
    'producer' = en vald producent är upptagen. 'past' = redan passerad (eller mindre än
    en halvtimme bort), 'closed' = utanför öppettiden. */
-function slotState(date, list, hm, spans, pspans){
+function slotState(date, list, hm, spans, pspans, len){
   if(!/^\d\d:\d\d$/.test(hm||'')) return 'closed';
-  const t = toMin(hm), now = new Date();
-  if(t < toMin(openFrom()) || t + SLOT > dayEnd()) return 'closed';
+  const t = toMin(hm), now = new Date(), L = len || slotLen;
+  if(t < toMin(openFrom()) || t + L > dayEnd()) return 'closed';
   if(date < iso(now) || (date === iso(now) && t < now.getHours()*60 + now.getMinutes() + 30)) return 'past';
   spans = spans || ['A','B'].map(st=>busySpans(date, st, list));
-  if(!spans.some(sp => !sp.some(([s,e]) => s < t + SLOT && t < e))) return 'taken';
-  const hit = (pspans || prodSpans(date)).find(([s,e]) => s < t + SLOT && t < e);
+  if(!spans.some(sp => !sp.some(([s,e]) => s < t + L && t < e))) return 'taken';
+  const hit = (pspans || prodSpans(date)).find(([s,e]) => s < t + L && t < e);
   if(hit){ slotBusyName = hit[2]; return 'producer'; }
   return 'ok';
 }
 function slotStarts(date, list){
   const spans = ['A','B'].map(st=>busySpans(date, st, list)), ps = prodSpans(date), out = [];
-  for(let t = toMin(openFrom()); t + SLOT <= dayEnd(); t += 30) out.push({t, hm:toHm(t), st:slotState(date, list, toHm(t), spans, ps)});
+  for(let t = toMin(openFrom()); t + slotLen <= dayEnd(); t += 30) out.push({t, hm:toHm(t), st:slotState(date, list, toHm(t), spans, ps)});
   return out;
 }
 /* Det som visas som knappar: hela timmar, och en halvtimme bara när den är enda vägen in. */
@@ -9289,16 +9328,20 @@ function dayState(date, list){
   const ss = slotStarts(date, list);
   return ss.some(s=>s.st==='ok') ? 'free' : ss.some(s=>s.st==='taken' || s.st==='producer') ? 'full' : 'past';
 }
-const slotWhy = st => st==='taken' ? 'Båda studiorna är bokade då. Välj en annan starttid.'
+const slotWhy = (st, len) => st==='len' ? 'Ett pass är mellan en och tolv timmar.'
+  : st==='taken' ? 'Båda studiorna är bokade då. Välj en annan starttid.'
   : st==='producer' ? `${slotBusyName || 'Producenten'} är upptagen då. Välj en annan tid${slotProd && slotProd.names.length > 1 ? '' : ' eller en annan producent'}.`
   : st==='past' ? 'Den tiden har redan varit eller är för nära — välj en senare.'
-  : `Studion har öppet ${openFrom()}–${openTo()}. Ett pass är tre timmar, så sista starttid är ${toHm(dayEnd()-SLOT)}.`;
+  : `Studion har öppet ${openFrom()}–${openTo()}. Passet är ${lenTxt(len || slotLen)}, så sista starttid är ${toHm(Math.max(toMin(openFrom()), dayEnd()-(len || slotLen)))}.`;
 /* Starttidsfältet: visar sluttiden och varför tiden inte går. p = prefix för fältens id. */
 function paintSlot(date, list, p){
-  const v = (document.getElementById(p+'S')||{}).value || '', st = slotState(date, list, v);
+  const v = (document.getElementById(p+'S')||{}).value || '', te = document.getElementById(p+'T');
+  /* kunden har ett sluttidsfält: längden räknas ur start och slut (över midnatt går bra) */
+  const len = te ? (/^\d\d:\d\d$/.test(te.value) && /^\d\d:\d\d$/.test(v) ? (toMin(te.value) - toMin(v) + 1440) % 1440 : 0) : slotLen;
+  const st = te && (len < LEN_MIN || len > LEN_MAX) ? 'len' : slotState(date, list, v, null, null, len);
   const e = document.getElementById(p+'E'), w = document.getElementById(p+'W'), btn = document.getElementById(p+'Btn');
-  if(e) e.innerHTML = /^\d\d:\d\d$/.test(v) ? `till <b>${plusSlot(v)}</b> · 3 timmar` : '';
-  if(w) w.innerHTML = st==='ok' ? '' : `<div class="warn">${esc(slotWhy(st))}</div>`;
+  if(e) e.innerHTML = !/^\d\d:\d\d$/.test(v) ? '' : te ? (len ? `<b>${lenTxt(len)}</b>` : '') : `till <b>${plusSlot(v)}</b> · ${lenTxt(slotLen)}`;
+  if(w) w.innerHTML = st==='ok' ? '' : `<div class="warn">${esc(slotWhy(st, len))}</div>`;
   if(btn) btn.disabled = st!=='ok';
   return st;
 }
@@ -9320,7 +9363,7 @@ function slotPicker(c){
         const own = !!(c.mine && c.mine(b)), lab = own ? c.mineLabel : 'Bokat';
         return `<i class="tl-b${own?' own':''}" style="left:${pct(s).toFixed(2)}%;width:${(pct(e)-pct(s)).toFixed(2)}%"
           title="${esc(lab)} ${toHm(s%1440)}–${toHm(e%1440)}"><span>${esc(lab)}</span></i>`; }).join('')}
-      ${sel!==null ? `<i class="tl-sel" style="left:${pct(sel).toFixed(2)}%;width:${(pct(sel+SLOT)-pct(sel)).toFixed(2)}%"></i>` : ''}
+      ${sel!==null ? `<i class="tl-sel" style="left:${pct(sel).toFixed(2)}%;width:${(pct(sel+slotLen)-pct(sel)).toFixed(2)}%"></i>` : ''}
     </div>`;
   return `
     <div class="days" role="tablist" aria-label="Välj dag">${c.days.map(d=>{ const s = dayState(d, c.list), x = fromIso(d);
@@ -9336,7 +9379,7 @@ function slotPicker(c){
       <div class="tl-key"><span><i class="k-free"></i>Ledigt</span><span><i class="k-b"></i>Bokat</span>${
         c.mine ? `<span><i class="k-own"></i>${esc(c.mineLabel)}</span>` : ''}</div>
     </div>
-    <div class="lbl" style="margin-top:16px">STARTTID <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— passet är 3 timmar</span></div>
+    <div class="lbl" style="margin-top:16px">STARTTID <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:500">— passet är ${lenTxt(slotLen)}</span></div>
     ${shown.length ? `<div class="chips wrap slots">${shown.map(s => s.st==='ok'
         ? `<button class="chip slot ${c.sel===s.hm?'on':''}" onclick="${c.startJs(ds, s.hm)}">${s.hm}–${plusSlot(s.hm)}</button>`
         : `<button class="chip slot taken" disabled title="${s.st==='producer' ? 'Producenten är upptagen' : 'Bokat'}">${s.hm}–${plusSlot(s.hm)}</button>`).join('')}</div>` : ''}
@@ -9439,6 +9482,8 @@ function vCustomer(){
   /* en producent: förvald. Flera: kunden väljer. Inga: crewet väljer när förfrågan godkänns. */
   if(!bookWith || [...bookWith].some(n=>!names.includes(n))) bookWith = new Set(prods.length===1 ? names : [...(bookWith||[])].filter(n=>names.includes(n)));
   slotProd = prods.length ? {names:[...bookWith], busy:producerBusyList()} : null;
+  slotLen = bookLen;
+  const collab = m.ctype==='collab';
   const mine = live().filter(b=>b.who===m.n && !b.busy).sort((a,b)=>startAt(a)-startAt(b));
   const waiting = mine.filter(b=>b.status==='request' && endAt(b)>now);
   const upcoming = mine.filter(b=>b.status!=='request' && b.status!=='declined' && endAt(b)>now);
@@ -9446,12 +9491,13 @@ function vCustomer(){
   const rate = rateFor(m.n), days = bookDays(14), day = pickBookDay(list, days), p = myContact();
   const withTxt = b => (b.with||[]).length ? ' · med ' + b.with.map(esc).join(', ') : '';
   const sub = b => b.status==='request' ? 'Väntar på svar' + withTxt(b) + ' · studion väljs när den godkänns'
-    : esc(roomOf(b)||'') + withTxt(b) + (rate ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
+    : esc(roomOf(b)||'') + withTxt(b) + (rate && !collab && b.paid!==false ? ' · ' + Math.round(dur(b)*rate) + ' kr' : '');
   const ci = myCircleInfo(), leadIsContact = p && ci && ci.circle && p.name===ci.circle.leader;
   return `
     ${profileBanner()}
     <div class="h1">Boka studiotid</div>
-    <div class="sub">Ett pass är 3 timmar · ${rate?hh(rate)+' kr per timme':pkgs().length?'från '+kr(pkgs()[0].price)+' per session':'pris enligt överenskommelse'}</div>
+    <div class="sub">Du väljer start och slut själv · ${collab ? 'samarbetsartist, enligt ert samarbete'
+      : rate?hh(rate)+' kr per timme':pkgs().length?'från '+kr(pkgs()[0].price)+' per session':'pris enligt överenskommelse'}</div>
 
     ${prods.length ? `<div class="eyebrow" style="margin-top:0">BOKA MED<span class="ln"></span></div>
       <div class="chips" id="bookWith" style="flex-wrap:wrap;overflow:visible">${prods.map(p=>`<button class="chip ${bookWith.has(p.name)?'on':''}"
@@ -9459,6 +9505,10 @@ function vCustomer(){
       <div class="tiny muted" style="margin:6px 0 4px">${bookWith.size ? 'Tiderna nedan visar när ' + (bookWith.size > 1 ? 'alla du valt är lediga' : [...bookWith][0] + ' är ledig') + '.'
         : 'Välj vem du vill boka med — sedan visar tiderna när de är lediga.'}</div>` : ''}
 
+    <div class="eyebrow">LÄNGD<span class="ln"></span></div>
+    <div class="chips" id="bookLen" style="flex-wrap:wrap;overflow:visible">${BOOK_LENS.concat(BOOK_LENS.includes(bookLen) ? [] : [bookLen]).sort((x,y)=>x-y)
+      .map(n=>`<button class="chip ${bookLen===n?'on':''}" aria-pressed="${bookLen===n}" onclick="bookLen=${n};render()">${lenH(n)} h</button>`).join('')}</div>
+    <div class="tiny muted" style="margin:6px 0 4px">Hur länge vill du vara i studion? Sluttiden kan du ändra exakt när du skickar förfrågan.</div>
     ${slotPicker({list, days, day, dayJs:d=>`bookDay='${d}';render()`, startJs:(d,hm)=>`openSlot('${d}','${hm}')`,
       mine:b=>b.who===m.n && !b.busy, mineLabel:'Din tid'})}
     <div class="note">Välj en starttid och skicka en förfrågan. Crewet väljer studio och bekräftar på mejlen —
@@ -9481,7 +9531,13 @@ function vCustomer(){
 const lateNote = () => rtop('lateCancel', 500) > 0
   ? ` Avbokar du mindre än ${rtop('lateHours', 24)} timmar innan dras ${fmtP(rtop('lateCancel', 500))} poäng i Bando Rewards.` : '';
 /* Förfrågan från kund (request_customer_slot) eller deltagare (request_session).
-   Bara starttiden väljs — slutet är alltid tre timmar senare. */
+   Kunden väljer start och slut (1–12 h); deltagarens cirkelpass är tre timmar. */
+function moveEnd(){
+  const s = document.getElementById('slS'), e = document.getElementById('slT');
+  if(!s || !e || !/^\d\d:\d\d$/.test(s.value)) return;
+  const prev = s.dataset.prev || s.value, len = (toMin(e.value) - toMin(prev) + 1440) % 1440 || slotLen;
+  e.value = toHm((toMin(s.value) + len) % 1440); s.dataset.prev = s.value;
+}
 function openSlot(date, hm){
   const m = me(), cust = m.r==='customer', c = cust ? null : circleById(simpleCircle);
   if(cust && profileGaps(m)) return openProfileSheet(true);
@@ -9490,9 +9546,14 @@ function openSlot(date, hm){
   openSheet(`${X}<h2>${cust ? 'Skicka förfrågan' : 'Föreslå en tid'}</h2>
     <div class="sub">${esc(longDate(date))}${cust ? (bookWith && bookWith.size ? ' · med <b>' + [...bookWith].map(esc).join(', ') + '</b>' : '')
       : ' · ' + esc(c.n) + ' · går till <b>' + esc(c.leader) + '</b>'}</div>
-    <label class="lbl" for="slS">STARTTID</label>
+    ${cust ? `<div class="two"><div><label class="lbl" for="slS">STARTTID</label>
+        <input type="time" id="slS" value="${hm}" step="1800" data-prev="${hm}" oninput="moveEnd();paintSlot('${date}', booked(), 'sl')"></div>
+      <div><label class="lbl" for="slT">SLUTTID</label>
+        <input type="time" id="slT" value="${plusSlot(hm)}" step="1800" oninput="paintSlot('${date}', booked(), 'sl')"></div></div>
+      <div class="slot-end" id="slE" style="margin-top:8px"></div>`
+    : `<label class="lbl" for="slS">STARTTID</label>
     <div class="two"><input type="time" id="slS" value="${hm}" step="1800" oninput="paintSlot('${date}', booked(), 'sl')">
-      <div class="slot-end" id="slE"></div></div>
+      <div class="slot-end" id="slE"></div></div>`}
     <div id="slW"></div>
     ${cust ? `<label class="lbl" for="slN">MEDDELANDE <span class="muted">(valfritt)</span></label>
       <textarea id="slN" maxlength="200" placeholder="Vad ska ni göra? Behövs en tekniker?"></textarea>` : ''}
@@ -9504,12 +9565,14 @@ function openSlot(date, hm){
 async function sendSlot(date){
   const m = me(), a = document.getElementById('slS').value;
   if(paintSlot(date, booked(), 'sl')!=='ok') return;
-  const b = plusSlot(a);
+  const te = document.getElementById('slT'), b = te ? te.value : plusSlot(a);
   if(m.r==='customer'){
+    const len = (toMin(b) - toMin(a) + 1440) % 1440, collab = m.ctype==='collab', ar = collab && m.artistId ? artistById(m.artistId) : null;
+    if(BOOK_LENS.includes(len)) bookLen = len;
     const note = document.getElementById('slN').value.trim(), withNames = [...(bookWith||[])].sort((x,y)=>x.localeCompare(y,'sv'));
     const ok = await act('request_customer_slot', {p_date:date, p_start:a, p_end:b, p_studio:'', p_note:note, p_with:withNames}, ()=>{
-      S.bookings.push(bump({id:uid(), studio:'', date, start:a, end:b, who:m.n, title:'Studiotid', note, circleId:'',
-        status:'request', reqBy:m.id, hours:null, present:[], with:withNames, artistId:'', paid:true, del:false}));
+      S.bookings.push(bump({id:uid(), studio:'', date, start:a, end:b, who:m.n, title:collab ? 'Samarbete' : 'Studiotid', note, circleId:'',
+        status:'request', reqBy:m.id, hours:null, present:[], with:withNames, artistId:ar && !ar.del ? ar.id : '', paid:!collab, del:false}));
       save(); });
     if(!ok) return;
     closeSheet(); render(); toast('Förfrågan skickad' + (withNames.length ? ' till ' + withNames.join(', ') : '') + ' — du får svar på mejlen'); sync(true);
@@ -9984,7 +10047,7 @@ function openSupport(){
       <h3>Bli medlem och boka</h3>
       <p><b>Bando HQ Access</b> ges via inbjudan. Skicka en förfrågan på <a href="${esc(accessUrl())}">bandohq.se/access</a> (eller tryck
         <b>Bando HQ Access</b> vid inloggningen), så går vi igenom den och mejlar dig en inbjudan. Med den skapar du ditt konto, bokar
-        sessions, ser dina priser och förmåner, och blir deltagare i våra studiocirklar. Ett pass är tre timmar och du avbokar själv
+        sessions, ser dina priser och förmåner, och blir deltagare i våra studiocirklar. Du väljer själv start och slut för ditt pass och avbokar själv
         fram till en timme innan.</p>
       <h3>Konto</h3>
       <p>Du loggar in med din e-post och ditt lösenord. Crewet får sina konton via en inbjudan. Glömt lösenordet? Tryck

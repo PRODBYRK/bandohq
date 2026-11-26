@@ -195,6 +195,7 @@ begin
   new.referred_by := old.referred_by;                         /* värva en vän: sätts bara av register_access */
   new.ref_code := old.ref_code;                               /* värvningskoden: bara my_ref_code */
   new.avail := old.avail;                                     /* tiderna: register_access och set_my_avail */
+  new.customer_type := old.customer_type; new.artist_id := old.artist_id;   /* kundtypen väljer admin */
   /* Access: inriktningarna ändras via set_my_interests, resten bara av register_access */
   new.participant := old.participant; new.interests := old.interests;
   new.registered_at := old.registered_at; new.consent_at := old.consent_at; new.source := old.source;
