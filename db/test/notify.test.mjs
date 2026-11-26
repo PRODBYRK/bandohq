@@ -229,6 +229,10 @@ const fdP = apple.filter(x => x.token === T_BO && x.body.kind === 'foundation');
 ok('Foundation: push med rubriken Bando Foundation som öppnar ärendet', fdP.length === 2 && fdP[0].body.aps.alert.title === 'Bando Foundation'
    && fdP.some(x => x.body.url === 'https://www.bandohq.se/foundation.html#handover-fh_1') && fdP.some(x => x.body.url === './'), fdP.map(x => x.body));
 ok('Foundation: mejlknappen heter Öppna ärendet', /Öppna ärendet: https:\/\/www\.bandohq\.se\/foundation\.html#handover-fh_1/.test(W.mailText({ kind: 'foundation', body: 'x', link: 'https://www.bandohq.se/foundation.html#handover-fh_1' }, 'https://www.bandohq.se/foundation.html#handover-fh_1')));
+/* bekräftelsen till den som ansökt via bandofoundation.com: Bando Foundations namn, samma verifierade adress */
+const fdHtml = W.mailHtml({ kind: 'fd-apply', subject: 'Tack för din ansökan till Behind the Release', body: 'Hej Lisa!' }, 'https://bandofoundation.com/behind-the-release.html');
+ok('Foundation-bekräftelsen: BANDO FOUNDATION i mejlet, inte BANDOHQ', /BANDO <span[^>]*>FOUNDATION/.test(fdHtml) && /Läs mer om Behind the Release/.test(fdHtml) && !/BANDO<span[^>]*>HQ/.test(fdHtml));
+ok('studions mejl ser ut som förut', /BANDO<span[^>]*>HQ/.test(W.mailHtml({ kind: 'booked', subject: 'x', body: 'y' }, 'https://bandohq.se/')));
 delete process.env.APNS_KEY; apple.length = 0; got.mail = []; got.push = {};
 await Q('bo', 'Påminnelse: fre 10-13', 'Påminnelse: fre 10-13', 'reminder', 'a3');
 await Q('ada', 'Påminnelse: fre 13-16', 'Påminnelse: fre 13-16', 'reminder', 'a4');

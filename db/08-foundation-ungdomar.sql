@@ -304,6 +304,7 @@ begin
            role_interest = coalesce(nullif(role_interest,''), left(coalesce(d->>'role',''), 80)),
            phone = coalesce(nullif(phone,''), ph), email = coalesce(nullif(email,''), em)
      where fd_applicants.id = ex.id;
+    if org = 'workshop' then perform fd_workshop_link(ex.id); end if;
     return jsonb_build_object('ok', true, 'id', ex.id, 'again', true);
   end if;
   insert into fd_applicants(name, email, phone, area, role_interest, source, wants_member, wants_info, origin, external_id, consent_at, note)
@@ -311,10 +312,33 @@ begin
           coalesce((d->>'member')::boolean, false), coalesce((d->>'info')::boolean, false), org, ext,
           case when coalesce((d->>'consent')::boolean, true) then now() end, left(coalesce(d->>'message',''), 1000))
   returning fd_applicants.id into new_id;
+  /* Bekräftelse till den som ansökt via hemsidan (workshopanmälan skickar sina egna mejl) */
+  if org = 'hemsidan' and em <> '' then
+    perform bs_notify(null, em, 'Tack för din ansökan till Behind the Release',
+      'Hej ' || split_part(nm, ' ', 1) || '!' || E'\n\n' ||
+      'Vi har fått din ansökan till Behind the Release. Någon från vårt team hör av sig till dig, oftast via telefon eller sms, för att berätta mer och lära känna dig.' || E'\n\n' ||
+      'Innan urvalet bjuder vi in sökande till mindre workshops där du får testa olika saker. Du behöver inte ha erfarenhet, det viktiga är att du är nyfiken.' || E'\n\n' ||
+      'Har du frågor kan du svara på det här mejlet.' || E'\n\n' || 'Vänliga hälsningar' || E'\n' || 'Bando Foundation',
+      'fd-apply', 'fd-apply:' || new_id, '0', 'https://bandofoundation.com/behind-the-release.html');
+  end if;
+  if org = 'workshop' then perform fd_workshop_link(new_id); end if;
   perform fd_notify_dept('B', 'youth', 'Ny ansökan till ' || 'Behind the Release',
     'En ny ansökan har kommit in' || case when org = 'workshop' then ' via workshopanmälan' else ' via hemsidan' end || '. Öppna Ungdomar i Bando Foundation.',
     'youth', new_id);
   return jsonb_build_object('ok', true, 'id', new_id);
+end $$;
+
+/* Workshopanmälan från hemsidan: läggs in i den aktivitet B eller C valt (fd_settings 'workshop'),
+   så länge den är planerad och inte har varit. */
+create or replace function fd_workshop_link(p_applicant text) returns void
+language plpgsql security definer set search_path = public as $$
+declare aid text;
+begin
+  if to_regclass('public.fd_settings') is null then return; end if;
+  execute 'select value->>''activity_id'' from fd_settings where key = ''workshop''' into aid;
+  if aid is null or not exists (select 1 from fd_activities where id = aid and status = 'planned' and date >= current_date) then return; end if;
+  insert into fd_participants(activity_id, applicant_id, invite_status) values (aid, p_applicant, 'invited')
+  on conflict (activity_id, applicant_id) do nothing;
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -437,7 +461,7 @@ on conflict (id) do nothing;
 --  RÄTTIGHETER
 -- ---------------------------------------------------------------------
 revoke all on function fd_applicant_stamp(), fd_applicant_logged(), fd_contact_logged(), fd_participant_changed(), fd_activity_stamp(),
-  fd_purge_youth() from public, anon, authenticated;
+  fd_purge_youth(), fd_workshop_link(text) from public, anon, authenticated;
 revoke all on function fd_youth_ok(), fd_activity_staff(text), fd_roster(text), fd_youth_stats(), fd_consent_create(text, text)
   from public, anon;
 grant execute on function fd_youth_ok(), fd_activity_staff(text), fd_roster(text), fd_youth_stats(), fd_consent_create(text, text)

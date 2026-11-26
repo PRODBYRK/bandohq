@@ -419,6 +419,8 @@ async function loadAll(){
     get('/fd_agent_runs?select=id,agent_id,owner_type,owner_id,question,status,result,sources,cost_usd,error,started_by,created_at,finished_at&order=created_at.desc&limit=300'),
     get('/fd_grants?select=*'), get('/fd_funding_reports?select=id,received_at,grants_count,run_id,created_by,created_at&order=created_at.desc'),
     get('/fd_deadlines?select=*&order=date.asc'), get('/fd_surveys?select=*&order=created_at.desc')]);
+  const sets = await get('/fd_settings?select=key,value');
+  F.settings = Object.fromEntries((sets || []).map(x => [x.key, x.value]));
   Object.assign(F, {productions:prods||[], materials:mats||[], publications:pubs||[], agents:ags||[], knowledge:kb||[], runs:runs||[],
     grants:grants||[], reports:reps||[], deadlines:dls||[], surveys:svs||[]});
   ROSTER = {}; SVR = {};
@@ -1501,6 +1503,12 @@ function vActivity(){
         <button class="chip" onclick="addGroup('${attr(a.id)}')">+ Grupp</button></div>
       <div class="list" style="margin-top:12px" id="roster">${ro === null ? '<div class="skel"></div>' : ro.map(r => rosterRow(a, r, groups, past)).join('') || '<div class="empty">Ingen inbjuden än.</div>'}</div>
       ${youthOk() && a.status === 'planned' ? `<button class="btn ghost slim" style="margin-top:10px" onclick="openBulkInvite('${attr(a.id)}')">Bjud in ungdomar</button>` : ''}
+      ${staff ? `<div class="eyebrow">Workshopanmälan från hemsidan</div>
+        ${F.settings && F.settings.workshop && F.settings.workshop.activity_id === a.id
+          ? `<div class="okbox" id="wsLink">Nya anmälningar via workshop.bandofoundation.com läggs in här automatiskt som Inbjudna.</div>
+             <button class="btn ghost slim" style="margin-top:8px" onclick="setWorkshop(null)">Sluta ta emot här</button>`
+          : a.status === 'planned' && a.date >= TODAY() ? `<button class="btn ghost slim" onclick="setWorkshop('${attr(a.id)}')">Ta emot workshopanmälningar här</button>
+             <p class="hint">Den som anmäler sig på workshopsidan läggs in i den här aktiviteten och syns hos B under Ungdomar.</p>` : ''}` : ''}
       <div class="eyebrow">Utvärdering</div>
       <div class="list">${F.surveys.filter(s => s.activity_id === a.id).map(s => `<a class="item" href="#survey-${attr(s.id)}"><span class="grow"><b>${esc(s.title)}</b><em>${{draft:'Utkast', open:'Öppen', closed:'Stängd'}[s.status]}</em></span></a>`).join('')}</div>
       <button class="btn ghost slim" style="margin-top:10px" onclick="makeEval('${attr(a.id)}')">Skapa en anonym utvärdering</button>`
@@ -1559,6 +1567,7 @@ function openBulkInvite(aid){
     <button class="btn" onclick="invite([...document.querySelectorAll('input[name=biA]:checked')].map(x=>x.value),'${attr(aid)}',($('biG')||{}).value,false)">Bjud in de valda</button>
     <p class="hint">Sedan skickar du sms till var och en från deltagarlistan.</p>`);
 }
+async function setWorkshop(id){ try{ await rpc('fd_set_workshop_activity', {p_activity:id}); await loadAll(); paint(); toast(id ? 'Workshopanmälningarna hamnar här' : 'Stängt'); }catch(e){ toast(e.message); } }
 async function saveFollow(id){
   try{ await patch('fd_activities', id, {follow_summary:$('fuS').value.trim(), follow_good:$('fuG').value.trim(), follow_improve:$('fuI').value.trim(), status:'done'});
        await loadAll(); paint(); toast('Uppföljningen är sparad'); }
@@ -1627,8 +1636,11 @@ function runCard(r, opts){
     ${r.status === 'done' ? `<p class="hint" style="margin-top:8px">${esc(a.approval || 'Ett förslag. En människa granskar och beslutar.')}</p>` : ''}
   </div>`;
 }
+const aiOn = () => !!(F.settings && F.settings.ai && F.settings.ai.enabled);
 function aiBlock(type, id, agentId, label, opts){
   const a = agent(agentId), runs = runsFor(type, id);
+  if(!aiOn()) return `<div class="eyebrow">${esc(label || 'AI')}</div><div class="card ai"><p class="sub">AI-agenterna kopplas in snart${isAdmin() ? '. Slå på dem under Admin → AI när Claude API-nyckeln är inlagd' : ''}.</p></div>`
+    + runs.slice(0, 1).map(r => runCard(r, opts)).join('');
   const can = a && a.active && (isAdmin() || !a.dept || inDept(a.dept));
   return `<div class="eyebrow">${esc(label || 'AI')}</div>
     ${can ? `<div class="row" style="flex-wrap:wrap;gap:8px">${opts && opts.ask === false ? '' : `<input id="aiq-${attr(id)}" placeholder="${attr(opts && opts.placeholder || 'Vad vill du att agenten tar reda på?')}" style="flex:1;min-width:180px">`}
@@ -2054,7 +2066,8 @@ function adminAI(){
         <label class="sr" for="aiR">SEK per USD</label><input id="aiR" type="number" step="0.01" min="1" value="${AI.usd_sek}" style="width:90px">
         <label class="check" style="margin:0"><input type="checkbox" id="aiOn" ${AI.enabled ? 'checked' : ''}><span>På</span></label>
         <button class="btn slim" onclick="saveAI()">Spara</button></div>
-      <p class="hint">Claude Opus 5.5 med webbsökning. Kostnaden räknas per körning (tokens och sökningar) och nya körningar stoppas när taket nås.</p></div>
+      <p class="hint">Claude Opus 5.5 med webbsökning. Kostnaden räknas per körning (tokens och sökningar) och nya körningar stoppas när taket nås.
+        Slå på först när Claude API-nyckeln är inlagd i Supabase, annars blir körningarna stående i kön.</p></div>
     <div class="seg"><button class="${KTab==='agents'?'on':''}" onclick="KTab='agents';paint()">Agenter</button><button class="${KTab==='kb'?'on':''}" onclick="KTab='kb';paint()">Kunskapsbas</button><button class="${KTab==='runs'?'on':''}" onclick="KTab='runs';paint()">Körningar</button></div>
     ${KTab === 'agents' ? `<div class="list grid3" id="agents">${F.agents.map(a => `<button class="item" onclick="openAgent('${attr(a.id)}')"><span class="dept sm">${esc(a.dept || '·')}</span><span class="grow"><b>${esc(a.name)}</b>
         <em>${esc(a.purpose)}</em><span class="meta"><span class="pill ${a.active?'ok':'mute'}">${a.active?'Aktiv':'Av'}</span><span class="pill mute">${esc(a.effort)}</span>${a.web ? `<span class="pill mute">Webb · ${a.max_searches}</span>` : ''}</span></span></button>`).join('')}</div>`

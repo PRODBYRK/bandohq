@@ -65,7 +65,7 @@ const TABLES = new Set(['members','invites','records','leads','outbox','push_sub
   'access_requests', 'fd_departments', 'fd_memberships', 'fd_contacts', 'fd_tasks', 'fd_handovers', 'fd_threads',
   'fd_thread_members', 'fd_messages', 'fd_mentions', 'fd_notifications', 'fd_documents', 'fd_dept_updates',
   'fd_applicants', 'fd_contact_log', 'fd_templates', 'fd_activities', 'fd_activity_groups', 'fd_participants', 'fd_consents',
-  'fd_productions', 'fd_materials', 'fd_publications', 'fd_agents', 'fd_knowledge', 'fd_agent_runs', 'fd_grants', 'fd_funding_reports', 'fd_deadlines', 'fd_surveys']);
+  'fd_productions', 'fd_materials', 'fd_publications', 'fd_agents', 'fd_knowledge', 'fd_agent_runs', 'fd_grants', 'fd_funding_reports', 'fd_deadlines', 'fd_surveys', 'fd_settings']);
 function where(params, args){
   const parts = [];
   for(const [k, v] of params){

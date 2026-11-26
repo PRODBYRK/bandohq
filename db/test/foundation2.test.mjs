@@ -33,6 +33,10 @@ const again = await asAnon(db,()=>rpc('fd_apply',{p_secret:secret,p_data:JSON.st
 ok('samma person igen blir ingen dubblett', again.again===true && again.id===a1.id && (await one(`select count(*)::int n from fd_applicants`)).n===1);
 const a2 = await asAnon(db,()=>rpc('fd_apply',{p_secret:secret,p_data:JSON.stringify({name:'Omar Ny',phone:'0702223344',origin:'workshop',external_id:'ws-9'})}));
 ok('workshopanmälan (bara telefon) kommer in med källan workshop', (await one(`select origin, phone from fd_applicants where id=$1`,[a2.id])).origin==='workshop');
+const conf = await q(`select email, subject, body, kind, link from outbox where kind='fd-apply'`);
+ok('den som ansökt via hemsidan får ett bekräftelsemejl (en gång)', conf.length===1 && conf[0].email==='lisa@x.se' && /Hej Lisa!/.test(conf[0].body)
+   && /behind-the-release/.test(conf[0].link), conf);
+ok('workshopanmälan och dubbletter får inget extra mejl från HQ', (await one(`select count(*)::int n from outbox where kind='fd-apply'`)).n===1);
 ok('anonyma kan inte läsa ansökningarna', !!(await boom(()=>asAnon(db,()=>q(`select 1 from fd_applicants`)))));
 const nB = await q(`select title, body from fd_notifications where member_id='samuel' and kind='youth'`);
 ok('B får en notis — utan namn', nB.length===2 && nB.every(n=>!/Lisa|Omar/.test(n.title+n.body)), nB);
@@ -86,6 +90,20 @@ ok('B ser C:s observation', (await SA(()=>one(`select observation from fd_partic
 ok('C kan inte ta bort en inbjudan', (await AM(()=>q(`delete from fd_participants where applicant_id=$1 returning 1`,[a2.id]))).length===0);
 await AM(()=>q(`update fd_activities set status='done', follow_summary='Bra energi', follow_good='Grupperna', follow_improve='Mer tid' where id=$1`,[act.id]));
 ok('uppföljningen sparas på aktiviteten', (await one(`select follow_improve from fd_activities where id=$1`,[act.id])).follow_improve==='Mer tid');
+
+head('workshopanmälan läggs in i vald aktivitet');
+const wsAct = await AM(()=>one(`insert into fd_activities(dept,title,date,created_by) values('C','Workshop 5 december',$1,'amir') returning id`,[D(9)]));
+ok('Joseph (A) kan inte välja workshopaktivitet', /Bara B, C och admin/.test(await boom(()=>JO(()=>rpc('fd_set_workshop_activity',{p_activity:wsAct.id})))||''));
+await AM(()=>rpc('fd_set_workshop_activity',{p_activity:wsAct.id}));
+const a3 = await asAnon(db,()=>rpc('fd_apply',{p_secret:secret,p_data:JSON.stringify({name:'Ny Workshop',email:'ny.ws@x.se',phone:'0705550000',origin:'workshop',external_id:'ws-ny.ws@x.se'})}));
+const p3 = await one(`select invite_status from fd_participants where activity_id=$1 and applicant_id=$2`,[wsAct.id,a3.id]);
+ok('en ny workshopanmälan hamnar som Inbjuden i aktiviteten', p3 && p3.invite_status==='invited' && (await one(`select status from fd_applicants where id=$1`,[a3.id])).status==='invited');
+await asAnon(db,()=>rpc('fd_apply',{p_secret:secret,p_data:JSON.stringify({name:'Lisa Ung',email:'lisa@x.se',origin:'workshop'})}));
+ok('den som redan ansökt via hemsidan och sedan anmäler sig till workshopen läggs också in', !!(await one(`select 1 x from fd_participants where activity_id=$1 and applicant_id=$2`,[wsAct.id,a1.id])));
+await AM(()=>rpc('fd_set_workshop_activity',{p_activity:null}));
+const a4 = await asAnon(db,()=>rpc('fd_apply',{p_secret:secret,p_data:JSON.stringify({name:'Sen Anmälan',email:'sen@x.se',origin:'workshop'})}));
+ok('utan vald aktivitet: bara en ansökan', !(await one(`select 1 x from fd_participants where applicant_id=$1`,[a4.id])));
+await q(`delete from fd_applicants where id in ($1,$2)`,[a3.id,a4.id]); await q(`delete from fd_activities where id=$1`,[wsAct.id]);
 
 head('medgivande för foto och film via länk');
 ok('C kan inte skapa medgivanden', /Bara B/.test(await boom(()=>AM(()=>rpc('fd_consent_create',{p_applicant:a1.id,p_signer:'guardian'})))||''));

@@ -103,8 +103,20 @@ create table if not exists fd_settings (
   updated_by text references members(id) on delete set null,
   updated_at timestamptz not null default now()
 );
-insert into fd_settings(key, value) values ('ai', '{"budget_sek":500,"usd_sek":10.5,"model":"claude-opus-5-5","enabled":true}')
+/* AI är avstängt tills Claude API-nyckeln är inlagd (admin slår på det under Admin → AI) */
+insert into fd_settings(key, value) values ('ai', '{"budget_sek":500,"usd_sek":10.5,"model":"claude-opus-5-5","enabled":false}')
 on conflict (key) do nothing;
+insert into fd_settings(key, value) values ('workshop', '{"activity_id":null}') on conflict (key) do nothing;
+
+/* Vilken aktivitet nya workshopanmälningar från hemsidan läggs in i (B, C eller admin). */
+create or replace function fd_set_workshop_activity(p_activity text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not (fd_admin() or fd_in('B') or fd_in('C')) then raise exception 'Bara B, C och admin'; end if;
+  if p_activity is not null and not exists (select 1 from fd_activities where id = p_activity) then raise exception 'Aktiviteten finns inte'; end if;
+  update fd_settings set value = jsonb_build_object('activity_id', p_activity), updated_by = bs_my_id(), updated_at = now() where key = 'workshop';
+  perform fd_log('activity', coalesce(p_activity, 'ingen'), 'tar emot workshopanmälningar', null, jsonb_build_object('activity_id', p_activity));
+end $$;
 
 create table if not exists fd_agents (
   id            text primary key,
@@ -864,6 +876,8 @@ revoke all on function fd_owner_dept(text, text), fd_funding_ok(), fd_survey_res
 grant execute on function fd_owner_dept(text, text), fd_funding_ok(), fd_survey_results_ok(text), fd_survey_report(text),
   fd_ai_budget(), fd_save_ai_settings(numeric, numeric, boolean), fd_agent_request(text, text, text, text), fd_agent_cancel(text)
   to authenticated;
+revoke all on function fd_set_workshop_activity(text) from public, anon;
+grant execute on function fd_set_workshop_activity(text) to authenticated;
 /* enkätsidan: anonym, skyddad av länkens token */
 revoke all on function fd_survey_info(text), fd_survey_answer(text, jsonb) from public;
 grant execute on function fd_survey_info(text), fd_survey_answer(text, jsonb) to anon, authenticated;

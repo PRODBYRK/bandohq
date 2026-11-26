@@ -158,13 +158,16 @@ const TITLE = { booked: 'Bokat', request: 'Ny förfrågan', received: 'Förfråg
   cancel: 'Avbokat', level: 'Ny nivå', reward: 'Inlösen', reminder: 'Påminnelse', hours: 'Dina timmar', agenda: 'Agendan', lead: 'Ny kund', invite: 'BANDOHQ', test: 'BANDOHQ',
   welcome: 'Välkommen till Bando HQ', access: 'Ny registrering', 'access-req': 'Förfrågan om Bando HQ Access',
   'invite-access': 'Bando HQ Access', points: 'Bando Rewards', edu: 'Bando Education',
-  confirmed: 'Session bekräftad', check: 'Studiokontroll', meeting: 'Möte', foundation: 'Bando Foundation' };
+  confirmed: 'Session bekräftad', check: 'Studiokontroll', meeting: 'Möte', foundation: 'Bando Foundation',
+  'fd-apply': 'Tack för din ansökan' };
 const URGENT = ['request', 'answer', 'reminder', 'lead', 'booked', 'cancel'];
 /* Det här går alltid som mejl — det ska gå att hitta i inkorgen efteråt. */
 export const ALWAYS_MAIL = ['invite', 'booked', 'request', 'received', 'answer', 'lead', 'lead-ok', 'lead-no', 'welcome', 'access',
   'access-req', 'invite-access', 'confirmed'];
 const BUTTON = { invite: 'Skapa ditt konto', 'lead-ok': 'Skapa ditt konto', welcome: 'Öppna Bando HQ', 'invite-access': 'Skapa ditt konto',
-  foundation: 'Öppna ärendet' };
+  foundation: 'Öppna ärendet', 'fd-apply': 'Läs mer om Behind the Release' };
+/* Mejl som går ut i Bando Foundations namn (till den som ansökt via bandofoundation.com) */
+const FOUNDATION_MAIL = ['fd-apply'];
 
 /* Servernyckeln: den gamla service_role-JWT:n om den finns, annars en ny
    sb_secret_… ur SUPABASE_SECRET_KEYS. Nya nycklar får bara skickas som apikey. */
@@ -192,22 +195,27 @@ export function mailHtml(row, link) {
   const paras = String(row.body || '').split(/\n\s*\n/).map((p) =>
     `<p style="color:#d6cfe8;line-height:1.6;margin:0 0 14px">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
   const btn = BUTTON[row.kind] || 'Öppna BANDOHQ';
+  const fd = FOUNDATION_MAIL.includes(row.kind);
   return `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;background:#07050c;padding:32px 16px">
 <div style="max-width:460px;margin:0 auto;background:#150f24;border:1px solid #2a2140;border-radius:16px;padding:28px;color:#f6f2ff">
-<div style="font-weight:700;letter-spacing:.18em;font-size:18px">BANDO<span style="color:#c084fc">HQ</span></div>
+<div style="font-weight:700;letter-spacing:.18em;font-size:18px">${fd ? 'BANDO <span style="color:#c084fc">FOUNDATION</span>' : 'BANDO<span style="color:#c084fc">HQ</span>'}</div>
 <h2 style="font-size:19px;margin:22px 0 12px;color:#f6f2ff">${esc(row.subject || TITLE[row.kind] || 'BANDOHQ')}</h2>
 ${paras}
 <a href="${esc(link)}" style="display:inline-block;margin-top:8px;background:#7c3aed;color:#fff;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700">${esc(btn)}</a>
-<p style="color:#665e80;font-size:12px;margin:22px 0 0">Mejlet skickades automatiskt från BANDOHQ. Svara på det om du har frågor.</p>
+<p style="color:#665e80;font-size:12px;margin:22px 0 0">${fd ? 'Mejlet skickades automatiskt från Bando Foundation. Svara på det om du har frågor.' : 'Mejlet skickades automatiskt från BANDOHQ. Svara på det om du har frågor.'}</p>
 </div></div>`;
 }
 export const mailText = (row, link) => `${row.body}\n\n${BUTTON[row.kind] || 'Öppna BANDOHQ'}: ${link}\n`;
 
 export async function sendMail(row) {
   const link = safeLink(row.link) || safeLink(env('APP_URL')) || 'https://bandohq.se/';
-  const msg = { from: env('MAIL_FROM') || 'BANDOHQ <noreply@bandohq.se>', to: [row.email],
+  const from = env('MAIL_FROM') || 'BANDOHQ <noreply@bandohq.se>';
+  const fd = FOUNDATION_MAIL.includes(row.kind);
+  /* samma verifierade avsändaradress, men Bando Foundations namn och svarsadress */
+  const msg = { from: fd ? 'Bando Foundation <' + (from.match(/<([^>]+)>/) || [, from])[1] + '>' : from, to: [row.email],
     subject: row.subject || TITLE[row.kind] || 'BANDOHQ', html: mailHtml(row, link), text: mailText(row, link) };
-  if (env('MAIL_REPLY_TO')) msg.reply_to = env('MAIL_REPLY_TO');
+  if (fd) msg.reply_to = 'info@bandofoundation.com';
+  else if (env('MAIL_REPLY_TO')) msg.reply_to = env('MAIL_REPLY_TO');
   const res = await fetch('https://api.resend.com/emails', { method: 'POST', body: JSON.stringify(msg), headers: {
     Authorization: `Bearer ${env('RESEND_KEY')}`, 'Content-Type': 'application/json',
     /* samma notis skickas aldrig två gånger, även om ett försök görs om */
