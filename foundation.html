@@ -1108,7 +1108,8 @@ function adminPeople(){
     <div class="card"><p class="sub">Skicka länken i ett sms eller en gruppchatt. Den som öppnar den skapar ett konto och hamnar direkt i avdelningen, ingen e-post behövs i förväg. Länken gäller i 30 dagar eller tills du stänger den.</p>
       <div class="lbl" id="lkL">Avdelningar, en eller flera</div>
       <div class="chips" id="lkD" role="group" aria-labelledby="lkL" style="margin-top:0">${F.depts.map(d => `<button class="chip" data-d="${d.code}" title="${attr(d.name)}" aria-pressed="false" onclick="this.classList.toggle('on');this.setAttribute('aria-pressed',this.classList.contains('on'))">${d.code}</button>`).join('')}</div>
-      <button class="btn slim" id="lkNew" style="margin-top:12px" onclick="makeLink()">Skapa länk</button></div>
+      <button class="btn slim" id="lkNew" style="margin-top:12px" onclick="makeLink()">Skapa länk</button>
+      <button class="btn ghost slim" style="margin-top:12px" onclick="openPersonalLink()">Personlig länk till en chef</button></div>
     <div class="list" id="links" style="margin-top:10px">${LINKS === null ? '<div class="skel"></div>' : LINKS.filter(l => l.open).map(linkRow).join('')}</div>
     ${LINKS && LINKS.some(l => !l.open) ? `<p class="hint" style="margin-top:8px">${nt(LINKS.filter(l => !l.open).length, 'stängd eller utgången länk', 'stängda eller utgångna länkar')} visas inte.</p>` : ''}
     <div class="eyebrow">Personer</div>
@@ -1170,7 +1171,8 @@ const linkUrl = t => location.origin + '/foundation.html#join=' + encodeURICompo
 function linkRow(l){
   const ds = l.depts && l.depts.length ? l.depts : [l.dept];
   return `<div class="item" data-link="${attr(l.token)}"><span class="dept sm" style="width:auto;min-width:22px;padding:0 7px;border-radius:999px">${esc(ds.join(''))}</span>
-    <span class="grow"><b>Avdelning ${esc(deptsText(ds))}${ds.length === 1 ? ' · ' + esc(dept(ds[0]).name) : ''}</b>
+    <span class="grow"><b>${l.label ? esc(l.label) + ' · ' : ''}Avdelning ${esc(deptsText(ds))}${ds.length === 1 && !l.label ? ' · ' + esc(dept(ds[0]).name) : ''}</b>
+      ${l.chiefs && l.chiefs.length ? `<em>Blir chef i ${esc(deptsText(l.chiefs))} · personlig, en gång</em>` : l.label ? '<em>Personlig, en gång</em>' : ''}
       <em>${nt(+l.uses, 'person har', 'personer har')} gått med · gäller till ${esc(dlabel(String(l.expires_at).slice(0, 10)))}${l.max_uses ? ' · högst ' + l.max_uses : ''}</em>
       <em class="nums" style="color:var(--txt);user-select:all;overflow-wrap:anywhere">${esc(linkUrl(l.token))}</em>
       <span class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn slim" onclick="shareLink('${attr(l.token)}','${attr(deptsText(ds))}')">${navigator.share ? 'Dela' : 'Kopiera'}</button>
@@ -1185,6 +1187,19 @@ async function makeLink(){
     LINKS = null; paint();
     await copyText(linkUrl(l.token)).then(() => toast('Länken är skapad och kopierad'), () => toast('Länken är skapad'));
   }catch(e){ toast(e.message); b.disabled = false; }
+}
+function openPersonalLink(){
+  openSheet(`<h2>Personlig länk</h2><p class="sub">Till en person som ska in i en eller flera avdelningar, gärna som chef. Länken fungerar en gång.</p>
+    <label class="lbl" for="plN">Till</label><input id="plN" placeholder="Till exempel Joseph" autocomplete="off">
+    <div class="lbl">Avdelningar</div><div class="chips" id="plD" style="margin-top:0">${F.depts.map(d => `<button type="button" class="chip" data-d="${d.code}" onclick="this.classList.toggle('on')">${d.code}</button>`).join('')}</div>
+    <div class="lbl">Chef i</div><div class="chips" id="plC" style="margin-top:0">${F.depts.filter(d => d.has_chief).map(d => `<button type="button" class="chip" data-d="${d.code}" onclick="this.classList.toggle('on')">${d.code}</button>`).join('')}</div>
+    <div class="err" id="plErr"></div><button class="btn" onclick="makePersonalLink()">Skapa och kopiera</button>`);
+}
+async function makePersonalLink(){
+  const ds = [...document.querySelectorAll('#plD .chip.on')].map(x => x.dataset.d), cs = [...document.querySelectorAll('#plC .chip.on')].map(x => x.dataset.d);
+  try{ const l = await rpc('fd_create_personal_link', {p_label:$('plN').value.trim(), p_depts:ds.join(','), p_chiefs:cs.join(','), p_days:30});
+       closeSheet(); LINKS = null; paint(); await copyText(linkUrl(l.token)).then(() => toast('Länken är skapad och kopierad'), () => toast('Länken är skapad')); }
+  catch(e){ $('plErr').textContent = e.message; }
 }
 function copyText(t){ return navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject(); }
 async function shareLink(token, d){

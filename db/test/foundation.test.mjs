@@ -129,6 +129,28 @@ ok('en stängd länk går inte att använda med konto heller', /stängd/.test(aw
 ok('en studiolänk (inte Foundation) går inte att använda här', /finns inte/.test(await boom(()=>AM(()=>rpc('fd_join_link',{p_token:link.token.replace(/./,'Z')})))||''));
 ok('utan inloggning: nej', !!(await boom(()=>asAnon(db,()=>rpc('fd_join_link',{p_token:multi.token})))));
 await q(`delete from fd_memberships where (member_id='amir' and dept='B') or member_id in ('adrey',$1)`,[r6.id]);
+/* personliga länkar till cheferna */
+const pj = await AZ(()=>rpc('fd_create_personal_link',{p_label:'Josefine',p_depts:'H,I',p_chiefs:'H,I',p_days:30}));
+ok('personlig länk: två avdelningar, chef i båda, en gång', JSON.stringify(pj.depts)==='["H","I"]' && JSON.stringify(pj.chiefs)==='["H","I"]' && pj.max_uses===1, pj);
+ok('chef kan bara vara i länkens avdelningar', /Chef bara i länkens/.test(await boom(()=>AZ(()=>rpc('fd_create_personal_link',{p_label:'X Y',p_depts:'H',p_chiefs:'I',p_days:30})))||''));
+ok('G har ingen chef', /G har ingen/.test(await boom(()=>AZ(()=>rpc('fd_create_personal_link',{p_label:'X Y',p_depts:'G',p_chiefs:'G',p_days:30})))||''));
+ok('bara admin', /Bara Foundation-admin/.test(await boom(()=>SA(()=>rpc('fd_create_personal_link',{p_label:'X Y',p_depts:'B',p_chiefs:'',p_days:30})))||''));
+U.ny7 = await user('ny7@b.se');
+const r7 = await as(db,U.ny7,()=>rpc('redeem_invite',{p_token:pj.token,p_name:'Josefine Lind',p_username:'josefine'}));
+ok('hon går med och blir chef i H och I', (await q(`select dept||':'||role x from fd_memberships where member_id=$1 order by dept`,[r7.id])).map(r=>r.x).join()==='H:chief,I:chief');
+ok('länken går inte att använda igen', /redan använd/.test(await boom(()=>AM(()=>rpc('fd_join_link',{p_token:pj.token})))||''));
+const pb = await AZ(()=>rpc('fd_create_personal_link',{p_label:'Ny B-chef',p_depts:'B',p_chiefs:'B',p_days:30}));
+await JO(()=>rpc('fd_join_link',{p_token:pb.token}));
+ok('B har redan en chef (Samuel): den nya blir medlem, Samuel är kvar', (await one(`select role from fd_memberships where member_id='joseph' and dept='B'`)).role==='member'
+   && (await one(`select role from fd_memberships where member_id='samuel' and dept='B'`)).role==='chief');
+await q(`insert into fd_memberships values('adrey','F','member')`);
+await q(`update fd_memberships set role='member' where dept='F' and member_id='jasmin'`);
+const pf = await AZ(()=>rpc('fd_create_personal_link',{p_label:'ADREY',p_depts:'F',p_chiefs:'F',p_days:30}));
+const jf = await ADREY(()=>rpc('fd_join_link',{p_token:pf.token}));
+ok('en medlem som får en personlig chefslänk blir chef', JSON.stringify(jf.added)==='["F"]' && (await one(`select role from fd_memberships where member_id='adrey' and dept='F'`)).role==='chief', jf);
+ok('admin ser vem länken var till', (await AZ(()=>rpc('fd_links',{}))).some(l=>l.label==='Josefine' && l.uses===1));
+await q(`delete from fd_memberships where member_id in ('adrey',$1) or (member_id='joseph' and dept='B')`,[r7.id]);
+await q(`update fd_memberships set role='chief' where dept='F' and member_id='jasmin'`);
 const stud = await C2(()=>rpc('create_invite',{p_role:'producer',p_circle:null,p_days:14,p_max:5}));
 U.ny5 = await user('ny5@b.se');
 const r5 = await as(db,U.ny5,()=>rpc('redeem_invite',{p_token:stud,p_name:'Prod Ny',p_username:'prodny'}));
