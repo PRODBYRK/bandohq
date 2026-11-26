@@ -176,7 +176,7 @@ if __name__ == '__main__':
         shot(sys.argv[2], sys.argv[3], *sys.argv[4:7]); sys.exit(0)
     ok = True
     if what in ('all', 'db'):
-        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs'); ok &= node('foundation.test.mjs'); ok &= node('foundation2.test.mjs'); ok &= node('foundation3.test.mjs')
+        ok &= node('db.test.mjs'); ok &= node('notify.test.mjs'); ok &= node('foundation.test.mjs'); ok &= node('foundation2.test.mjs'); ok &= node('foundation3.test.mjs'); ok &= node('foundation4.test.mjs')
     if what in ('all', 'test'): ok &= page('test.html')
     if what in ('all', 'cloud'): ok &= cloud()
     if what in ('all', 'fd'): ok &= fd(sys.argv[2] if what == 'fd' and len(sys.argv) > 2 else None)

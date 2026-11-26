@@ -8,6 +8,8 @@ const ok=(n,c,x)=>{ c?pass++:fail++; console.log((c?'PASS  ':'FAIL  ')+n+(!c&&x!
 const head=t=>console.log('\n── '+t+' ──');
 
 const db = await boot();
+/* briefernas startuppgifter (10) testas i foundation4 — här börjar uppgiftstabellen tom som förut */
+await db.query(`delete from fd_tasks where seed is not null`);
 const q = async (s,p)=> (await db.query(s,p)).rows;
 const one = async (s,p)=> (await q(s,p))[0];
 const rpc = async (fn, args)=> { const keys = Object.keys(args||{});

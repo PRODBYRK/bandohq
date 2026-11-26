@@ -105,6 +105,16 @@ main{padding:4px 16px 40px;max-width:1120px;margin:0 auto}
 .kv>span{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);padding-top:3px;flex:none}
 .kv>b{font-weight:500;text-align:right;overflow-wrap:anywhere}
 .prose{white-space:pre-wrap;overflow-wrap:anywhere}
+.brief{max-width:68ch;font-size:15.5px;line-height:1.6;overflow-wrap:anywhere}
+.brief h3{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:32px 2px 10px}
+.brief h3:first-child{margin-top:20px}
+.brief p{margin:0 0 10px}
+.brief ul,.brief ol{margin:0 0 14px;padding-left:22px}
+.brief li{margin:5px 0;padding-left:2px}
+.brief li::marker{color:var(--mut)}
+.brief b{font-weight:600;color:#fff}
+.briefcard p{margin:0 0 12px;line-height:1.55}
+textarea.tall{min-height:58vh;font-size:14.5px}
 .okbox,.warnbox,.infobox{border-radius:var(--r-sm);padding:12px 14px;font-size:15px;margin-top:12px}
 .okbox{border:1px solid rgba(52,211,153,.2);background:rgba(52,211,153,.07)}
 .warnbox{border:1px solid rgba(250,178,25,.25);background:rgba(250,178,25,.07)}
@@ -462,14 +472,14 @@ function buildNav(){
   $('nav').style.display = '';
 }
 function markNav(){
-  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', doc:'docs', activity:'activities', contact:'contacts',
+  const top = {task:'tasks', handover:'handovers', thread:'messages', dept:'depts', brief:'depts', doc:'docs', activity:'activities', contact:'contacts',
                production:'productions', grant:'funding', survey:'surveys'}[route] || route;
   const mobileMore = ['docs','depts','admin','youth','activities','contacts','productions','comms','funding','surveys','adminj'].includes(top) && innerWidth < 1024;
   document.querySelectorAll('#nav a[data-r]').forEach(el => el.classList.toggle('on', el.dataset.r === top || (mobileMore && el.dataset.r === 'more')));
 }
 function parseHash(){
   const h = decodeURIComponent(location.hash.slice(1) || 'hq');
-  const m = h.match(/^(task|handover|thread|dept|youth|activity|contact|production|grant|survey)-(.+)$/);
+  const m = h.match(/^(task|handover|thread|dept|brief|youth|activity|contact|production|grant|survey)-(.+)$/);
   if(m){ route = m[1]; arg = m[2]; } else { route = h.split('/')[0] || 'hq'; arg = h.split('/')[1] || ''; }
 }
 function go(h){ if(location.hash === '#' + h) { parseHash(); paint(); } else location.hash = h; }
@@ -483,7 +493,7 @@ function paint(){
   $('bell').setAttribute('aria-label', n ? nt(n, 'oläst notis', 'olästa notiser') : 'Notiser');
   markNav();
   const V = {hq:vHQ, tasks:vTasks, task:vTask, handovers:vHandovers, handover:vHandover, messages:vMessages, thread:vThread,
-             docs:vDocs, depts:vDepts, dept:vDept, admin:vAdmin, more:vMore,
+             docs:vDocs, depts:vDepts, dept:vDept, brief:vBrief, admin:vAdmin, more:vMore,
              youth:vYouth, activities:vActivities, activity:vActivity, contacts:vContacts, contact:vContacts, productions:vProductions,
              production:vProductions, comms:vComms, funding:vFunding, grant:vFunding, surveys:vSurveys, survey:vSurveys, adminj:vAdminJ}[route] || vHQ;
   let html;
@@ -518,6 +528,11 @@ function vHQ(){
   return `
     <div class="h1">Mitt HQ</div>
     <p class="sub">Hej ${esc(String(me.name).split(' ')[0])}. ${DAYS[now.getDay()]} ${now.getDate()} ${MON[now.getMonth()]}${awaitingMe().length ? ` · ${nt(awaitingMe().length, 'överlämning väntar', 'överlämningar väntar')} på dig` : ''}.</p>
+    ${myDepts().length ? `<div class="eyebrow">Din brief <a href="#brief">Så arbetar vi</a></div>
+      <div class="list grid3" id="mybrief">${myDepts().map(c => { const n = tasks.filter(t => t.dept === c).length, r = myRoleIn(c);
+        return `<a class="item" href="#brief-${attr(c)}"><span class="dept">${esc(c)}</span><span class="grow"><b>${esc(dept(c).name)}</b>
+          <em>${esc(r.length > 150 ? r.slice(0, 150) + '…' : r)}</em>
+          <span class="meta"><span class="pill live">Läs briefen</span>${n ? `<span class="pill mute">${nt(n, 'uppgift', 'uppgifter')} på dig</span>` : ''}</span></span></a>`; }).join('')}</div>` : ''}
     <div class="grid2"><div>
       <div class="eyebrow">Agenda</div>
       <div class="seg" role="tablist"><button class="${agendaMode==='day'?'on':''}" onclick="agendaMode='day';paint()">I dag</button><button class="${agendaMode==='week'?'on':''}" onclick="agendaMode='week';paint()">Veckan</button></div>
@@ -653,11 +668,15 @@ function vTask(){
         ${c ? `<div class="kv"><span>Kontakt</span><b>${esc(c.name)}</b></div>` : ''}
       </div>
       ${t.description ? `<div class="eyebrow">Beskrivning</div><div class="card prose">${esc(t.description)}</div>` : ''}
-      ${canEdit ? `<div class="row" style="margin-top:12px"><button class="btn ghost slim" onclick="openAssign('${attr(t.id)}')">Byt ansvarig</button></div>` : ''}
+      ${t.seed ? `<p class="hint" style="margin-top:12px">En startuppgift ur <a class="linkbtn" href="#brief-${attr(t.dept)}">avdelningens brief</a>.</p>` : ''}
+      ${canEdit ? `<div class="row" style="margin-top:12px">${!t.assignee && t.status !== 'done' ? `<button class="btn slim" id="takeTask" onclick="takeTask('${attr(t.id)}')">Ta uppgiften</button>` : ''}<button class="btn ghost slim" onclick="openAssign('${attr(t.id)}')">Byt ansvarig</button></div>` : ''}
       ${docsBlock('task', t.id, t.dept, canEdit)}
     </div><div>
       ${commentsBlock('task', t.id)}
     </div></div>`;
+}
+async function takeTask(id){
+  try{ await patch('fd_tasks', id, {assignee:myId()}); await loadAll(); paint(); toast('Uppgiften är din'); }catch(e){ toast(e.message); }
 }
 async function setTaskStatus(id, s){
   try{ await patch('fd_tasks', id, {status:s}); await loadAll(); paint(); toast('Status: ' + TS[s]); }catch(e){ toast(e.message); }
@@ -1021,6 +1040,10 @@ function vDept(){
   return `<a class="back" href="#depts">‹ Avdelningar</a>
     <div class="h1"><span class="tube">${esc(d.code)}</span> ${esc(d.name)}</div>
     <p class="sub">${esc(d.mission)}</p>
+    <div class="card briefcard" style="margin-top:16px" id="deptbrief"><div class="eyebrow" style="margin-top:0">Avdelningens brief</div>
+      ${myRoleIn(d.code) ? `<p><b>Din roll:</b> ${esc(myRoleIn(d.code))}</p>` : ''}
+      <p>${esc(briefLead(d.brief) || 'Ingen brief skriven än.')}</p>
+      <div class="row"><a class="btn slim" href="#brief-${attr(d.code)}">Läs hela briefen</a>${canBrief(d.code) ? `<button class="btn ghost slim" onclick="openBriefEdit('${d.code}')">Redigera</button>` : ''}</div></div>
     <div class="grid2"><div>
       <div class="eyebrow">Avdelningsuppdatering ${u.updated_at && u.updated_by ? `<span class="n">${esc(pname(u.updated_by))} · ${when(u.updated_at)}</span>` : ''}</div>
       <div class="card upd" id="deptupd">${f('working_on', 'Arbetar med nu')}${f('recently_done', 'Har nyligen slutfört')}${f('need_help', 'Behöver hjälp med')}${f('waiting_for', 'Väntar på')}</div>
@@ -1047,6 +1070,80 @@ async function saveUpdate(c){
   try{ await rpc('fd_save_update', {p_dept:c, p_working:$('uW').value, p_done:$('uD').value, p_help:$('uH').value, p_waiting:$('uV').value});
        closeSheet(); await loadAll(); paint(); toast('Uppdateringen är sparad'); }
   catch(e){ $('uErr').textContent = e.message; }
+}
+
+/* ===================== BRIEF ===================== */
+/* Briefen skrivs som enkel text: ## rubrik, - punkt, 1. steg, **fet**. */
+function briefHtml(src){
+  const inl = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  let out = '', list = null, m;
+  const close = () => { if(list){ out += `</${list}>`; list = null; } };
+  const open = t => { if(list !== t){ close(); out += `<${t}>`; list = t; } };
+  for(const raw of String(src || '').split('\n')){
+    const l = raw.trim();
+    if(!l){ close(); continue; }
+    if((m = l.match(/^##\s+(.+)/))){ close(); out += `<h3>${inl(m[1])}</h3>`; continue; }
+    if((m = l.match(/^[-•]\s+(.+)/))){ open('ul'); out += `<li>${inl(m[1])}</li>`; continue; }
+    if((m = l.match(/^\d+\.\s+(.+)/))){ open('ol'); out += `<li>${inl(m[1])}</li>`; continue; }
+    close(); out += `<p>${inl(l)}</p>`;
+  }
+  close(); return out;
+}
+/* Första stycket under första rubriken, utan formatering. */
+function briefLead(src){
+  const l = String(src || '').split('\n').map(x => x.trim()).find(x => x && !/^(##|[-•]|\d+\.)\s/.test(x));
+  return l ? l.replace(/\*\*/g, '') : '';
+}
+const commonBrief = () => (F.settings && F.settings.brief && F.settings.brief.text) || '';
+const canBrief = c => c ? isAdmin() || (F.me.depts || []).some(d => d.dept === c && (d.role === 'chief' || dept(c).has_chief === false)) : isAdmin();
+/* Personens rad under Roller / Hur arbetet fördelas (G och I), annars chef eller medlem. */
+function myRoleIn(c){
+  const mem = (F.me.depts || []).find(d => d.dept === c); if(!mem) return '';
+  const fn = String(F.me.name || '').split(/\s+/)[0].toLowerCase();
+  let inRoles = false, hit = '';
+  for(const raw of String(dept(c).brief || '').split('\n')){
+    const l = raw.trim();
+    if(/^##\s/.test(l)){ inRoles = /roller|fördelas/i.test(l); continue; }
+    const m = inRoles && l.match(/^[-•]\s+\*\*(.+?)\*\*\s*[–:-]?\s*(.*)$/);
+    if(m && fn && m[1].toLowerCase().split(/[\s()]+/).includes(fn)){ hit = m[2]; break; }
+  }
+  if(hit) return hit.charAt(0).toUpperCase() + hit.slice(1);
+  return mem.role === 'chief' ? 'Ansvarig för avdelningen.' : dept(c).has_chief === false ? 'Med i redaktionen.' : 'Medlem i avdelningen.';
+}
+function vBrief(){
+  const c = arg;
+  if(c && !F.depts.find(x => x.code === c)) return notFound('Briefen');
+  const d = c ? dept(c) : null, text = c ? d.brief : commonBrief(), role = c ? myRoleIn(c) : '';
+  const tasks = c ? F.tasks.filter(t => t.dept === c && t.status !== 'done').sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1) : [];
+  const ppl = c ? deptPeople(c) : [];
+  return `<a class="back" href="${c ? '#dept-' + attr(c) : '#hq'}">‹ ${c ? 'Avdelning ' + esc(c) : 'Mitt HQ'}</a>
+    <div class="h1">${c ? `<span class="tube">${esc(c)}</span> ` : ''}Brief</div>
+    <p class="sub">${c ? esc(d.name) : 'Gemensamt för hela Bando Foundation'}${c && d.brief_updated_at ? ` · ändrad ${when(d.brief_updated_at)}${d.brief_updated_by ? ' av ' + esc(pname(d.brief_updated_by)) : ''}` : ''}</p>
+    <div class="grid2"><div>
+      ${role ? `<div class="infobox"><b>Din roll:</b> ${esc(role)}</div>` : ''}
+      <article class="brief" id="brief">${text ? briefHtml(text) : '<p class="sub">Ingen brief skriven än.</p>'}</article>
+      ${canBrief(c) ? `<button class="btn ghost slim" style="margin-top:18px" onclick="openBriefEdit(${c ? `'${c}'` : 'null'})">Redigera briefen</button>` : ''}
+    </div><div>
+      ${c ? `<div class="eyebrow">Personer <span class="n">${ppl.length}</span></div>
+        <div class="card">${ppl.length ? ppl.map(p => `<div class="kv"><span>${(p.depts.find(x => x.dept === c) || {}).role === 'chief' ? 'Chef' : 'Medlem'}</span><b>${esc(p.name)}</b></div>`).join('') : '<div class="empty" style="padding:4px 0">Ingen har gått med än.</div>'}</div>
+        <div class="eyebrow">Öppna uppgifter <span class="n">${tasks.length}</span></div>
+        <div class="list" id="brieftasks">${tasks.length ? tasks.map(taskRow).join('') : `<div class="empty">${canDept(c) ? 'Inga öppna uppgifter.' : 'Avdelningens uppgifter syns för dess medlemmar.'}</div>`}</div>
+        <div class="row" style="margin-top:14px"><a class="btn ghost slim" href="#dept-${attr(c)}">Avdelningens arbetsyta</a><a class="btn ghost slim" href="#brief">Så arbetar vi</a></div>`
+      : `<div class="eyebrow">Avdelningarnas briefer</div>
+        <div class="list">${F.depts.map(x => `<a class="item" href="#brief-${attr(x.code)}"><span class="dept sm">${esc(x.code)}</span><span class="grow"><b>${esc(x.name)}</b></span></a>`).join('')}</div>`}
+    </div></div>`;
+}
+function openBriefEdit(c){
+  const text = c ? dept(c).brief : commonBrief();
+  openSheet(`<h2>${c ? 'Brief · avdelning ' + esc(c) : 'Gemensam brief'}</h2>
+    <p class="sub">Alla i Foundation läser briefen. Rubriker börjar med ##, punkter med -, steg med 1. och fetstil skrivs **så här**.</p>
+    <label class="lbl" for="bfT">Briefen</label><textarea id="bfT" class="tall">${esc(text || '')}</textarea>
+    <div class="err" id="bfErr"></div><button class="btn" id="bfSave" onclick="saveDeptBrief(${c ? `'${c}'` : 'null'})">Spara briefen</button>`);
+}
+async function saveDeptBrief(c){
+  $('bfSave').disabled = true;
+  try{ await rpc('fd_save_brief', {p_dept:c, p_text:$('bfT').value}); closeSheet(); await loadAll(); paint(); toast('Briefen är sparad'); }
+  catch(e){ $('bfErr').textContent = e.message; $('bfSave').disabled = false; }
 }
 
 /* ===================== MER (telefon) ===================== */

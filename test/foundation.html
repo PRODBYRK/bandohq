@@ -55,6 +55,7 @@ const nav = async (w, h) => { w.location.hash = h; await sleep(150); };
   }
   await sql(`update members set perms = perms || '{foundation_admin}'::text[] where id='az';
     update members set perms = perms || '{protected_data}'::text[] where id='samuel';
+    delete from fd_tasks where seed is not null;
     insert into fd_memberships(member_id,dept,role) values('joseph','A','chief'),('joseph','E','chief'),('samuel','B','chief'),('amir','C','chief'),('amir','G','member'),('adrian','D','chief');`);
   ok('fyra Foundation-personer och AZ som admin', (await sql(`select count(*)::int n from fd_memberships`))[0].n === 6);
 
@@ -426,6 +427,38 @@ const nav = async (w, h) => { w.location.hash = h; await sleep(150); };
   set(w, 'dl_t', 'Årsmöte: kallelse'); set(w, 'dl_d', D(14)); await w.saveDeadline(); await sleep(200);
   ok('J: ett viktigt datum med påminnelse', /Årsmöte: kallelse/.test(txt(w, '#dlist') || ''));
   ok('mobil: administrationen rullar inte i sidled', noScrollX(w));
+
+  log('\n── briefer: varje avdelning och person ser sitt uppdrag ──');
+  w = await open('joseph@b.se', 'hq');
+  ok('Mitt HQ: Din brief för A och E, med rollen', /Din brief/.test(txt(w, '#view') || '') && w.document.querySelectorAll('#mybrief a[href^="#brief-"]').length === 2
+     && /Ansvarig för avdelningen/.test(txt(w, '#mybrief') || ''), txt(w, '#mybrief'));
+  await nav(w, 'brief-A'); await sleep(200);
+  ok('briefen för A: rubriker, arbetsområdena och läget nu', w.document.querySelectorAll('#brief h3').length >= 8 && /A1 – Aktörskartläggning/.test(txt(w, '#brief') || '')
+     && /Tre fritidsgårdar har fått mejl/.test(txt(w, '#brief') || ''), txt(w, '#brief'));
+  ok('punkter och numrerade steg blir listor, **fet** blir fetstil', w.document.querySelectorAll('#brief ul li').length > 10 && w.document.querySelectorAll('#brief ol li').length >= 5
+     && !/\*\*/.test(txt(w, '#brief') || ''));
+  ok('mobil: briefen rullar inte i sidled', noScrollX(w));
+  ok('chefen kan redigera', !!w.document.querySelector('#view [onclick^="openBriefEdit"]'));
+  w.openBriefEdit('A'); await sleep(350);
+  set(w, 'bfT', w.document.getElementById('bfT').value + '\n## Josephs tillägg\n- Ring Tensta på måndag');
+  w.saveDeptBrief('A'); await until(() => /Josephs tillägg/.test(txt(w, '#brief') || ''), 4000);
+  ok('Joseph sparar ett tillägg som syns direkt', /Ring Tensta på måndag/.test(txt(w, '#brief') || ''));
+  await nav(w, 'dept-A'); await sleep(200);
+  ok('avdelningssidan har briefkortet med första stycket', /Avdelningens brief/.test(txt(w, '#deptbrief') || '') && /etablera och utveckla relationer/.test(txt(w, '#deptbrief') || ''), txt(w, '#deptbrief'));
+  await nav(w, 'brief'); await sleep(200);
+  ok('den gemensamma briefen: så arbetar vi i HQ och alla avdelningars briefer', /Så arbetar vi i HQ/.test(txt(w, '#brief') || '') && w.document.querySelectorAll('a[href^="#brief-"]').length >= 10);
+  ok('bara admin redigerar den gemensamma', !w.document.querySelector('#view [onclick^="openBriefEdit"]'));
+  w = await open('samuel@b.se', 'brief-A');
+  ok('Samuel (B) läser A:s brief men kan inte redigera den', /A1 – Aktörskartläggning/.test(txt(w, '#brief') || '') && !w.document.querySelector('#view [onclick^="openBriefEdit"]'));
+  await sql(`insert into fd_tasks(seed,dept,seed_for,title,description) values('brief:G:test','G',null,'D2L: föreslå format','Den som jobbar med D2L tar den.')`);
+  const gt = (await sql(`select id from fd_tasks where seed='brief:G:test'`))[0].id;
+  w = await open('amir@b.se', 'task-' + gt);
+  ok('en startuppgift utan ansvarig: Ta uppgiften och länk till briefen', !!w.document.getElementById('takeTask') && /avdelningens brief/.test(txt(w, '#view') || ''));
+  w.takeTask(gt); await until(() => !w.document.getElementById('takeTask'), 4000);
+  ok('Amir tar uppgiften', (await sql(`select assignee from fd_tasks where id='${gt}'`))[0].assignee === 'amir');
+  await nav(w, 'brief-G'); await sleep(200);
+  ok('G: Amirs roll från briefen (struktur och utveckling)', /Din roll:.*[Ss]truktur och utveckling/.test(txt(w, '#view') || ''), txt(w, '.infobox'));
+  ok('alla i G kan redigera redaktionens brief', !!w.document.querySelector('#view [onclick^="openBriefEdit"]'));
 
   log('\n── studion (index.html) ──');
   w = await open(null, null, 'index.html');
