@@ -4491,7 +4491,7 @@ function renderGate(){
           <a href="#" onclick="event.preventDefault();cancelCode()">logga in</a> i stället.</div>`;
       return;
     }
-    tag.textContent = 'Logga in för att fortsätta.';
+    tag.textContent = 'Logga in med din e-post och lösenordet du valde när du skapade kontot.';
     /* Bando HQ Access: nya registrerar sig (och blir kund och cirkeldeltagare) — i appen lika viktigt som inloggningen */
     const bookBtn = `<a class="btn ${isNative()?'':'ghost'}" id="gateAccess" style="display:block;text-align:center;text-decoration:none;margin-top:${isNative()?'0':'14px'}" href="${esc(accessUrl())}">Bando HQ Access — skicka förfrågan</a>`;
     b.innerHTML = `${isNative() ? bookBtn + `<div class="gate-or">har du ett konto?</div>` : ''}<form class="gate-form" onsubmit="event.preventDefault();doLogin()">

@@ -2627,7 +2627,8 @@ begin
   end loop;
   perform bs_notify(null, em, 'Vi har tagit emot din förfrågan',
     'Hej ' || split_part(nm,' ',1) || '! Tack för din förfrågan om Bando HQ Access.' || E'\n\n'
-    || 'Vi går igenom den och mejlar dig en inbjudan när den är godkänd. Med inbjudan skapar du ditt konto.',
+    || 'Vi går igenom den och mejlar dig en inbjudan när den är godkänd. Du behöver inte göra något mer just nu.'
+    || E'\n\n' || 'I inbjudan finns en knapp, Skapa ditt konto. Tryck på den, så visar vi dig steg för steg hur du skapar kontot.',
     'received', 'acc-rcv:' || id);
   return jsonb_build_object('ok', true);
 end $$;
@@ -2645,7 +2646,9 @@ begin
     'Hej ' || split_part(coalesce(p_name,''),' ',1) || '!' || E'\n\n' || coalesce(p_note,
       'Du är inbjuden till Bando HQ Access' || coalesce(' av ' || byname, '') || '.')
     || ' Med Bando HQ Access bokar du sessions, ser dina priser och förmåner, och blir deltagare i Bandos studiocirklar.'
-    || E'\n\n' || 'Tryck på knappen och skapa ditt konto. Länken gäller i 30 dagar och bara för dig.',
+    || E'\n\n' || 'Tryck på knappen Skapa ditt konto här nedanför. Då öppnas en sida som tar dig igenom allt, en fråga i taget.'
+    || ' Det tar ungefär tre minuter. Ha din mobil och ditt personnummer nära till hands.'
+    || E'\n\n' || 'Länken gäller i 30 dagar och bara för dig.',
     'invite-access', 'invite:' || tok, '0', bs_access_link(p_url, tok));
   return tok;
 end $$;
@@ -2738,7 +2741,9 @@ begin
   perform bs_notify(null, em, me.name || ' bjuder in dig till Bando HQ Access',
     'Hej ' || split_part(nm,' ',1) || '!' || E'\n\n' || fname || ' bjuder in dig till Bando HQ Access — Bandos system för artister och kreatörer.'
     || ' Där bokar du sessions i studion, ser dina priser och förmåner, och samlar poäng i Bando Rewards.'
-    || E'\n\n' || 'Tryck på knappen och skapa ditt konto. Länken gäller i 30 dagar och bara för dig.',
+    || E'\n\n' || 'Tryck på knappen Skapa ditt konto här nedanför. Då öppnas en sida som tar dig igenom allt, en fråga i taget.'
+    || ' Det tar ungefär tre minuter. Ha din mobil och ditt personnummer nära till hands.'
+    || E'\n\n' || 'Länken gäller i 30 dagar och bara för dig.',
     'invite-access', 'invite:' || tok, '0', bs_access_link(p_url, tok));
   /* väntar vännen redan med en förfrågan är den besvarad nu */
   update access_requests set status = 'approved', invite = tok, handled_by = me.id, handled_at = now()

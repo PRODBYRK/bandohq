@@ -1893,6 +1893,39 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   w = await boot(seed());
   await ev(w, `return true;`);
   w = await goPage('../access.html?cb=' + Math.random());
+  /* 0 · guiden: en fråga i taget, så att vem som helst klarar det */
+  r = await ev(w,`
+    const vis = () => [...document.querySelectorAll('.wstep')].filter(d=>!d.hidden).map(d=>d.dataset.k).join();
+    const btn = () => document.getElementById('submit').textContent, count = () => document.getElementById('wzTop').hidden ? '' : document.getElementById('wzCount').textContent;
+    const click = () => document.getElementById('form').requestSubmit(document.getElementById('submit'));
+    const s0 = {vis:vis(), btn:btn(), count:count(), back:document.getElementById('wzBack').hidden, intro:document.querySelector('.wstep[data-k="intro"]').textContent};
+    click(); const s1 = {vis:vis(), count:count(), btn:btn(), q:document.querySelector('.wstep:not([hidden]) .wq').textContent, back:document.getElementById('wzBack').hidden};
+    click(); const s1e = {vis:vis(), err:document.getElementById('e_name').textContent};
+    document.getElementById('f_name').value='Greta Holm'; click(); const s2 = {vis:vis(), count:count()};
+    document.getElementById('wzBack').click(); const sb = {vis:vis(), name:document.getElementById('f_name').value};
+    click(); document.getElementById('f_email').value='greta@holm.se'; click();
+    document.getElementById('f_phone').value='0701112233'; click();
+    const s4 = {vis:vis(), btn:btn()};
+    const ta = document.getElementById('f_message'); ta.value='Jag sjunger'; ta.dispatchEvent(new Event('input')); const s4b = btn();
+    ta.value=''; ta.dispatchEvent(new Event('input')); click();
+    const s5 = {vis:vis(), btn:btn(), count:count()};
+    click(); const s5e = {vis:vis(), err:document.getElementById('e_consent').textContent};
+    /* ett fel i ett tidigare steg skickar tillbaka dit */
+    document.getElementById('f_consent').click(); document.getElementById('f_phone').value='12'; draft.phone='12';
+    click(); await new Promise(r=>setTimeout(r,50)); const sx = {vis:vis(), err:document.getElementById('e_phone').textContent, focus:document.activeElement && document.activeElement.id};
+    document.getElementById('f_phone').value='0701112233'; draft.phone='0701112233';
+    return {s0, s1, s1e, s2, sb, s4, s4b, s5, s5e, sx, inputs:[...document.querySelectorAll('#form input:not([type=hidden]):not(.hp)')].length};`);
+  ok('guiden börjar med "Så går det till" i tre steg, och en knapp: SÄTT IGÅNG', r.s0.vis==='intro' && r.s0.btn==='SÄTT IGÅNG' && r.s0.count==='' && r.s0.back===true
+     && /Så går det till/.test(r.s0.intro) && /Skapa ditt konto/.test(r.s0.intro), r.s0);
+  ok('en fråga i taget: "Vad heter du?", steg 1 av 5, med tillbaka', r.s1.vis==='name' && r.s1.count==='Steg 1 av 5' && r.s1.q==='Vad heter du?' && r.s1.btn==='NÄSTA' && r.s1.back===false, r.s1);
+  ok('tomt namn: guiden stannar och säger vad som fattas', r.s1e.vis==='name' && /för- och efternamn/.test(r.s1e.err), r.s1e);
+  ok('nästa steg: e-post, steg 2 av 5', r.s2.vis==='email' && r.s2.count==='Steg 2 av 5', r.s2);
+  ok('tillbaka: namnet står kvar', r.sb.vis==='name' && r.sb.name==='Greta Holm', r.sb);
+  ok('meddelandet är frivilligt: HOPPA ÖVER, eller NÄSTA när man skrivit', r.s4.vis==='message' && r.s4.btn==='HOPPA ÖVER' && r.s4b==='NÄSTA', [r.s4, r.s4b]);
+  ok('sista steget: godkänn, SKICKA FÖRFRÅGAN', r.s5.vis==='consent' && r.s5.btn==='SKICKA FÖRFRÅGAN' && r.s5.count==='Steg 5 av 5', r.s5);
+  ok('utan kryss i rutan: stannar och säger det', r.s5e.vis==='consent' && /tryck i rutan/.test(r.s5e.err), r.s5e);
+  ok('ett fel i ett tidigare steg: tillbaka till det steget, med markören där', r.sx.vis==='phone' && /mobilnummer/.test(r.sx.err) && r.sx.focus==='f_phone', r.sx);
+  w = await goPage('../access.html?cb=' + Math.random());
   /* 1 · utan inbjudan: en förfrågan — inget lösenord, inget personnummer */
   r = await ev(w,`
     const chips = document.querySelectorAll('#chips .chip').length;
@@ -1937,6 +1970,21 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
   /* 3 · länken: kontot skapas med inbjudan */
   w = await goPage('../access.html?inbjudan=' + ACC_TOK + '&cb=' + Math.random());
   r = await ev(w,`await new Promise(r=>setTimeout(r,300));
+    const vis = () => [...document.querySelectorAll('.wstep')].filter(d=>!d.hidden).map(d=>d.dataset.k).join();
+    const click = () => document.getElementById('form').requestSubmit(document.getElementById('submit'));
+    const intro = document.querySelector('.wstep[data-k="intro"]').textContent, order = [...document.querySelectorAll('.wstep')].map(d=>d.dataset.k).join();
+    click(); const nameQ = document.querySelector('.wstep:not([hidden])').textContent, count = document.getElementById('wzCount').textContent;
+    for(let i=0;i<4;i++) click();
+    const pw = {vis:vis(), type:document.getElementById('f_password').type, err:document.getElementById('e_pnr').textContent};
+    wstep = steps().length - 1; paintStep(false); const last = document.getElementById('submit').textContent;
+    wstep = 0; paintStep(false);
+    return {intro, order, nameQ, count, pw, last};`);
+  ok('inbjudan: guiden säger vad man behöver ha till hands', /Nu skapar vi ditt konto/.test(r.intro) && /personnummer/.test(r.intro) && /kod/.test(r.intro), r.intro);
+  ok('åtta steg med koden: namn, e-post, mobil, personnummer, lösenord, tider, godkänn', r.order==='intro,name,email,phone,pnr,password,avail,consent' && r.count==='Steg 1 av 8', r);
+  ok('det som redan är ifyllt från förfrågan står där — tryck bara Nästa', /redan fyllt i/.test(r.nameQ), r.nameQ);
+  ok('utan personnummer stannar guiden där', r.pw.vis==='pnr' && /Personnumret/.test(r.pw.err), r.pw);
+  ok('sista knappen: SKAPA MITT KONTO', r.last==='SKAPA MITT KONTO', r.last);
+  r = await ev(w,`
     const luhn = d => { let s=0; [...d].forEach((c,i)=>{ let x=+c*(i%2===0?2:1); s+=Math.floor(x/10)+x%10; }); return (10 - s%10) % 10; };
     const P = '19990315-123' + luhn('990315123');
     const head = document.getElementById('regH').textContent, lead = document.getElementById('regLead').textContent;
@@ -1967,7 +2015,9 @@ const ev=(w,c)=>w.eval('(async()=>{'+c+'})()');
      && JSON.stringify(JSON.parse(r.saved).avail)==='["wd-eve","we-day"]', [r.noAvail, r.availOn]);
   ok('utan godkännande skapas inget konto', /Godkänn/.test(r.noConsent));
   ok('sedan kodsteget: koden från mejlet bekräftar e-posten', r.code && /alva@acc.se/.test(r.codeText) && /sex siffror/.test(r.e4), r);
+  ok('kodsteget: sista steget, och var man hittar koden (skräpposten)', /Steg 8 av 8/.test(r.codeText) && /skräpposten/.test(r.codeText) && /sidan vara öppen/.test(r.codeText), r.codeText);
   ok('klart: välkommen in, och vidare till Bando HQ', /Välkommen in, Alva/.test(r.done), r.done);
+  ok('klart: så loggar du in nästa gång, med e-posten', /Så loggar du in nästa gång/.test(r.done) && /alva@acc.se/.test(r.done) && /Glömt lösenordet/.test(r.done), r.done);
   const sv = JSON.parse(r.saved||'{}');
   ok('förhandsläget lämnar uppgifterna till appen — med inbjudan, personnumret bara maskerat', sv.name==='Alva Strand' && sv.email==='alva@acc.se' && sv.pnr==='990315-••••'
      && sv.interests.length===0 && sv.phone==='+46701234567' && sv.invite===ACC_TOK && r.leak===false, sv);

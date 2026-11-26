@@ -168,7 +168,7 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
 .form { max-width: 760px; margin: 0 auto; }
 .grid { display: grid; grid-template-columns: 1fr; gap: 26px 28px; }
 .f { display: grid; gap: 6px; align-content: start; }
-.f > label:not(.consent), .f > .lbl { font-size: 12px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim); }
+.f > label:not(.consent):not(.wq), .f > .lbl { font-size: 12px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--dim); }
 .f input, .f textarea {
   width: 100%; padding: 10px 0 12px; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0; background: transparent;
   color: #fff; font: 400 19px/1.5 var(--sans); outline: none; -webkit-appearance: none; appearance: none;
@@ -214,6 +214,62 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
   text-shadow: 0 0 18px rgba(255, 62, 191, 0.55); }
 .banner { display: grid; gap: 18px; justify-items: center; text-align: center; padding: 6px 0 22px; }
 
+/* ---------- guiden: en fråga i taget ----------
+   Stor text, en sak per skärm, tydliga rutor att skriva i och alltid en väg tillbaka.
+   Ska gå att klara för den som aldrig skapat ett konto förut. */
+.wiz { max-width: 600px; scroll-margin-top: 24px; }
+.wz-top { display: grid; gap: 10px; margin-bottom: 30px; }
+.wz-top[hidden] { display: none; }
+.wz-count { font-size: 16px; font-weight: 600; color: var(--text-2); }
+.wz-bar { display: block; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.wz-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--tube); box-shadow: 0 0 12px var(--glow);
+  transition: width 420ms var(--ease-out); }
+.wstep[hidden] { display: none; }
+.wstep { animation: blurIn 420ms var(--ease-out) both; }
+.wq { display: block; font: 600 clamp(27px, 6.6vw, 36px)/1.2 var(--sans); color: #fff; letter-spacing: 0; text-transform: none; text-wrap: balance; }
+.wq--sm { font-size: clamp(21px, 5vw, 25px); }
+.wh { font-size: 19px; line-height: 1.55; color: var(--text-2); margin: 10px 0 18px; }
+.wh b { color: #fff; font-weight: 600; }
+.wiz .f { gap: 8px; }
+.wiz .f input:not([type="checkbox"]), .wiz .f textarea {
+  padding: 16px 18px; border: 2px solid var(--line-2); border-radius: 8px; background: #0e0a12;
+  font-size: 24px; line-height: 1.35; }
+.wiz .f textarea { font-size: 19px; min-height: 150px; }
+.wiz .f input:focus, .wiz .f textarea:focus { border-color: var(--tube); box-shadow: 0 0 0 3px rgba(255, 62, 191, 0.22); }
+.wiz .f input[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 3px rgba(255, 157, 176, 0.18); }
+.wiz .hint { font-size: 16px; }
+.wiz .err { font-size: 18px; font-weight: 500; }
+.wiz .pw input { padding-right: 96px; }
+.wiz .pw button { right: 10px; top: 50%; bottom: auto; transform: translateY(-50%); min-height: 44px; padding: 0 10px;
+  font-size: 13px; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 6px; }
+.wiz .chips--left { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 0; }
+.wiz .chips--left .chip { width: 100%; min-height: 64px; padding: 14px 18px; font-size: 17px; letter-spacing: 0.04em; text-transform: none; border-radius: 8px; border-width: 2px; }
+.wiz .chip i { width: 24px; height: 24px; }
+.wiz .chip[aria-pressed="true"] i::after { left: 7px; top: 3px; width: 6px; height: 12px; }
+.wiz .gdpr { font-size: 17px; color: var(--text-2); gap: 12px; }
+.wiz .consent { grid-template-columns: 34px 1fr; padding: 16px; border: 2px solid var(--line-2); border-radius: 8px; margin-top: 18px; }
+.wiz .consent input { width: 32px; height: 32px; margin: 0; }
+.wiz .consent input:checked::after { left: 10px; top: 4px; width: 8px; height: 16px; }
+.wiz .consent span { font-size: 18px; }
+.wz-nav { display: grid; gap: 10px; margin-top: 34px; justify-items: center; }
+.wiz .btn { max-width: none; min-height: 66px; font-size: 17px; letter-spacing: 0.18em; border-radius: 8px; }
+.wz-back { min-height: 54px; padding: 0 16px; font-size: 18px; font-weight: 500; color: var(--text-2); text-decoration: underline; text-underline-offset: 4px; }
+.wz-back[hidden] { display: none; }
+.ilist { display: grid; margin: 6px 0 4px; }
+.ilist li { display: grid; grid-template-columns: 42px 1fr; gap: 14px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line);
+  font-size: 19px; line-height: 1.5; color: var(--text-2); text-align: left; }
+.ilist li b { color: #fff; font-weight: 600; }
+.ilist .n { width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--tube); display: grid; place-items: center;
+  font-weight: 600; font-size: 17px; color: var(--tube); }
+.wiz-end { display: grid; justify-items: center; text-align: center; max-width: 600px; margin: 0 auto; }
+.wiz-end .ilist, .wiz-end .remember { width: 100%; margin-top: 10px; }
+.remember { display: grid; gap: 6px; padding: 20px; border: 2px solid var(--line-2); border-radius: 8px; text-align: left; margin-bottom: 30px; }
+.remember dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 8px 0 4px; font-size: 19px; }
+.remember dt { color: var(--dim); }
+.remember dd { margin: 0; color: #fff; font-weight: 600; overflow-wrap: anywhere; }
+.wiz .code { text-align: center; }
+.wiz-end .btn { max-width: 600px; min-height: 66px; font-size: 17px; letter-spacing: 0.18em; border-radius: 8px; }
+
 .foot { margin-top: clamp(88px, 13vw, 150px); padding: 34px 0 max(30px, env(safe-area-inset-bottom)); text-align: center; }
 .foot .wrap { display: grid; justify-items: center; gap: 16px; font-size: 13px; color: var(--mute); }
 .foot .ig { font-weight: 600; font-size: 14px; letter-spacing: 0.42em; margin-right: -0.42em; color: var(--tube); text-decoration: none; text-transform: uppercase; }
@@ -233,7 +289,8 @@ section { padding: clamp(72px, 12vw, 128px) 0 0; }
   html { scroll-behavior: auto; }
   .lit .tube-on .t1, .lit .tube-on .t2 { animation: fadeOn 300ms ease both !important; }
   .lit .hero-text, .lit .hero-cta { animation: fadeOn 300ms ease both !important; transform: none; }
-  .step { animation: none; }
+  .step, .wstep { animation: none; }
+  .wz-bar i { transition: none; }
 }
 </style>
 </head>
@@ -481,23 +538,150 @@ function paintHead(){
   $('regLead').hidden = stage !== 'form';
   $('ctaTop').textContent = reg ? 'SKAPA DITT KONTO' : 'SKICKA FÖRFRÅGAN';
 }
-const consentBox = (text, gdpr) => `<div class="f f--full">
-    <div class="gdpr" id="gdpr">${gdpr}</div>
-    <label class="consent" for="f_consent" style="margin-top:14px">
-      <input type="checkbox" id="f_consent" name="consent" aria-describedby="e_consent gdpr" ${draft.consent ? 'checked' : ''}>
-      <span>${text} <a href="./#integritet" target="_blank" rel="noopener">Läs hela integritetstexten</a></span>
-    </label>
-    <span class="err" id="e_consent" role="alert"></span>
-  </div>`;
-const availBox = () => `<div class="f f--full"><span class="lbl" id="l_avail">När kan du träffa din grupp?</span>
-    <div class="chips chips--left" id="avail" role="group" aria-labelledby="l_avail">${AVAIL.map(([id, n]) =>
-      `<button type="button" class="chip" data-id="${id}" aria-pressed="${availSel.has(id)}"><i aria-hidden="true"></i>${n}</button>`).join('')}</div>
-    <span class="err" id="e_avail" role="alert"></span></div>`;
+/* ---------- guiden: en fråga i taget (nov 2026) ----------
+   Alla fält finns i formuläret, men bara ett steg syns åt gången, med stor text och en
+   förklaring av vad man ska skriva. Kontrollerna är desamma som förut; blir något fel
+   skickas man tillbaka till just det steget. */
+let wstep = 0;
+function steps(){
+  if(!regMode()) return ['intro', 'name', 'email', 'phone', 'message', 'consent'];
+  if(mode === 'finish') return ['name', 'phone', 'pnr', 'avail', 'consent'];
+  return ['intro', 'name', 'email', 'phone', 'pnr', 'password', 'avail', 'consent'];
+}
+const codeCounts = () => regMode() && mode === 'new';        /* kodsteget är sista steget */
+const totalSteps = () => steps().filter(k => k !== 'intro').length + (codeCounts() ? 1 : 0);
+const stepNo = i => steps().slice(0, i + 1).filter(k => k !== 'intro').length;
+const CONSENT_ERR = 'Godkänn hur vi hanterar dina uppgifter — tryck i rutan';
+function errFor(k){
+  if(CHECK[k]) return CHECK[k](draft[k], draft);
+  if(k === 'avail') return availSel.size ? '' : 'Välj minst en tid du kan';
+  if(k === 'consent') return draft.consent ? '' : CONSENT_ERR;
+  return '';
+}
+const prefilled = k => !!(invInfo && invInfo[k] && draft[k] === invInfo[k]);
+const PRE = ' <b>Vi har redan fyllt i det. Stämmer det trycker du bara på Nästa.</b>';
+function qInput(k, attrs){
+  return k === 'password'
+    ? `<div class="pw"><input id="f_password" name="password" ${attrs} aria-describedby="w_password e_password h_password"><button type="button" id="pwToggle" aria-controls="f_password">Dölj</button></div>`
+    : `<input id="f_${k}" name="${k}" ${attrs} aria-describedby="w_${k} e_${k}${k === 'pnr' ? ' h_pnr' : ''}">`;
+}
+const q = (k, question, help, input, hint) => `<div class="f"><label class="wq" for="f_${k}">${question}</label>
+  <p class="wh" id="w_${k}">${help}</p>${input}${hint ? `<span class="hint" id="h_${k}">${hint}</span>` : ''}
+  <span class="err" id="e_${k}" role="alert"></span></div>`;
+const li = (n, html) => `<li><span class="n" aria-hidden="true">${n}</span><span>${html}</span></li>`;
+function introHtml(){
+  if(!regMode()) return `<div class="f">
+    ${INVITE && !invInfo ? `<p class="msg" style="margin-bottom:24px">Inbjudningslänken fungerar inte längre${invWhy ? ' (' + esc(invWhy.toLowerCase()) + ')' : ''}. Skicka en förfrågan, så hör vi av oss.</p>` : ''}
+    <p class="wq">Så går det till</p>
+    <ol class="ilist">
+      ${li(1, 'Du svarar på några korta frågor här, en i taget. Det tar ungefär två minuter.')}
+      ${li(2, 'Vi läser din förfrågan och skickar ett mejl till dig när den är godkänd.')}
+      ${li(3, 'I mejlet trycker du på knappen <b>Skapa ditt konto</b>. Då visar vi dig steg för steg hur du gör.')}
+    </ol>
+    <p class="wh">Skriver du fel kan du alltid gå tillbaka ett steg.</p></div>`;
+  return `<div class="f">
+    <p class="wq">Välkommen! Nu skapar vi ditt konto</p>
+    <p class="wh">Det tar ungefär tre minuter. Vi frågar en sak i taget. Ha det här nära till hands:</p>
+    <ol class="ilist">
+      ${li('✓', 'Din mobiltelefon')}
+      ${li('✓', 'Ditt personnummer')}
+      ${li('✓', 'Din mejl. Vi skickar en kod dit som du skriver in på slutet.')}
+    </ol>
+    <p class="wh">Skriver du fel kan du alltid gå tillbaka ett steg.</p></div>`;
+}
+function stepHtml(k){
+  const reg = regMode();
+  switch(k){
+    case 'intro': return introHtml();
+    case 'name': return q('name', 'Vad heter du?', 'Skriv ditt förnamn och ditt efternamn. Till exempel: Anna Svensson.' + (prefilled('name') ? PRE : ''),
+      qInput('name', `type="text" autocomplete="name" autocapitalize="words" maxlength="60" required value="${esc(draft.name)}"`));
+    case 'email': return q('email', 'Vad är din e-postadress?',
+      (reg ? 'Dit skickar vi en kod om en liten stund. Du loggar också in med den.' : 'Dit skickar vi svaret på din förfrågan.')
+      + ' Till exempel: anna.svensson@gmail.com.' + (prefilled('email') ? PRE : ''),
+      qInput('email', `type="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="email" maxlength="120" required value="${esc(draft.email)}"`));
+    case 'phone': return q('phone', 'Vad är ditt mobilnummer?', 'Så att vi kan ringa eller skicka sms om något krånglar. Till exempel: 070-123 45 67.' + (prefilled('phone') ? PRE : ''),
+      qInput('phone', `type="tel" autocomplete="tel" inputmode="tel" maxlength="20" required value="${esc(draft.phone)}"`));
+    case 'message': return `<div class="f"><label class="wq" for="f_message">Berätta gärna lite om dig</label>
+      <p class="wh" id="w_message">Vad gör du, och vad vill du göra hos oss? Länka gärna till din musik.
+        <b>Det här är frivilligt.</b> Vill du inte skriva något trycker du bara på Hoppa över.</p>
+      <textarea id="f_message" name="message" maxlength="600" rows="5" aria-describedby="w_message">${esc(draft.message)}</textarea></div>`;
+    case 'pnr': return q('pnr', 'Vad är ditt personnummer?',
+      'Tolv siffror: året du är född, månaden, dagen och de fyra sista siffrorna. Till exempel: 19560412-1234.',
+      qInput('pnr', `type="text" inputmode="numeric" autocomplete="off" maxlength="13" required value="${esc(draft.pnr)}"`),
+      'Vi behöver det för att rapportera studiecirklarna. Det lagras krypterat och syns bara för Bandos administratörer.');
+    case 'password': return q('password', 'Hitta på ett lösenord',
+      'Lösenordet skriver du varje gång du loggar in. Det ska ha minst 8 tecken, med både bokstäver och siffror, till exempel ett ord du tycker om och ett årtal. <b>Skriv gärna upp det på en lapp.</b>',
+      qInput('password', `type="text" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="8" maxlength="72" required value="${esc(draft.password)}"`),
+      'Lösenordet syns medan du skriver, så att du ser att det blir rätt. Tryck på Dölj om någon tittar.');
+    case 'avail': return `<div class="f"><p class="wq" id="l_avail">När kan du träffa din grupp?</p>
+      <p class="wh">Tryck på alla som passar dig. Det går bra att välja flera.</p>
+      <div class="chips chips--left" id="avail" role="group" aria-labelledby="l_avail">${AVAIL.map(([id, n]) =>
+        `<button type="button" class="chip" data-id="${id}" aria-pressed="${availSel.has(id)}"><i aria-hidden="true"></i>${n}</button>`).join('')}</div>
+      <span class="err" id="e_avail" role="alert"></span></div>`;
+    case 'consent': return `<div class="f"><p class="wq">Nästan klart!</p>
+      <p class="wh">Läs igenom texten och tryck sedan i rutan längst ner.</p>
+      <div class="gdpr" id="gdpr">${reg
+        ? `<span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer och ditt
+            personnummer för att ge dig tillgång till Bando HQ och för att driva studiecirklarna.</span>
+          <span><b>Personnumret</b> behövs för att vi ska kunna rapportera studiecirklarna till studieförbundet. Det lagras krypterat,
+            syns bara för Bandos administratörer och raderas när du raderar ditt konto.</span>`
+        : `<span><b>Dina uppgifter.</b> Vi sparar ditt namn, din e-post, ditt telefonnummer och ditt meddelande för att
+            svara på förfrågan, tills den är besvarad och högst ett år. Personnummer behövs först när du skapar ditt konto.</span>`}</div>
+      <label class="consent" for="f_consent">
+        <input type="checkbox" id="f_consent" name="consent" aria-describedby="e_consent gdpr" ${draft.consent ? 'checked' : ''}>
+        <span>${reg ? 'Jag godkänner att Bando Collective behandlar mina uppgifter så här, och att jag blir deltagare i Bandos studiocirklar.'
+          : 'Jag godkänner att Bando Collective sparar uppgifterna för att svara på min förfrågan.'}
+          <a href="./#integritet" target="_blank" rel="noopener">Läs hela integritetstexten</a></span>
+      </label>
+      <span class="err" id="e_consent" role="alert"></span></div>`;
+  }
+  return '';
+}
+function btnLabel(){
+  const st = steps(), k = st[wstep];
+  if(busy) return regMode() ? 'SKAPAR KONTOT…' : 'SKICKAR…';
+  if(k === 'intro') return 'SÄTT IGÅNG';
+  if(wstep === st.length - 1) return regMode() ? 'SKAPA MITT KONTO' : 'SKICKA FÖRFRÅGAN';
+  if(k === 'message' && !String(draft.message || '').trim()) return 'HOPPA ÖVER';
+  return 'NÄSTA';
+}
+function paintStep(focus){
+  const f = $('form'); if(!f) return;
+  const st = steps(), k = st[wstep], n = stepNo(wstep), tot = totalSteps();
+  f.querySelectorAll('.wstep').forEach((d, i) => { d.hidden = i !== wstep; });
+  $('wzTop').hidden = k === 'intro';
+  $('wzCount').textContent = `Steg ${n} av ${tot}`;
+  $('wzBar').style.width = Math.round(n / tot * 100) + '%';
+  $('wzBack').hidden = wstep === 0;
+  $('submit').textContent = btnLabel();
+  $('regLead').hidden = wstep !== 0;
+  if(focus){
+    f.scrollIntoView({block: 'start', behavior: 'smooth'});
+    const i = f.querySelector('.wstep:not([hidden]) input:not([type="checkbox"]), .wstep:not([hidden]) textarea');
+    if(i) setTimeout(() => i.focus({preventScroll: true}), 380);
+  }
+}
+function next(){
+  if(busy) return;
+  const st = steps(), k = st[wstep];
+  if(k !== 'intro'){
+    const i = $('f_' + k);
+    if(i && k !== 'consent') draft[k] = i.value;
+    if(k === 'pnr' && pnr12(draft.pnr)) i.value = draft.pnr = fmtPnr(pnr12(draft.pnr));
+    const m = errFor(k); setErr(k, m);
+    if(m){ if(i && k !== 'consent') i.focus(); return; }
+  }
+  if(wstep < st.length - 1){ wstep++; showMsg(''); paintStep(true); return; }
+  regMode() ? submit() : sendRequest();
+}
+function back(){ if(busy || wstep === 0) return; wstep--; showMsg(''); paintStep(true); }
 function wire(keys){
-  $('form').addEventListener('submit', e => { e.preventDefault(); regMode() ? submit() : sendRequest(); });
+  $('form').addEventListener('submit', e => { e.preventDefault(); next(); });
+  $('wzBack').addEventListener('click', back);
   keys.forEach(k => {
     const i = $('f_' + k); if(!i) return;
-    i.addEventListener('input', () => { draft[k] = i.value; if(CHECK[k] && i.getAttribute('aria-invalid') === 'true') setErr(k, CHECK[k](i.value, draft)); });
+    i.addEventListener('input', () => { draft[k] = i.value; if(CHECK[k] && i.getAttribute('aria-invalid') === 'true') setErr(k, CHECK[k](i.value, draft));
+      if(k === 'message') $('submit').textContent = btnLabel(); });
     i.addEventListener('blur', () => {
       if(k === 'pnr' && pnr12(i.value)) i.value = draft.pnr = fmtPnr(pnr12(i.value));
       if(i.value && CHECK[k]) setErr(k, CHECK[k](i.value, draft));
@@ -506,100 +690,79 @@ function wire(keys){
   $('f_consent').addEventListener('change', e => { draft.consent = e.target.checked; if(e.target.checked) setErr('consent', ''); });
   const t = $('pwToggle');
   if(t) t.addEventListener('click', () => { const i = $('f_password'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; t.textContent = show ? 'Dölj' : 'Visa'; });
+  const av = $('avail');
+  if(av) av.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if(!b) return;
+    const id = b.dataset.id; availSel.has(id) ? availSel.delete(id) : availSel.add(id);
+    b.setAttribute('aria-pressed', availSel.has(id)); if(availSel.size) setErr('avail', '');
+  });
 }
 function render(){
   const s = $('stage');
   paintHead();
-  if(stage === 'form' && !regMode()){
-    /* förfrågan: inget lösenord och inget personnummer */
-    s.innerHTML = `<form class="form step" id="form" novalidate autocomplete="on">
-      ${INVITE && !invInfo ? `<p class="msg" style="margin-bottom:28px">Inbjudningslänken fungerar inte längre${invWhy ? ' (' + esc(invWhy.toLowerCase()) + ')' : ''}. Skicka en förfrågan, så hör vi av oss.</p>` : ''}
-      <div class="grid">
-        ${field('name', 'För- och efternamn', `type="text" autocomplete="name" autocapitalize="words" maxlength="60" required value="${esc(draft.name)}"`, '', 'f--full')}
-        ${field('email', 'E-post', `type="email" autocomplete="email" autocapitalize="none" spellcheck="false" inputmode="email" maxlength="120" required value="${esc(draft.email)}"`)}
-        ${field('phone', 'Mobilnummer', `type="tel" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="070-123 45 67" required value="${esc(draft.phone)}"`)}
-        <div class="f f--full"><label for="f_message">Om dig och din musik <span class="hint" style="text-transform:none;letter-spacing:0">(valfritt)</span></label>
-          <textarea id="f_message" name="message" maxlength="600" rows="4" placeholder="Vad gör du, vad vill du utveckla, länkar till din musik …">${esc(draft.message)}</textarea></div>
-        ${consentBox('Jag godkänner att Bando Collective sparar uppgifterna för att svara på min förfrågan.',
-          `<span><b>Dina uppgifter.</b> Vi sparar ditt namn, din e-post, ditt telefonnummer och ditt meddelande för att
-            svara på förfrågan — tills den är besvarad, och högst ett år. Personnummer behövs först när du skapar ditt konto.</span>`)}
-      </div>
+  if(stage === 'form'){
+    const st = steps(); wstep = Math.max(0, Math.min(wstep, st.length - 1));
+    s.innerHTML = `<form class="form wiz" id="form" novalidate autocomplete="on">
+      ${mode === 'finish' ? `<p class="msg ok" style="margin-bottom:28px">Din e-post är bekräftad${who ? ' (' + esc(who) + ')' : ''}. Svara på de sista frågorna så är kontot klart.</p>` : ''}
+      <div class="wz-top" id="wzTop"><span class="wz-count" id="wzCount"></span><span class="wz-bar" aria-hidden="true"><i id="wzBar"></i></span></div>
+      ${st.map((k, i) => `<div class="wstep" data-k="${k}"${i === wstep ? '' : ' hidden'}>${stepHtml(k)}</div>`).join('')}
       <input class="hp" type="text" name="website" id="f_hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <div class="form-foot">
-        <button class="btn" id="submit" ${busy ? 'disabled' : ''}>${busy ? 'SKICKAR…' : 'SKICKA FÖRFRÅGAN'}</button>
-        <p class="after">När förfrågan är godkänd får du en inbjudan på mejlen och skapar ditt konto.</p>
+      <div class="wz-nav">
+        <button class="btn" id="submit" ${busy ? 'disabled' : ''}></button>
+        <button type="button" class="wz-back" id="wzBack">← Tillbaka</button>
       </div>
       <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
     </form>`;
-    wire(['name','email','phone','message']);
+    wire(st.filter(k => !['intro', 'avail', 'consent'].includes(k)));
+    paintStep(false);
     return;
   }
-  if(stage === 'form'){
-    const full = mode === 'new';
-    s.innerHTML = `<form class="form step" id="form" novalidate autocomplete="on">
-      ${mode === 'finish' ? `<p class="msg ok" style="margin-bottom:28px">Din e-post är bekräftad${who ? ' (' + esc(who) + ')' : ''}. Fyll i resten så är kontot klart.</p>` : ''}
-      <div class="grid">
-        ${field('name', 'För- och efternamn', `type="text" autocomplete="name" autocapitalize="words" maxlength="60" required value="${esc(draft.name)}"`, '', 'f--full')}
-        ${full ? field('email', 'E-post', `type="email" autocomplete="email" autocapitalize="none" spellcheck="false" inputmode="email" maxlength="120" required value="${esc(draft.email)}"`) : ''}
-        ${field('phone', 'Mobilnummer', `type="tel" autocomplete="tel" inputmode="tel" maxlength="20" placeholder="070-123 45 67" required value="${esc(draft.phone)}"`, '', full ? '' : 'f--full')}
-        ${field('pnr', 'Personnummer', `type="text" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="ÅÅÅÅMMDD-XXXX" required value="${esc(draft.pnr)}"`,
-          'Behövs för rapporteringen av studiecirklarna. Lagras krypterat.', full ? '' : 'f--full')}
-        ${full ? field('password', 'Lösenord', `type="password" autocomplete="new-password" minlength="8" maxlength="72" required value="${esc(draft.password)}"`, 'Minst 8 tecken, med både bokstäver och siffror.') : ''}
-        ${availBox()}
-        ${consentBox('Jag godkänner att Bando Collective behandlar mina uppgifter så här, och att jag blir deltagare i Bandos studiocirklar.',
-          `<span><b>Dina uppgifter.</b> Bando Collective sparar ditt namn, din e-post, ditt telefonnummer och ditt
-              personnummer för att ge dig tillgång till Bando HQ och för att driva studiecirklarna.</span>
-            <span><b>Personnumret</b> behövs för att vi ska kunna rapportera studiecirklarna till studieförbundet. Det lagras krypterat,
-              syns bara för Bandos administratörer och raderas när du raderar ditt konto.</span>`)}
-      </div>
-      <input class="hp" type="text" name="website" id="f_hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <div class="form-foot">
-        <button class="btn" id="submit" ${busy ? 'disabled' : ''}>${busy ? 'SKAPAR KONTOT…' : 'SKAPA KONTO &amp; FÅ ACCESS'}</button>
-        <p class="after">Efter registrering får du tillgång till Bando HQ och placeras i en studiocirkel.</p>
-      </div>
-      <p class="msg" id="msg" role="alert" style="margin-top:22px"></p>
-    </form>`;
-    $('avail').addEventListener('click', e => {
-      const b = e.target.closest('.chip'); if(!b) return;
-      const id = b.dataset.id; availSel.has(id) ? availSel.delete(id) : availSel.add(id);
-      b.setAttribute('aria-pressed', availSel.has(id)); if(availSel.size) setErr('avail', '');
-    });
-    wire(['name','email','phone','pnr','password']);
-  }
   if(stage === 'code'){
-    s.innerHTML = `<form class="form step" id="codeForm" novalidate>
-      <div class="sec-head" style="margin-bottom:24px"><p class="h2">Kolla din mejl</p></div>
-      <p class="lead" style="margin-bottom:28px">Vi har mejlat en kod till <b>${esc(draft.email)}</b>. Skriv in den här för att bekräfta din e-post.
-        ${PREVIEW ? '<br><span class="hint">Förhandsläge: vilka sex siffror som helst fungerar.</span>' : ''}</p>
-      <div class="f" style="max-width:320px;margin:0 auto">
-        <label for="f_code">Kod från mejlet</label>
+    const tot = totalSteps();
+    s.innerHTML = `<form class="form wiz step" id="codeForm" novalidate>
+      <div class="wz-top"><span class="wz-count">Steg ${tot} av ${tot} · sista steget</span><span class="wz-bar" aria-hidden="true"><i style="width:100%"></i></span></div>
+      <div class="f">
+        <p class="wq">Kolla din mejl</p>
+        <ol class="ilist">
+          ${li(1, `Öppna din mejl: <b>${esc(draft.email)}</b>. Låt den här sidan vara öppen under tiden.`)}
+          ${li(2, 'Leta efter ett nytt mejl med en kod. Det kommer inom någon minut. Syns det inte? Titta i skräpposten.')}
+          ${li(3, 'Koden är sex siffror. Kom tillbaka hit och skriv in dem i rutan här nedanför.')}
+        </ol>
+        ${PREVIEW ? '<span class="hint">Förhandsläge: vilka sex siffror som helst fungerar.</span>' : ''}
+        <label class="wq wq--sm" for="f_code" style="margin-top:22px">Koden från mejlet</label>
         <input id="f_code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="••••••" aria-describedby="e_code" required>
         <span class="err" id="e_code" role="alert"></span></div>
-      <div class="form-foot"><button class="btn" id="codeBtn" ${busy ? 'disabled' : ''}>${busy ? 'KOLLAR…' : 'BEKRÄFTA'}</button>
-        <p class="after">Kolla skräpposten om mejlet dröjer.</p></div>
-      <div class="step-links">
-        <button type="button" class="txtlink" id="resend">Skicka en ny kod</button>
-        <button type="button" class="txtlink" id="back">Fel e-post? Ändra</button></div>
+      <div class="wz-nav"><button class="btn" id="codeBtn" ${busy ? 'disabled' : ''}>${busy ? 'KOLLAR…' : 'BEKRÄFTA'}</button>
+        <button type="button" class="wz-back" id="resend">Inget mejl? Skicka en ny kod</button>
+        <button type="button" class="wz-back" id="back">Fel e-post? Ändra den</button></div>
       <p class="msg" id="msg" role="alert" style="margin-top:18px"></p>
     </form>`;
     $('codeForm').addEventListener('submit', e => { e.preventDefault(); verify(); });
     $('resend').addEventListener('click', resend);
-    $('back').addEventListener('click', () => { stage = 'form'; render(); });
+    $('back').addEventListener('click', () => { stage = 'form'; wstep = Math.max(0, steps().indexOf('email')); render(); });
     setTimeout(() => $('f_code').focus(), 60);
   }
   if(stage === 'sent'){
-    s.innerHTML = `<div class="step" id="sent" style="text-align:center;display:grid;justify-items:center">
+    s.innerHTML = `<div class="step wiz-end" id="sent">
       <p class="done-title">Tack${draft.name ? ', ' + esc(cleanName(draft.name).split(' ')[0]) : ''}</p>
-      <p class="lead" style="margin:18px 0 30px">Vi har tagit emot din förfrågan. Vi går igenom den och mejlar en inbjudan till
-        <b>${esc(draft.email)}</b> när den är godkänd — med den skapar du ditt konto.</p>
+      <p class="lead" style="margin:18px 0 26px">Din förfrågan är skickad. Du behöver inte göra något mer just nu, och du kan stänga sidan.</p>
+      <p class="wq wq--sm">Så här går det vidare</p>
+      <ol class="ilist" style="margin-bottom:30px">
+        ${li(1, 'Vi läser din förfrågan.')}
+        ${li(2, `När den är godkänd får du ett mejl till <b>${esc(draft.email)}</b>.`)}
+        ${li(3, 'I mejlet trycker du på knappen <b>Skapa ditt konto</b>. Då visar vi dig steg för steg hur du skapar kontot.')}
+      </ol>
       <a class="txtlink" href="${esc(APP)}">Har du redan ett konto?<b>Logga in</b></a></div>`;
   }
   if(stage === 'done'){
-    s.innerHTML = `<div class="step" id="done" style="text-align:center;display:grid;justify-items:center">
+    s.innerHTML = `<div class="step wiz-end" id="done">
       <p class="done-title">Välkommen in${who ? ', ' + esc(who.split(' ')[0]) : ''}</p>
-      <p class="lead" style="margin:18px 0 30px">Ditt konto är klart. Du har nu tillgång till Bando HQ Access, och vi placerar dig i en studiocirkel
-        utifrån det du valt. Du skickas vidare till Bando HQ…</p>
-      <a class="btn" href="${esc(APP)}#welcome" id="toApp">TILL BANDO HQ</a></div>`;
+      <p class="lead" style="margin:18px 0 26px">Ditt konto är klart! Du har nu tillgång till Bando HQ Access, och vi placerar dig i en studiocirkel
+        utifrån tiderna du valde.</p>
+      <div class="remember"><p class="wq wq--sm">Så loggar du in nästa gång</p>
+        <dl>${draft.email ? `<dt>E-post</dt><dd>${esc(draft.email)}</dd>` : ''}<dt>Lösenord</dt><dd>Det du hittade på</dd></dl>
+        <p class="hint">Glömmer du lösenordet trycker du på <b>Glömt lösenordet?</b> när du loggar in, så får du ett nytt.</p></div>
+      <a class="btn" href="${esc(APP)}#welcome" id="toApp">GÅ IN I BANDO HQ</a></div>`;
   }
   if(stage === 'member'){
     s.innerHTML = `<div class="banner step" id="already">
@@ -613,6 +776,8 @@ function firstError(errs, order){
   const first = order.find(k => errs[k]);
   if(!first) return false;
   showMsg('');
+  const at = steps().indexOf(first);
+  if(at >= 0 && at !== wstep){ wstep = at; paintStep(false); }
   if(first === 'avail'){ $('avail').scrollIntoView({block:'center', behavior:'smooth'}); }
   else { const i = $('f_' + first); if(i){ i.focus(); i.scrollIntoView({block:'center', behavior:'smooth'}); } }
   return true;
@@ -624,7 +789,7 @@ async function sendRequest(){
   const hp = ($('f_hp') || {}).value || '';
   draft.message = ($('f_message') || {}).value || draft.message;
   const errs = {name:CHECK.name(draft.name), email:CHECK.email(draft.email), phone:CHECK.phone(draft.phone),
-    consent: draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter'};
+    consent: errFor('consent')};
   if(firstError(errs, ['name','email','phone','consent'])) return;
   busy = true; render();
   try{
@@ -652,8 +817,8 @@ async function submit(){
   if(($('f_hp') || {}).value) return;                       /* robot */
   const full = mode === 'new', errs = {};
   ['name', 'phone', 'pnr'].concat(full ? ['email', 'password'] : []).forEach(k => { errs[k] = CHECK[k](draft[k], draft); });
-  errs.avail = availSel.size ? '' : 'Välj minst en tid du kan';
-  errs.consent = draft.consent ? '' : 'Godkänn hur vi hanterar dina uppgifter';
+  errs.avail = errFor('avail');
+  errs.consent = errFor('consent');
   if(firstError(errs, ['name','email','phone','pnr','password','avail','consent'])) return;
   busy = true; render();
   try{
@@ -724,7 +889,6 @@ async function finish(){
   who = (r && r.name) || args.p_name;
   stage = 'done'; busy = false; render();
   $('stage').scrollIntoView({block: 'start', behavior: 'smooth'});
-  setTimeout(() => { location.href = APP + '#welcome'; }, 2600);
 }
 
 /* ---------- start ---------- */
@@ -786,7 +950,7 @@ function fitTitle(){
 }
 (document.fonts && document.fonts.load ? Promise.race([document.fonts.load('800 200px "Barlow Condensed"'), new Promise(r => setTimeout(r, 1500))]) : Promise.resolve())
   .then(fitTitle, fitTitle);
-$('ctaTop').addEventListener('click', e => { e.preventDefault(); $('registrera').scrollIntoView({behavior: 'smooth'}); setTimeout(() => { const i = $('f_name'); if(i) i.focus({preventScroll: true}); }, 500); });
+$('ctaTop').addEventListener('click', e => { e.preventDefault(); $('registrera').scrollIntoView({behavior: 'smooth'}); });
 start();
 </script>
 </body>
